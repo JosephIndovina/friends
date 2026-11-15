@@ -6,7 +6,7 @@ import { errorText } from "../../lib/format";
 import { useLoad } from "./useLoad";
 
 const GROUPS: { label: string; prefix: string[] }[] = [
-  { label: "Music & Media", prefix: ["music.", "media."] },
+  { label: "Player", prefix: ["player."] },
   { label: "Cast", prefix: ["cast."] },
   { label: "Stream & moderation", prefix: ["posts.", "playback."] },
   { label: "Admin", prefix: ["admin."] },
@@ -53,7 +53,7 @@ export function Roles({ session }: { session: Session }) {
     e.preventDefault();
     if (!newName.trim()) return;
     try {
-      await api("POST", "/api/admin/roles", { name: newName.trim(), permissions: (["music.queue", "media.queue", "cast.watch", "posts.create"] as Permission[]).filter(grantable), position: 25 });
+      await api("POST", "/api/admin/roles", { name: newName.trim(), permissions: (["player.queue", "cast.watch", "posts.create"] as Permission[]).filter(grantable), position: 25 });
       setNewName("");
       setFlash({ kind: "ok", text: `Created ${newName.trim()}. It sits between Moderator and Member.` });
       await roles.reload();

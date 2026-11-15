@@ -53,7 +53,7 @@ function isoDuration(iso: string | undefined): number | null {
 
 interface VideoResource {
   id: string;
-  snippet: { title: string; channelTitle: string; liveBroadcastContent: string; thumbnails: Record<string, { url: string }> };
+  snippet: { title: string; channelTitle: string; liveBroadcastContent: string; categoryId?: string; thumbnails: Record<string, { url: string }> };
   contentDetails: { duration: string };
   status: { embeddable: boolean; privacyStatus: string };
 }
@@ -77,6 +77,8 @@ export async function videoDetails(ids: string[]): Promise<YouTubeResult[]> {
         thumbnail: thumb(v.snippet.thumbnails),
         duration: v.snippet.liveBroadcastContent === "live" ? null : isoDuration(v.contentDetails.duration),
         live: v.snippet.liveBroadcastContent === "live",
+        // Category 10 is Music; auto-generated "- Topic" channels are album tracks.
+        music: v.snippet.categoryId === "10" || v.snippet.channelTitle.endsWith(" - Topic"),
       });
     }
   }

@@ -2,8 +2,7 @@ import { createRootRouteWithContext, createRoute, createRouter, redirect } from 
 import type { Permission, Session } from "@friends/shared";
 import { Shell } from "./components/Shell";
 import { ADMIN_TABS, can } from "./lib/api";
-import { Dashboard } from "./routes/Dashboard";
-import { Media } from "./routes/Media";
+import { Home } from "./routes/Home";
 import { SectionSoon } from "./routes/SectionSoon";
 import { Settings } from "./routes/Settings";
 import { AdminLayout, NotAllowed } from "./routes/admin/AdminLayout";
@@ -20,15 +19,10 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 });
 const useSession = () => rootRoute.useRouteContext().session;
 
-const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Dashboard me={useSession().user} /> });
-const musicRoute = createRoute({
-  getParentRoute: () => rootRoute, path: "/music",
-  component: () => <SectionSoon title="Music" body="Coming in Phase 2." />,
-});
-const mediaRoute = createRoute({
-  getParentRoute: () => rootRoute, path: "/media",
-  component: () => <Media session={useSession()} />,
-});
+const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Home session={useSession()} /> });
+// Old links from Discord posts.
+const musicRoute = createRoute({ getParentRoute: () => rootRoute, path: "/music", beforeLoad: () => { throw redirect({ to: "/" }); } });
+const mediaRoute = createRoute({ getParentRoute: () => rootRoute, path: "/media", beforeLoad: () => { throw redirect({ to: "/" }); } });
 const castRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/cast",
   component: () => <SectionSoon title="Cast" body="Coming in Phase 4." />,

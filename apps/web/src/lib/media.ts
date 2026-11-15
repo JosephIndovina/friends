@@ -51,7 +51,7 @@ export const MEDIA_ERRORS: Record<string, string> = {
   nothing_playing: "Nothing is playing.",
   not_seekable: "Live streams and clips can’t be seeked.",
   missing_permission: "You don’t have permission to do that.",
-  section_disabled: "Media is turned off.",
+  section_disabled: "The player is turned off.",
   slow_down: "Too many actions. Wait a moment.",
   not_found: "That item is no longer in the queue.",
   youtube_not_configured: "YouTube search and playlists aren’t set up. An admin needs to add a YouTube API key.",

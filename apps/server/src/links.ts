@@ -1,5 +1,6 @@
-import type { MediaKind } from "@friends/shared";
+import type { MediaKind, MediaMode } from "@friends/shared";
 import { env } from "./env.js";
+import { videoDetails, youtubeEnabled } from "./youtube.js";
 
 export interface ParsedLink {
   kind: MediaKind;
@@ -8,6 +9,7 @@ export interface ParsedLink {
 }
 
 export interface LinkMeta {
+  mode: MediaMode;
   title: string;
   author: string | null;
   thumbnail: string | null;
@@ -60,11 +62,21 @@ export function parseLink(input: string): ParsedLink | null {
 // ---------- metadata ----------
 
 async function youtubeMeta(id: string): Promise<LinkMeta | null> {
+  if (youtubeEnabled()) {
+    try {
+      const [v] = await videoDetails([id]);
+      if (!v) return null;
+      return { mode: v.music ? "music" : "video", title: v.title, author: v.author, thumbnail: v.thumbnail, duration: v.duration };
+    } catch {
+      /* quota or API trouble: fall back to oEmbed */
+    }
+  }
   const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`);
   // 401/403 = embedding disabled, 404 = private or removed.
   if (!res.ok) return null;
   const j = (await res.json()) as { title: string; author_name?: string };
-  return { title: j.title, author: j.author_name ?? null, thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`, duration: null };
+  const author = j.author_name ?? null;
+  return { mode: author?.endsWith(" - Topic") ? "music" : "video", title: j.title, author, thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`, duration: null };
 }
 
 let twitchToken: { value: string; expires: number } | null = null;
@@ -94,23 +106,24 @@ async function twitchMeta(kind: MediaKind, ref: string): Promise<LinkMeta> {
   try {
     if (kind === "twitch-vod") {
       const v = (await helix<{ title: string; user_name: string; thumbnail_url: string; duration: string }>(`videos?id=${ref}`))?.[0];
-      if (v) return { title: v.title, author: v.user_name, thumbnail: sized(v.thumbnail_url), duration: parseTime(v.duration) || null };
-      return { title: `Twitch video ${ref}`, author: null, thumbnail: null, duration: null };
+      if (v) return { mode: "video", title: v.title, author: v.user_name, thumbnail: sized(v.thumbnail_url), duration: parseTime(v.duration) || null };
+      return { mode: "video", title: `Twitch video ${ref}`, author: null, thumbnail: null, duration: null };
     }
     if (kind === "twitch-clip") {
       const c = (await helix<{ title: string; broadcaster_name: string; thumbnail_url: string; duration: number }>(`clips?id=${encodeURIComponent(ref)}`))?.[0];
-      if (c) return { title: c.title, author: c.broadcaster_name, thumbnail: c.thumbnail_url, duration: c.duration };
-      return { title: `Twitch clip`, author: null, thumbnail: null, duration: null };
+      if (c) return { mode: "video", title: c.title, author: c.broadcaster_name, thumbnail: c.thumbnail_url, duration: c.duration };
+      return { mode: "video", title: `Twitch clip`, author: null, thumbnail: null, duration: null };
     }
     const s = (await helix<{ title: string; user_name: string }>(`streams?user_login=${ref}`))?.[0];
     return {
+      mode: "video",
       title: s?.title ?? `${ref} on Twitch`,
       author: s?.user_name ?? ref,
       thumbnail: `https://static-cdn.jtvnw.net/previews-ttv/live_user_${ref}-640x360.jpg`,
       duration: null,
     };
   } catch {
-    return { title: kind === "twitch-live" ? `${ref} on Twitch` : "Twitch", author: null, thumbnail: null, duration: null };
+    return { mode: "video", title: kind === "twitch-live" ? `${ref} on Twitch` : "Twitch", author: null, thumbnail: null, duration: null };
   }
 }
 

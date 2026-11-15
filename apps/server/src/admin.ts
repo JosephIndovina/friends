@@ -75,7 +75,7 @@ const permissionList = z.array(z.enum(ALL_PERMISSIONS as [Permission, ...Permiss
 
 const settingsSchema = z.object({
   lockdown: z.boolean(),
-  sections: z.object({ music: z.boolean(), media: z.boolean(), cast: z.boolean() }),
+  sections: z.object({ player: z.boolean(), cast: z.boolean() }),
   notify: z.object({
     channelId: z.string().regex(/^\d{15,22}$/).nullable(),
     accessRequests: z.boolean(),

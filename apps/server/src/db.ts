@@ -9,7 +9,7 @@ db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
 // Append-only migrations. Never edit a shipped entry; add a new one.
-const migrations: string[] = [
+const migrations: Array<string | (() => void)> = [
   `CREATE TABLE users (
      id          TEXT PRIMARY KEY,          -- Discord user id
      name        TEXT NOT NULL,             -- guild nick, else global name, else username
@@ -75,12 +75,23 @@ const migrations: string[] = [
      data       TEXT NOT NULL               -- JSON MediaItem
    );
    CREATE INDEX media_history_played ON media_history(played_at);`,
+
+  // Music and Media merged into one player: media.* -> player.*, music.* dropped.
+  () => {
+    const rename: Record<string, string | null> = { "media.queue": "player.queue", "media.control": "player.control", "music.queue": null, "music.control": null };
+    for (const r of db.prepare("SELECT id, permissions FROM roles").all() as Array<{ id: string; permissions: string }>) {
+      const perms = (JSON.parse(r.permissions) as string[]).flatMap((p) => (p in rename ? (rename[p] ? [rename[p]!] : []) : [p]));
+      db.prepare("UPDATE roles SET permissions = ? WHERE id = ?").run(JSON.stringify([...new Set(perms)]), r.id);
+    }
+  },
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;
 for (let i = version; i < migrations.length; i++) {
   db.transaction(() => {
-    db.exec(migrations[i]!);
+    const m = migrations[i]!;
+    if (typeof m === "string") db.exec(m);
+    else m();
     db.pragma(`user_version = ${i + 1}`);
   })();
 }

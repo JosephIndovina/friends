@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PresenceEntry, Section } from "@friends/shared";
+import type { Activity, PresenceEntry, Section } from "@friends/shared";
 import { getSocket } from "./socket";
 
 export function usePresence(): PresenceEntry[] {
@@ -14,17 +14,28 @@ export function usePresence(): PresenceEntry[] {
   return entries;
 }
 
-export function reportSection(section: Section) {
+function whenConnected(fn: () => void) {
   const s = getSocket();
-  if (s.connected) s.emit("presence:section", section);
-  else s.once("connect", () => s.emit("presence:section", section));
+  if (s.connected) fn();
+  s.on("connect", fn);
+  return () => s.off("connect", fn);
 }
 
-export const whereLabel: Record<Section, string> = {
-  home: "Home",
-  music: "Music",
-  media: "Media",
-  cast: "Cast",
-  settings: "Settings",
-  admin: "Admin",
-};
+let lastSection: Section = "home";
+let lastActivity: Activity = "idle";
+
+export function reportSection(section: Section) {
+  lastSection = section;
+  getSocket().connected && getSocket().emit("presence:section", section);
+}
+
+export function reportActivity(activity: Activity) {
+  lastActivity = activity;
+  getSocket().connected && getSocket().emit("presence:activity", activity);
+}
+
+// Re-send on every (re)connect so the server's view survives reconnects.
+whenConnected(() => {
+  getSocket().emit("presence:section", lastSection);
+  getSocket().emit("presence:activity", lastActivity);
+});

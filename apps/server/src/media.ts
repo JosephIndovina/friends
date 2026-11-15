@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Server, Socket } from "socket.io";
-import { SEEKABLE, type Ack, type ClientToServer, type MediaItem, type MediaState, type Permission, type Playback, type ServerToClient, type Session } from "@friends/shared";
+import { SEEKABLE, type Ack, type ClientToServer, type MediaItem, type MediaMode, type MediaState, type Permission, type Playback, type ServerToClient, type Session } from "@friends/shared";
 import { audit } from "./audit.js";
 import { db } from "./db.js";
 import { events } from "./events.js";
@@ -25,8 +25,10 @@ const fail = (code: string): never => {
 
 // ---------- persistence ----------
 
+const withMode = <T extends MediaItem>(i: T): T => ({ ...i, mode: i.mode ?? "video" });
+
 function loadQueue(): MediaItem[] {
-  return (db.prepare("SELECT data FROM media_queue ORDER BY sort").all() as Array<{ data: string }>).map((r) => JSON.parse(r.data) as MediaItem);
+  return (db.prepare("SELECT data FROM media_queue ORDER BY sort").all() as Array<{ data: string }>).map((r) => withMode(JSON.parse(r.data) as MediaItem));
 }
 function saveQueue(queue: MediaItem[]) {
   db.transaction(() => {
@@ -37,12 +39,13 @@ function saveQueue(queue: MediaItem[]) {
 }
 function loadHistory(): MediaState["history"] {
   return (db.prepare("SELECT data, played_at FROM media_history ORDER BY id DESC LIMIT ?").all(HISTORY_SHOWN) as Array<{ data: string; played_at: number }>).map(
-    (r) => ({ ...(JSON.parse(r.data) as MediaItem), playedAt: r.played_at }),
+    (r) => withMode({ ...(JSON.parse(r.data) as MediaItem), playedAt: r.played_at }),
   );
 }
 function loadNow(): Playback | null {
   const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(NOW_KEY) as { value: string } | undefined;
-  return row ? (JSON.parse(row.value) as Playback | null) : null;
+  const p = row ? (JSON.parse(row.value) as Playback | null) : null;
+  return p ? { ...p, item: withMode(p.item) } : null;
 }
 function saveNow(now: Playback | null) {
   db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(NOW_KEY, JSON.stringify(now));
@@ -116,7 +119,7 @@ export function createMediaRoom(io: IO) {
   }
 
   events.on("settings:changed", () => {
-    if (!getSettings().sections.media && now) {
+    if (!getSettings().sections.player && now) {
       toHistory(now.item);
       now = null;
       commit();
@@ -137,7 +140,7 @@ export function createMediaRoom(io: IO) {
         try {
           if (typeof ack !== "function") return;
           if (tokens-- <= 0) fail("slow_down");
-          if (!getSettings().sections.media) fail("section_disabled");
+          if (!getSettings().sections.player) fail("section_disabled");
           if (perm && !session.permissions.includes(perm)) {
             audit({ actorId: session.user.id, action: "access.forbidden", details: { socket: true, perm } });
             fail("missing_permission");
@@ -156,7 +159,7 @@ export function createMediaRoom(io: IO) {
 
     socket.on("media:subscribe", () => socket.emit("media:state", snapshot()));
 
-    socket.on("media:add", handle("media.queue", async (s, input: { url: string; playNext?: boolean; whole?: boolean }) => {
+    socket.on("media:add", handle("player.queue", async (s, input: { url: string; playNext?: boolean; whole?: boolean }) => {
       if (typeof input?.url !== "string" || input.url.length > 500) fail("invalid");
       if (queue.length >= QUEUE_MAX) fail("queue_full");
       const link = parseLink(input.url);
@@ -173,7 +176,7 @@ export function createMediaRoom(io: IO) {
         }
         if (!pl.items.length) fail("playlist_unavailable");
         const items: MediaItem[] = pl.items.map((v) => ({
-          id: randomUUID(), kind: "youtube", ref: v.id, startAt: 0, title: v.title, author: v.author,
+          id: randomUUID(), kind: "youtube", mode: v.music ? "music" : "video", ref: v.id, startAt: 0, title: v.title, author: v.author,
           thumbnail: v.thumbnail, duration: v.duration, addedBy: who(s), addedAt: Date.now(),
         }));
         audit({ actorId: s.user.id, action: "media.added_playlist", target: { type: "playlist", id: list, name: pl.title }, details: { videos: items.length, skipped: pl.skipped } });
@@ -195,7 +198,7 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
-    socket.on("media:play", handle("media.control", (s) => {
+    socket.on("media:play", handle("player.control", (s) => {
       if (!now) {
         if (!queue.length) fail("nothing_queued");
         advance(s.user);
@@ -207,7 +210,7 @@ export function createMediaRoom(io: IO) {
       audit({ actorId: s.user.id, action: "media.played", target: ref(now!.item) });
     }));
 
-    socket.on("media:pause", handle("media.control", (s, _input: { position: number }) => {
+    socket.on("media:pause", handle("player.control", (s, _input: { position: number }) => {
       if (!now?.playing) return;
       now = { ...now, playing: false, position: position(now), updatedAt: Date.now() };
       lastActiveAt = Date.now();
@@ -215,7 +218,7 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
-    socket.on("media:seek", handle("media.control", (s, input: { position: number }) => {
+    socket.on("media:seek", handle("player.control", (s, input: { position: number }) => {
       if (!now) fail("nothing_playing");
       if (!SEEKABLE[now!.item.kind]) fail("not_seekable");
       const max = now!.item.duration ?? Number.MAX_SAFE_INTEGER;
@@ -226,13 +229,13 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
-    socket.on("media:skip", handle("media.control", (s) => {
+    socket.on("media:skip", handle("player.control", (s) => {
       if (!now) fail("nothing_playing");
       audit({ actorId: s.user.id, action: "media.skipped", target: ref(now!.item) });
       advance(s.user);
     }));
 
-    socket.on("media:playNow", handle("media.control", (s, input: { id: string }) => {
+    socket.on("media:playNow", handle("player.control", (s, input: { id: string }) => {
       const i = queue.findIndex((q) => q.id === input?.id);
       if (i < 0) fail("not_found");
       const [item] = queue.splice(i, 1);
@@ -242,7 +245,7 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
-    socket.on("media:replay", handle("media.queue", (s, input: { id: string }) => {
+    socket.on("media:replay", handle("player.queue", (s, input: { id: string }) => {
       const old = history.find((h) => h.id === input?.id);
       if (!old) fail("not_found");
       if (queue.length >= QUEUE_MAX) fail("queue_full");
@@ -254,7 +257,7 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
-    socket.on("media:remove", handle("media.queue", (s, input: { id: string }) => {
+    socket.on("media:remove", handle("player.queue", (s, input: { id: string }) => {
       const item = queue.find((q) => q.id === input?.id);
       if (!item) fail("not_found");
       if (item!.addedBy.id !== s.user.id && !s.permissions.includes("playback.moderate")) fail("missing_permission");
@@ -263,13 +266,25 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
-    socket.on("media:move", handle("media.control", (s, input: { id: string; to: number }) => {
+    socket.on("media:move", handle("player.control", (s, input: { id: string; to: number }) => {
       const from = queue.findIndex((q) => q.id === input?.id);
       if (from < 0) fail("not_found");
       const to = Math.max(0, Math.min(Math.trunc(num(input.to)), queue.length - 1));
       const [item] = queue.splice(from, 1);
       queue.splice(to, 0, item!);
       audit({ actorId: s.user.id, action: "media.moved", target: ref(item!), details: { from: from + 1, to: to + 1 } });
+      commit();
+    }));
+
+    socket.on("media:setMode", handle("player.control", (s, input: { id: string; mode: MediaMode }) => {
+      if (input?.mode !== "video" && input?.mode !== "music") fail("invalid");
+      if (now?.item.id === input.id) now = { ...now, item: { ...now.item, mode: input.mode } };
+      else {
+        const i = queue.findIndex((q) => q.id === input.id);
+        if (i < 0) fail("not_found");
+        queue[i] = { ...queue[i]!, mode: input.mode };
+      }
+      audit({ actorId: s.user.id, action: "media.mode_changed", details: { id: input.id, mode: input.mode } });
       commit();
     }));
 

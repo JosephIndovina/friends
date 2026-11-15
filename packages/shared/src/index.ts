@@ -1,12 +1,13 @@
 // Types shared by server and web. Type-only except the permission catalog.
 
-export type Section = "home" | "music" | "media" | "cast" | "settings" | "admin";
+export type Section = "home" | "cast" | "settings" | "admin";
+
+/** What someone is doing right now, shown as the ring on their avatar. */
+export type Activity = "watching" | "listening" | "casting" | "idle";
 
 export const PERMISSIONS = {
-  "music.queue": "Add to the music queue",
-  "music.control": "Play, pause, skip and seek music",
-  "media.queue": "Add videos to the watch queue",
-  "media.control": "Play, pause, skip and seek videos",
+  "player.queue": "Add to the queue",
+  "player.control": "Play, pause, skip, seek and reorder",
   "cast.watch": "Watch cast streams",
   "cast.stream": "Go live",
   "posts.create": "Post to the stream",
@@ -71,12 +72,13 @@ export interface AuditEntry {
 
 export interface SiteSettings {
   lockdown: boolean;
-  sections: { music: boolean; media: boolean; cast: boolean };
+  sections: { player: boolean; cast: boolean };
   notify: { channelId: string | null; accessRequests: boolean; nowPlaying: boolean; goLive: boolean; posts: boolean };
 }
 
 export interface PresenceEntry extends Me {
   section: Section;
+  activity: Activity;
   /** epoch ms of the last section change */
   since: number;
 }
@@ -85,9 +87,13 @@ export interface PresenceEntry extends Me {
 
 export type MediaKind = "youtube" | "twitch-vod" | "twitch-clip" | "twitch-live";
 
+/** How the player presents an item: full video, or artwork + visualizer for music. */
+export type MediaMode = "video" | "music";
+
 export interface MediaItem {
   id: string;
   kind: MediaKind;
+  mode: MediaMode;
   /** YouTube video id, Twitch VOD id, clip slug or channel login */
   ref: string;
   title: string;
@@ -126,6 +132,7 @@ export interface YouTubeResult {
   thumbnail: string | null;
   duration: number | null;
   live: boolean;
+  music: boolean;
 }
 
 /** Kinds whose position can be synced (live channels and clips can't be seeked by the embed). */
@@ -142,6 +149,7 @@ export interface ServerToClient {
 
 export interface ClientToServer {
   "presence:section": (section: Section) => void;
+  "presence:activity": (activity: Activity) => void;
   /** clock sync: replies with server epoch ms */
   "time:ping": (ack: (serverNow: number) => void) => void;
   "media:subscribe": () => void;
@@ -156,6 +164,7 @@ export interface ClientToServer {
   "media:remove": (input: { id: string }, ack: Ack) => void;
   "media:move": (input: { id: string; to: number }, ack: Ack) => void;
   "media:clear": (ack: Ack) => void;
+  "media:setMode": (input: { id: string; mode: MediaMode }, ack: Ack) => void;
   /** a client's player reached the end of `itemId` */
   "media:ended": (input: { itemId: string }) => void;
   /** a client's player learned the duration of `itemId` */

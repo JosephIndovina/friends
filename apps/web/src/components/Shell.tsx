@@ -1,58 +1,77 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Clapperboard, Home, MonitorUp, Music2, Settings } from "lucide-react";
+import { Home, MonitorUp, Settings, Shield } from "lucide-react";
 import { useEffect } from "react";
-import type { Section, Session } from "@friends/shared";
+import type { Activity, Section, Session } from "@friends/shared";
 import { isAdminish } from "../lib/api";
-import { reportSection } from "../lib/presence";
+import { useMediaState } from "../lib/media";
+import { PlayerProvider, usePlayer } from "../lib/player";
+import { reportActivity, reportSection } from "../lib/presence";
 import { Avatar } from "./Avatar";
-
-const nav = [
-  { to: "/", label: "Home", section: "home", Icon: Home },
-  { to: "/music", label: "Music", section: "music", Icon: Music2 },
-  { to: "/media", label: "Media", section: "media", Icon: Clapperboard },
-  { to: "/cast", label: "Cast", section: "cast", Icon: MonitorUp },
-  { to: "/settings", label: "Settings", section: "settings", Icon: Settings },
-] as const satisfies ReadonlyArray<{ to: string; label: string; section: Section; Icon: unknown }>;
+import { PlayerDock } from "./media/PlayerDock";
+import { PresenceStack } from "./PresenceStack";
 
 function sectionFor(path: string): Section {
   if (path.startsWith("/admin")) return "admin";
-  return nav.find((n) => n.to !== "/" && path.startsWith(n.to))?.section ?? "home";
+  if (path.startsWith("/cast")) return "cast";
+  if (path.startsWith("/settings")) return "settings";
+  return "home";
+}
+
+/** Tell the room what we're doing: watching or listening only when the player is actually audible for us. */
+function ActivityReporter() {
+  const now = useMediaState()?.now ?? null;
+  const p = usePlayer();
+  const visible = Boolean(p.slot) || p.dismissedFor !== now?.item.id;
+  const activity: Activity = now?.playing && p.audible && visible ? (now.item.mode === "music" ? "listening" : "watching") : "idle";
+  useEffect(() => reportActivity(activity), [activity]);
+  return null;
 }
 
 export function Shell({ session }: { session: Session }) {
   const me = session.user;
   const path = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => reportSection(sectionFor(path)), [path]);
+  const nav = [
+    { to: "/", label: "Home", Icon: Home },
+    { to: "/cast", label: "Cast", Icon: MonitorUp },
+    { to: "/settings", label: "Settings", Icon: Settings },
+    ...(isAdminish(session) ? [{ to: "/admin", label: "Admin", Icon: Shield }] : []),
+  ] as const;
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <Link to="/" className="wordmark">friends</Link>
-        <nav className="topnav" aria-label="Sections">
-          {nav.map(({ to, label }) => (
-            <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>{label}</Link>
+    <PlayerProvider>
+      <div className="shell">
+        <header className="topbar">
+          <Link to="/" className="wordmark">friends</Link>
+          <nav className="topnav" aria-label="Sections">
+            {nav.map(({ to, label }) => (
+              <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>{label}</Link>
+            ))}
+          </nav>
+          <div className="topbar-end">
+            <PresenceStack me={me} />
+            <Link to="/settings" className="me-link" aria-label={`Settings for ${me.name}`}>
+              <Avatar src={me.avatarUrl} name={me.name} size={34} />
+            </Link>
+          </div>
+        </header>
+
+        <main className="page">
+          <Outlet />
+        </main>
+
+        <PlayerDock session={session} />
+        <ActivityReporter />
+
+        <nav className="tabbar" aria-label="Sections" style={{ gridTemplateColumns: `repeat(${nav.length}, 1fr)` }}>
+          {nav.map(({ to, label, Icon }) => (
+            <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>
+              <Icon aria-hidden strokeWidth={1.75} />
+              {label}
+            </Link>
           ))}
-          {isAdminish(session) && <Link to="/admin">Admin</Link>}
         </nav>
-        <div className="topbar-end">
-          <Link to="/settings" className="me-link" aria-label={`Settings for ${me.name}`}>
-            <Avatar src={me.avatarUrl} name={me.name} size={34} />
-          </Link>
-        </div>
-      </header>
-
-      <main className="page">
-        <Outlet />
-      </main>
-
-      <nav className="tabbar" aria-label="Sections">
-        {nav.map(({ to, label, Icon }) => (
-          <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>
-            <Icon aria-hidden strokeWidth={1.75} />
-            {label}
-          </Link>
-        ))}
-      </nav>
-    </div>
+      </div>
+    </PlayerProvider>
   );
 }

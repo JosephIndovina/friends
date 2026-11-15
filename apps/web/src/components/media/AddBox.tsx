@@ -48,7 +48,7 @@ export function AddBox({ onAdd, canPlayNext }: {
       setAdded(new Set());
     } catch (e) {
       setResults(null);
-      setError(e instanceof ApiError ? (MEDIA_ERRORS[e.code] ?? (e.status === 429 ? MEDIA_ERRORS.search_limit : MEDIA_ERRORS.youtube_error)) : MEDIA_ERRORS.youtube_error!);
+      setError((e instanceof ApiError ? (MEDIA_ERRORS[e.code] ?? (e.status === 429 ? MEDIA_ERRORS.search_limit : MEDIA_ERRORS.youtube_error)) : MEDIA_ERRORS.youtube_error!) ?? "YouTube search failed. Try again.");
     } finally {
       setBusy(false);
     }

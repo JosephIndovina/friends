@@ -7,7 +7,7 @@ Everything else happens on the site: music, synced YouTube, casting, and sharing
 - **Surface:** standalone web app. Discord OAuth login, restricted to members of our server.
 - **Bot role:** posts notifications and links, plus lightweight slash commands. It does not play audio in voice.
 - **Model:** no rooms. One shared space per section. Anyone can control playback at any time.
-- **Nav:** Dashboard · Music · Media · Cast · Settings
+- **Nav (revised 2026-11-14):** Home · Cast · Settings (+ Admin). Home holds the single shared player: one mixed queue, and each item shows in **video view** or **music view** (artwork, title, a small YouTube player, and later the visualizer and lyrics). Mode comes from YouTube's Music category or a "- Topic" channel, Spotify links count as music, and anyone with `player.control` can toggle it. The player persists across pages (docked mini player off Home). **Here now** presence shows on every page: a top-bar avatar stack with activity rings (watching / listening / casting / online).
 - **Look:** "Couch Glow", chosen with the impeccable skills (re-roll round 1). The page is a dark living room lit by whatever is playing. Light mode: "lights on". The full contract is in `.impeccable/surfaces/apps-web-src-routes-index-tsx.md`.
 - **Hosting:** the user's TrueNAS SCALE NAS (Docker apps). GitHub repo JosephIndovina/friends; CI publishes to GHCR (private).
 - **Stack:** TypeScript end to end.
@@ -63,6 +63,7 @@ ddns         keeps rtc.indovina.dev (DNS-only) on the home IP for LiveKit media
   - Reactions and timestamped comments.
   - Watch history.
 - **Cast:**
+  - **Per-viewer stream toggles:** each viewer turns individual people's streams on or off. Off means not subscribed at all, so no bandwidth is used. Pinning and resizing tiles are client-side only, saved per device.
   - Multiple streams at once is a core requirement. Several people can go live at the same time, and one person can share more than one source (for example a game plus a second monitor).
   - Layout: a grid of live streams that adapts to how many there are, a "Go live" button, and click a stream to focus it (focus mode keeps the others as a strip).
   - Each viewer chooses which streams to watch and which to hear. Streams that aren't being watched get paused or downgraded, to save upload bandwidth (LiveKit simulcast plus adaptive stream).
@@ -100,7 +101,7 @@ ddns         keeps rtc.indovina.dev (DNS-only) on the home IP for LiveKit media
    - Discord OAuth with the server-membership check.
    - The impeccable design pass: tokens, type, light/dark, app shell and nav.
 1. **Media** (built 2026-11-14): server-owned playback with clock-synced clients (drift above 0.5s gets a seek). YouTube, plus Twitch VODs, live channels and clips. Queue with drag/keyboard reorder, play next, play now, recently played with replay. Server-side auto-advance. Permission-checked, rate-limited, audited actions. Discord "now playing" post after 30 minutes idle. Optional `TWITCH_CLIENT_ID/SECRET` for Twitch titles, thumbnails and durations; without them, Twitch clips need a manual skip.
-2. **Music:** queue on the same engine, visualizer (procedural plus opt-in tab-audio mode), search and link resolution (YouTube and Spotify), playlists, history, mini-player.
+2. **Music (now: music view of the shared player):** visualizer (procedural plus opt-in tab-audio mode), synced lyrics, Spotify track and playlist links resolved to YouTube, saved playlists, search and link resolution (YouTube and Spotify), playlists, history, mini-player.
 3. **Dashboard:** post stream, uploads, link previews, live widgets, bot notifications, slash commands.
 4. **Cast:** LiveKit, multiple simultaneous streams with the grid and focus view, choosing which streams to hear, simulcast.
 5. **Extras (pick later):**

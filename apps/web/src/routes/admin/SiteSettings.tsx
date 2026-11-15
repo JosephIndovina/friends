@@ -49,8 +49,7 @@ export function SiteSettings() {
 
       <section className="panel" aria-labelledby="sections-title">
         <h2 id="sections-title">Sections</h2>
-        <Toggle label="Music" checked={s.sections.music} onChange={(v) => setS({ ...s, sections: { ...s.sections, music: v } })} />
-        <Toggle label="Media" checked={s.sections.media} onChange={(v) => setS({ ...s, sections: { ...s.sections, media: v } })} />
+        <Toggle label="Player" hint="Turning this off stops playback for everyone." checked={s.sections.player} onChange={(v) => setS({ ...s, sections: { ...s.sections, player: v } })} />
         <Toggle label="Cast" hint="Turning this off ends every live stream." checked={s.sections.cast} onChange={(v) => setS({ ...s, sections: { ...s.sections, cast: v } })} />
       </section>
 
