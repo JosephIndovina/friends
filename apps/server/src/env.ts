@@ -13,6 +13,8 @@ const schema = z.object({
   DISCORD_NOTIFY_CHANNEL_ID: z.string().optional(),
   OWNER_DISCORD_ID: z.string().regex(/^\d{15,22}$/, "must be a Discord user id"),
   APP_VERSION: z.string().default("dev"),
+  TWITCH_CLIENT_ID: z.string().optional(),
+  TWITCH_CLIENT_SECRET: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

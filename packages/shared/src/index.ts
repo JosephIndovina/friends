@@ -81,12 +81,73 @@ export interface PresenceEntry extends Me {
   since: number;
 }
 
+// ---------- media (synced YouTube / Twitch) ----------
+
+export type MediaKind = "youtube" | "twitch-vod" | "twitch-clip" | "twitch-live";
+
+export interface MediaItem {
+  id: string;
+  kind: MediaKind;
+  /** YouTube video id, Twitch VOD id, clip slug or channel login */
+  ref: string;
+  title: string;
+  /** channel / uploader name */
+  author: string | null;
+  thumbnail: string | null;
+  /** seconds; null until known (live channels never have one) */
+  duration: number | null;
+  /** seconds to start from (e.g. a ?t= in the pasted link) */
+  startAt: number;
+  addedBy: { id: string; name: string };
+  addedAt: number;
+}
+
+export interface Playback {
+  item: MediaItem;
+  playing: boolean;
+  /** position in seconds at `updatedAt` */
+  position: number;
+  /** server epoch ms */
+  updatedAt: number;
+  startedBy: { id: string; name: string };
+}
+
+export interface MediaState {
+  now: Playback | null;
+  queue: MediaItem[];
+  /** most recent first */
+  history: Array<MediaItem & { playedAt: number }>;
+}
+
+/** Kinds whose position can be synced (live channels and clips can't be seeked by the embed). */
+export const SEEKABLE: Record<MediaKind, boolean> = { youtube: true, "twitch-vod": true, "twitch-clip": false, "twitch-live": false };
+
+export type Ack = (res: { ok: true } | { ok: false; error: string }) => void;
+
 export interface ServerToClient {
   "presence:list": (entries: PresenceEntry[]) => void;
   /** your role, status or permissions changed: refetch /api/me */
   "session:changed": () => void;
+  "media:state": (state: MediaState) => void;
 }
 
 export interface ClientToServer {
   "presence:section": (section: Section) => void;
+  /** clock sync: replies with server epoch ms */
+  "time:ping": (ack: (serverNow: number) => void) => void;
+  "media:subscribe": () => void;
+  "media:add": (input: { url: string; playNext?: boolean }, ack: Ack) => void;
+  "media:play": (ack: Ack) => void;
+  "media:pause": (input: { position: number }, ack: Ack) => void;
+  "media:seek": (input: { position: number }, ack: Ack) => void;
+  "media:skip": (ack: Ack) => void;
+  "media:playNow": (input: { id: string }, ack: Ack) => void;
+  "media:replay": (input: { id: string }, ack: Ack) => void;
+  "media:remove": (input: { id: string }, ack: Ack) => void;
+  "media:move": (input: { id: string; to: number }, ack: Ack) => void;
+  "media:clear": (ack: Ack) => void;
+  /** a client's player reached the end of `itemId` */
+  "media:ended": (input: { itemId: string }) => void;
+  /** a client's player learned the duration of `itemId` */
+  "media:duration": (input: { itemId: string; duration: number }) => void;
 }

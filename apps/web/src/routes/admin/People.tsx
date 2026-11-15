@@ -64,11 +64,11 @@ export function People({ session }: { session: Session }) {
 
       <section aria-labelledby="pending-title">
         <h2 id="pending-title" className="admin-h2">Waiting for approval {pending.length > 0 && <span className="count">{pending.length}</span>}</h2>
-        {users.data && pending.length === 0 && <p className="quiet">Nobody’s waiting. New people show up here after they sign in with Discord.</p>}
+        {users.data && pending.length === 0 && <p className="quiet">No pending requests.</p>}
         <ul className="requests">
           {pending.map((u) => (
             <PendingRow key={u.id} user={u} roles={assignable} busy={busy === u.id}
-              onApprove={(roleId) => run(u.id, () => api("POST", `/api/admin/users/${u.id}/approve`, { roleId }), `${u.name} is in.`)}
+              onApprove={(roleId) => run(u.id, () => api("POST", `/api/admin/users/${u.id}/approve`, { roleId }), `Approved ${u.name}.`)}
               onDeny={() => ask({ user: u, action: "deny" })} />
           ))}
         </ul>
@@ -122,7 +122,7 @@ export function People({ session }: { session: Session }) {
                             </>
                           ) : (
                             <button className="btn btn-quiet btn-s" disabled={busy === u.id}
-                              onClick={() => run(u.id, () => api("POST", `/api/admin/users/${u.id}/status`, { status: "active" }), `${u.name} is back in.`)}><RotateCcw aria-hidden />Reinstate</button>
+                              onClick={() => run(u.id, () => api("POST", `/api/admin/users/${u.id}/status`, { status: "active" }), `Reinstated ${u.name}.`)}><RotateCcw aria-hidden />Reinstate</button>
                           )}
                         </div>
                       )}
@@ -183,15 +183,15 @@ function PreApprove({ roles, onDone, onError }: { roles: Role[]; onDone: (t: str
   const valid = /^\d{15,22}$/.test(id.trim());
   return (
     <section aria-labelledby="pre-title" className="panel">
-      <h2 id="pre-title">Let someone in ahead of time</h2>
-      <p className="quiet">Paste their Discord user ID (right-click their name in Discord → Copy User ID). They skip the queue the first time they sign in.</p>
+      <h2 id="pre-title">Pre-approve</h2>
+      <p className="quiet">Discord user ID (in Discord: right-click the user → Copy User ID). Their account is approved on first sign-in.</p>
       <form className="inline-form" onSubmit={async (e) => {
         e.preventDefault();
         if (!valid) return;
         setBusy(true);
         try {
           await api("POST", "/api/admin/preapprove", { discordId: id.trim(), roleId });
-          onDone("Pre-approved. They’re in as soon as they sign in.");
+          onDone("Pre-approved.");
           setId("");
         } catch (err) {
           onError(errorText(err));

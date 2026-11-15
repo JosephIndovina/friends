@@ -63,6 +63,18 @@ const migrations: string[] = [
    CREATE INDEX audit_action ON audit_log(action, at);
 
    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+
+  `CREATE TABLE media_queue (
+     id    TEXT PRIMARY KEY,
+     sort  INTEGER NOT NULL,
+     data  TEXT NOT NULL                    -- JSON MediaItem
+   );
+   CREATE TABLE media_history (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     played_at  INTEGER NOT NULL,
+     data       TEXT NOT NULL               -- JSON MediaItem
+   );
+   CREATE INDEX media_history_played ON media_history(played_at);`,
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;

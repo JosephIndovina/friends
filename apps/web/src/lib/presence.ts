@@ -21,10 +21,10 @@ export function reportSection(section: Section) {
 }
 
 export const whereLabel: Record<Section, string> = {
-  home: "Hanging out",
-  music: "In Music",
-  media: "In Media",
-  cast: "In Cast",
-  settings: "In Settings",
-  admin: "In Admin",
+  home: "Home",
+  music: "Music",
+  media: "Media",
+  cast: "Cast",
+  settings: "Settings",
+  admin: "Admin",
 };

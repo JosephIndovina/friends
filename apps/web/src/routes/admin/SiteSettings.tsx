@@ -43,7 +43,7 @@ export function SiteSettings() {
 
       <section className={`panel${s.lockdown ? " panel-alarm" : ""}`} aria-labelledby="lock-title">
         <h2 id="lock-title">Lockdown</h2>
-        <Toggle label="Only admins can use the site" hint="Everyone else is disconnected immediately and sees a ‘closed for now’ message. Use it if something goes wrong."
+        <Toggle label="Only admins can use the site" hint="Disconnects all non-admin users immediately."
           checked={s.lockdown} onChange={(v) => setS({ ...s, lockdown: v })} />
       </section>
 
@@ -61,10 +61,10 @@ export function SiteSettings() {
             onChange={(e) => setS({ ...s, notify: { ...s.notify, channelId: e.target.value.trim() || null } })} />
           {!channelValid && <span className="field-error">Channel IDs are 15–22 digits.</span>}
         </label>
-        <Toggle label="Access requests" hint="Post when someone new asks to join." checked={s.notify.accessRequests} onChange={(v) => setS({ ...s, notify: { ...s.notify, accessRequests: v } })} />
-        <Toggle label="Now playing" hint="Post when music or a video starts after a quiet spell." checked={s.notify.nowPlaying} onChange={(v) => setS({ ...s, notify: { ...s.notify, nowPlaying: v } })} />
+        <Toggle label="Access requests" hint="Post when someone requests access." checked={s.notify.accessRequests} onChange={(v) => setS({ ...s, notify: { ...s.notify, accessRequests: v } })} />
+        <Toggle label="Now playing" hint="Post when music or a video starts after 30 minutes of inactivity." checked={s.notify.nowPlaying} onChange={(v) => setS({ ...s, notify: { ...s.notify, nowPlaying: v } })} />
         <Toggle label="Going live" hint="Post when someone starts casting." checked={s.notify.goLive} onChange={(v) => setS({ ...s, notify: { ...s.notify, goLive: v } })} />
-        <Toggle label="New posts" hint="Post a digest of the stream." checked={s.notify.posts} onChange={(v) => setS({ ...s, notify: { ...s.notify, posts: v } })} />
+        <Toggle label="New posts" hint="Post a digest of new posts." checked={s.notify.posts} onChange={(v) => setS({ ...s, notify: { ...s.notify, posts: v } })} />
       </section>
 
       <div className={`savebar${dirty ? " is-dirty" : ""}`}>

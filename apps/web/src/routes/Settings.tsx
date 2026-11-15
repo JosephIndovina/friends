@@ -7,9 +7,9 @@ import { useGlow } from "../lib/glow";
 import { useTheme, type ThemeChoice } from "../lib/theme";
 
 const choices: { value: ThemeChoice; label: string; Icon: typeof Sun }[] = [
-  { value: "system", label: "Match device", Icon: Monitor },
-  { value: "dark", label: "Lights off", Icon: Moon },
-  { value: "light", label: "Lights on", Icon: Sun },
+  { value: "system", label: "System", Icon: Monitor },
+  { value: "dark", label: "Dark", Icon: Moon },
+  { value: "light", label: "Light", Icon: Sun },
 ];
 
 export function Settings({ session }: { session: Session }) {

@@ -55,7 +55,7 @@ export async function startBot(log: FastifyBaseLogger) {
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand() || interaction.guildId !== env.DISCORD_GUILD_ID) return;
     if (interaction.commandName === "site") {
-      await interaction.reply({ content: "Come hang out.", components: [linkButton("Open friends", siteUrl())], flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: "friends.indovina.dev", components: [linkButton("Open friends", siteUrl())], flags: MessageFlags.Ephemeral });
     }
   });
 
@@ -92,11 +92,15 @@ export async function startBot(log: FastifyBaseLogger) {
     await channel.send({ embeds: [embed], components: [linkButton(opts.buttonLabel ?? "Join", opts.url)] });
   }
 
+  events.on("notify", (n) => {
+    notify({ ...n, url: siteUrl(n.url) }).catch((err) => log.warn({ err }, "notification failed"));
+  });
+
   events.on("access:requested", (user) => {
     if (!getSettings().notify.accessRequests) return;
     notify({
-      title: `${user.name} asked to join friends`,
-      description: "An admin can approve or deny them in the admin panel.",
+      title: `Access request: ${user.name}`,
+      description: "Approve or deny in the admin panel.",
       url: siteUrl("/admin"),
       buttonLabel: "Review",
       thumbnail: user.avatarUrl,

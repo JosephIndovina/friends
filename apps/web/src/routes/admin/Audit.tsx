@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import type { AdminUser, AuditEntry, Session } from "@friends/shared";
 import { api } from "../../lib/api";
-import { actionLabel, ACTION_LABELS, dateTime, errorText } from "../../lib/format";
+import { actionLabel, dateTime, errorText } from "../../lib/format";
 
 const CATEGORIES = [
   { value: "", label: "Everything" },
@@ -111,7 +111,7 @@ export function Audit({ session }: { session: Session }) {
         </div>
       )}
       {!done && rows.length > 0 && <button className="btn btn-quiet" onClick={() => load(true)}>Load older entries</button>}
-      <p className="quiet">Entries are kept for a year, and can’t be edited or deleted from the site. {Object.keys(ACTION_LABELS).length} kinds of event are recorded so far; music, media, cast and posts join as those sections ship.</p>
+      <p className="quiet">Entries are kept for 365 days and can’t be edited or deleted.</p>
     </div>
   );
 }

@@ -9,6 +9,8 @@ interface Events {
   /** user must be disconnected now (suspended, banned, signed out, left) */
   "user:kick": [string];
   "settings:changed": [];
+  /** post to the Discord notification channel; `url` is a site path */
+  notify: [{ title: string; description?: string; url: string; buttonLabel?: string; thumbnail?: string }];
 }
 
 export const events = new EventEmitter<Events>();

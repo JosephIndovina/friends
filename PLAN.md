@@ -99,7 +99,7 @@ ddns         keeps rtc.indovina.dev (DNS-only) on the home IP for LiveKit media
    - Monorepo, Docker Compose, Caddy.
    - Discord OAuth with the server-membership check.
    - The impeccable design pass: tokens, type, light/dark, app shell and nav.
-1. **Media:** sync engine, YouTube player, queue, presence, Twitch (VOD and clip sync, live channels).
+1. **Media** (built 2026-11-14): server-owned playback with clock-synced clients (drift above 0.5s gets a seek). YouTube, plus Twitch VODs, live channels and clips. Queue with drag/keyboard reorder, play next, play now, recently played with replay. Server-side auto-advance. Permission-checked, rate-limited, audited actions. Discord "now playing" post after 30 minutes idle. Optional `TWITCH_CLIENT_ID/SECRET` for Twitch titles, thumbnails and durations; without them, Twitch clips need a manual skip.
 2. **Music:** queue on the same engine, visualizer (procedural plus opt-in tab-audio mode), search and link resolution (YouTube and Spotify), playlists, history, mini-player.
 3. **Dashboard:** post stream, uploads, link previews, live widgets, bot notifications, slash commands.
 4. **Cast:** LiveKit, multiple simultaneous streams with the grid and focus view, choosing which streams to hear, simulcast.

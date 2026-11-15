@@ -42,6 +42,15 @@ export const ACTION_LABELS: Record<string, string> = {
   "site.lockdown_off": "Turned lockdown off",
   "audit.exported": "Exported audit log",
   "backup.downloaded": "Downloaded a backup",
+  "media.added": "Queued video",
+  "media.played": "Played",
+  "media.paused": "Paused",
+  "media.seeked": "Seeked",
+  "media.skipped": "Skipped",
+  "media.play_now": "Played now",
+  "media.removed": "Removed from queue",
+  "media.moved": "Reordered queue",
+  "media.cleared": "Cleared queue",
 };
 export const actionLabel = (a: string) => ACTION_LABELS[a] ?? a;
 

@@ -3,6 +3,7 @@ import type { Permission, Session } from "@friends/shared";
 import { Shell } from "./components/Shell";
 import { ADMIN_TABS, can } from "./lib/api";
 import { Dashboard } from "./routes/Dashboard";
+import { Media } from "./routes/Media";
 import { SectionSoon } from "./routes/SectionSoon";
 import { Settings } from "./routes/Settings";
 import { AdminLayout, NotAllowed } from "./routes/admin/AdminLayout";
@@ -22,15 +23,15 @@ const useSession = () => rootRoute.useRouteContext().session;
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Dashboard me={useSession().user} /> });
 const musicRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/music",
-  component: () => <SectionSoon title="Music" body="A shared queue everyone can add to, search, Spotify and YouTube links, playlists, and a visualizer. Coming in Phase 2." />,
+  component: () => <SectionSoon title="Music" body="Coming in Phase 2." />,
 });
 const mediaRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/media",
-  component: () => <SectionSoon title="Media" body="Synced YouTube and Twitch, with everyone on the same frame. Coming in Phase 1." />,
+  component: () => <Media session={useSession()} />,
 });
 const castRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/cast",
-  component: () => <SectionSoon title="Cast" body="Share your game or desktop, with several streams live at once. Coming in Phase 4." />,
+  component: () => <SectionSoon title="Cast" body="Coming in Phase 4." />,
 });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Settings session={useSession()} /> });
 

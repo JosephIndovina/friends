@@ -3,6 +3,7 @@ import { Server, type Socket } from "socket.io";
 import type { ClientToServer, PresenceEntry, Section, ServerToClient, Session } from "@friends/shared";
 import { gate } from "./access.js";
 import { events } from "./events.js";
+import { createMediaRoom } from "./media.js";
 import { SESSION_COOKIE, sessionForToken } from "./sessions.js";
 
 const SECTIONS = new Set<Section>(["home", "music", "media", "cast", "settings", "admin"]);
@@ -60,8 +61,12 @@ export function createRealtime(http: HttpServer) {
     for (const socket of io.sockets.sockets.values()) recheck(socket);
   });
 
+  const media = createMediaRoom(io);
+
   io.on("connection", (socket) => {
     const me = socket.data.session.user;
+    socket.on("time:ping", (ack) => typeof ack === "function" && ack(Date.now()));
+    media.attach(socket);
     void socket.join(`user:${me.id}`);
     const entry = presence.get(me.id) ?? { ...me, section: "home" as Section, since: Date.now(), sockets: new Set<string>() };
     entry.sockets.add(socket.id);

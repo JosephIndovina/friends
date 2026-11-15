@@ -14,7 +14,7 @@ function App() {
   useEffect(() => {
     if (session) void router.invalidate();
   }, [session]);
-  if (state.status === "loading") return <div className="loading" aria-live="polite">Opening the door…</div>;
+  if (state.status === "loading") return <div className="loading" aria-live="polite">Loading…</div>;
   if (state.status === "signed-out") return <SignIn />;
   if (state.status === "blocked") return <Closed reason={state.reason} />;
   if (state.session.status === "pending") return <Waiting session={state.session} />;
