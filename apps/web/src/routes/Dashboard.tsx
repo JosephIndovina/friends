@@ -49,7 +49,7 @@ export function Dashboard({ me }: { me: Me }) {
 
         <aside className="side">
           <div className="block">
-            <h2>Online {people.length > 0 && <span className="quiet">{people.length}</span>}</h2>
+            <h2>Here now {people.length > 0 && <span className="quiet">{people.length}</span>}</h2>
             <ul className="presence">
               {people
                 .toSorted((a, b) => (a.id === me.id ? -1 : b.id === me.id ? 1 : a.name.localeCompare(b.name)))
