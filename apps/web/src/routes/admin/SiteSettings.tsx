@@ -47,6 +47,12 @@ export function SiteSettings() {
           checked={s.lockdown} onChange={(v) => setS({ ...s, lockdown: v })} />
       </section>
 
+      <section className="panel" aria-labelledby="player-title">
+        <h2 id="player-title">Player</h2>
+        <Toggle label="Hide the YouTube player in music view" hint="Shows only the visualizer, lyrics or artwork; audio keeps playing. YouTube’s API terms require the player to stay visible, so turn this off if Google flags the API key."
+          checked={s.hideVideoInMusic} onChange={(v) => setS({ ...s, hideVideoInMusic: v })} />
+      </section>
+
       <section className="panel" aria-labelledby="sections-title">
         <h2 id="sections-title">Sections</h2>
         <Toggle label="Player" hint="Turning this off stops playback for everyone." checked={s.sections.player} onChange={(v) => setS({ ...s, sections: { ...s.sections, player: v } })} />

@@ -72,6 +72,8 @@ export interface AuditEntry {
 
 export interface SiteSettings {
   lockdown: boolean;
+  /** hide the YouTube player in music view (against YouTube's API terms; admin's call) */
+  hideVideoInMusic: boolean;
   sections: { player: boolean; cast: boolean };
   notify: { channelId: string | null; accessRequests: boolean; nowPlaying: boolean; goLive: boolean; posts: boolean };
 }
@@ -148,6 +150,8 @@ export interface ServerToClient {
   /** your role, status or permissions changed: refetch /api/me */
   "session:changed": () => void;
   "media:state": (state: MediaState) => void;
+  /** site settings that affect every viewer changed: refetch /api/site */
+  "site:changed": () => void;
 }
 
 export interface ClientToServer {

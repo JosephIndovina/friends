@@ -44,10 +44,12 @@ export function PlayerDock({ session }: { session: Session }) {
   if (!now || p.hidden.has("player")) return null;
   const docked = !p.slot;
   const mini = p.slot?.classList.contains("player-slot-mini");
+  const hidden = p.slot?.classList.contains("player-slot-hidden");
   if (docked && p.dismissedFor === now.item.id) return null;
 
   return (
-    <div ref={box} className={docked ? "dock dock-mini" : mini ? "dock dock-inset" : "dock"} style={rect && !docked ? rect : undefined}>
+    <div ref={box} className={docked ? "dock dock-mini" : hidden ? "dock dock-hidden" : mini ? "dock dock-inset" : "dock"}
+      aria-hidden={hidden || undefined} style={rect && !docked ? rect : undefined}>
       <div className="dock-video">
         <SyncedPlayer playback={now} audible={p.audible && !p.blocked} volume={p.volume} onDrift={p.setSyncing} onBlocked={() => p.setBlocked(true)} />
       </div>

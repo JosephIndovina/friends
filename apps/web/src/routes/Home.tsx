@@ -11,6 +11,7 @@ import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
 import { expectedPosition, KIND_LABEL, mediaAction, mediaError, useMediaState } from "../lib/media";
 import { usePlayer } from "../lib/player";
+import { useSite } from "../lib/site";
 
 type MusicView = "art" | "viz" | "lyrics";
 function usePref<T extends string>(key: string, fallback: T): [T, (v: T) => void] {
@@ -43,6 +44,8 @@ export function Home({ session }: { session: Session }) {
   const [screen, setScreen] = useState<HTMLDivElement | null>(null);
   const control = can(session, "player.control");
   const music = now?.item.mode === "music";
+  const site = useSite();
+  const hideVideo = music && Boolean(site?.hideVideoInMusic);
 
   const act = useCallback(async (pr: Promise<void>) => {
     setError(null);
@@ -129,7 +132,7 @@ export function Home({ session }: { session: Session }) {
                 </div>
               </div>
             )}
-            {now && playerFocused && <div ref={slotRef} className={music ? "player-slot player-slot-mini" : "player-slot"} />}
+            {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
           </div>
 
           {now && playerFocused && (

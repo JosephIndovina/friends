@@ -42,30 +42,40 @@ class Source {
     return Boolean(this.analyser);
   }
 
+  /** Capture this tab's audio only: no other tabs, windows, screens or system audio. */
   async capture(): Promise<string | null> {
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        // @ts-expect-error Chromium-only hints
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser" },
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false },
+        // Chromium hints: offer this tab first, never system audio, no switching to other surfaces.
         preferCurrentTab: true,
         selfBrowserSurface: "include",
-        systemAudio: "include",
-      });
-      stream.getVideoTracks().forEach((t) => t.stop());
-      if (!stream.getAudioTracks().length) return "No audio was shared. Pick this tab and turn on “Share tab audio”.";
-      this.ctx = new AudioContext();
-      const src = this.ctx.createMediaStreamSource(stream);
-      this.analyser = this.ctx.createAnalyser();
-      this.analyser.fftSize = 256;
-      this.analyser.smoothingTimeConstant = 0.75;
-      src.connect(this.analyser); // not to the destination: the page already plays the sound
-      this.stream = stream;
-      stream.getAudioTracks()[0]!.addEventListener("ended", () => this.release());
-      return null;
+        systemAudio: "exclude",
+        surfaceSwitching: "exclude",
+        monitorTypeSurfaces: "exclude",
+      } as DisplayMediaStreamOptions);
     } catch {
       return "Audio capture was cancelled or isn’t supported in this browser.";
     }
+    const video = stream.getVideoTracks()[0];
+    const surface = video?.getSettings().displaySurface;
+    stream.getVideoTracks().forEach((t) => t.stop());
+    if (surface && surface !== "browser") {
+      stream.getTracks().forEach((t) => t.stop());
+      return "Only this tab’s audio can be used. Choose “This tab” when the browser asks.";
+    }
+    if (!stream.getAudioTracks().length) return "No audio was shared. Choose this tab and turn on “Share tab audio”.";
+    this.ctx = new AudioContext();
+    const src = this.ctx.createMediaStreamSource(stream);
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.analyser.smoothingTimeConstant = 0.75;
+    src.connect(this.analyser); // not to the destination: the page already plays the sound
+    this.stream = stream;
+    stream.getAudioTracks()[0]!.addEventListener("ended", () => this.release());
+    return null;
   }
 
   release() {
@@ -336,7 +346,7 @@ export function Visualizer({ playback, preset }: { playback: Playback | null; pr
         {live ? (
           <button className="btn btn-quiet btn-s" onClick={() => { source.current.release(); setLive(false); }}><X aria-hidden />Stop using tab audio</button>
         ) : (
-          <button className="btn btn-primary btn-s" title="Captures this tab’s sound so the visuals follow the actual music (Chrome or Edge)"
+          <button className="btn btn-primary btn-s" title="Uses this tab’s sound only, so the visuals follow the actual music (Chrome or Edge)"
             onClick={async () => { setError(await source.current.capture()); setLive(source.current.live); }}>
             <AudioLines aria-hidden />React to real audio
           </button>
