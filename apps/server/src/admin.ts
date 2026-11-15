@@ -11,6 +11,7 @@ import { env } from "./env.js";
 import { events } from "./events.js";
 import { deleteUserSessions, getUser, isOwner, type UserRow } from "./sessions.js";
 import { getSettings, saveSettings } from "./settings.js";
+import { quotaUsed, youtubeEnabled } from "./youtube.js";
 
 const UNRANKED = 1000;
 const startedAt = Date.now();
@@ -345,6 +346,7 @@ export async function adminRoutes(app: FastifyInstance) {
       activeSessions: (db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?").get(Date.now()) as { n: number }).n,
       auditEntries: (db.prepare("SELECT COUNT(*) AS n FROM audit_log").get() as { n: number }).n,
       auditRetentionDays: 365,
+      youtube: youtubeEnabled() ? quotaUsed() : null,
     };
   });
 

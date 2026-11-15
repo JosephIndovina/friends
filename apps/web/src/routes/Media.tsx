@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, ListPlus, Maximize, Pause, Play, Plus, RotateCcw, SkipForward, Trash2, Volume2, VolumeX } from "lucide-react";
+import { GripVertical, Maximize, Pause, Play, RotateCcw, SkipForward, Trash2, Volume2, VolumeX } from "lucide-react";
 import { SEEKABLE, type MediaItem, type Session } from "@friends/shared";
+import { AddBox } from "../components/media/AddBox";
 import { SyncedPlayer } from "../components/media/SyncedPlayer";
 import { can } from "../lib/api";
 import { ago } from "../lib/format";
@@ -67,7 +68,7 @@ export function Media({ session }: { session: Session }) {
           ) : (
             <div className="stage-idle">
               <h1>Nothing playing</h1>
-              <p>Add a YouTube or Twitch link to start.</p>
+              <p>Search YouTube or paste a YouTube or Twitch link.</p>
             </div>
           )}
         </div>
@@ -109,7 +110,7 @@ export function Media({ session }: { session: Session }) {
 
       <aside className="side">
         {error && <p className="flash flash-error" role="alert">{error}</p>}
-        {can(session, "media.queue") && <AddLink onAdd={(url, playNext) => act(mediaAction("media:add", { url, playNext }))} canPlayNext={control} />}
+        {can(session, "media.queue") && <AddBox canPlayNext={control} onAdd={async (input) => { setError(null); try { await mediaAction("media:add", input); return true; } catch (e) { setError(mediaError(e)); return false; } }} />}
         <Queue session={session} items={state?.queue ?? []} act={act} />
         <History items={state?.history ?? []} canReplay={can(session, "media.queue")} onReplay={(id) => act(mediaAction("media:replay", { id }))} />
       </aside>
@@ -143,28 +144,6 @@ function Volume({ volume, muted, onChange, onToggle }: { volume: number; muted: 
       <input type="range" className="range" min={0} max={100} value={muted ? 0 : volume} aria-label="Volume"
         style={{ "--fill": `${muted ? 0 : volume}%` } as React.CSSProperties} onChange={(e) => onChange(Number(e.target.value))} />
     </div>
-  );
-}
-
-function AddLink({ onAdd, canPlayNext }: { onAdd: (url: string, playNext: boolean) => Promise<void>; canPlayNext: boolean }) {
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submit = async (playNext: boolean) => {
-    if (!url.trim()) return;
-    setBusy(true);
-    await onAdd(url.trim(), playNext);
-    setBusy(false);
-    setUrl("");
-  };
-  return (
-    <form className="add-link" onSubmit={(e) => { e.preventDefault(); void submit(false); }}>
-      <label className="visually-hidden" htmlFor="add-url">YouTube or Twitch link</label>
-      <input id="add-url" className="input" placeholder="Paste a YouTube or Twitch link" value={url} onChange={(e) => setUrl(e.target.value)} autoComplete="off" />
-      <div className="add-actions">
-        <button className="btn btn-primary btn-s" disabled={busy || !url.trim()}><Plus aria-hidden />Add to queue</button>
-        {canPlayNext && <button type="button" className="btn btn-quiet btn-s" disabled={busy || !url.trim()} onClick={() => submit(true)}><ListPlus aria-hidden />Play next</button>}
-      </div>
-    </form>
   );
 }
 

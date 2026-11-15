@@ -5,6 +5,7 @@ import { audit } from "./audit.js";
 import { db } from "./db.js";
 import { events } from "./events.js";
 import { fetchMeta, parseLink } from "./links.js";
+import { playlist, youtubeEnabled, YouTubeError, youtubeListId } from "./youtube.js";
 import { getSettings } from "./settings.js";
 
 type Data = { session: Session; token: string };
@@ -155,10 +156,34 @@ export function createMediaRoom(io: IO) {
 
     socket.on("media:subscribe", () => socket.emit("media:state", snapshot()));
 
-    socket.on("media:add", handle("media.queue", async (s, input: { url: string; playNext?: boolean }) => {
+    socket.on("media:add", handle("media.queue", async (s, input: { url: string; playNext?: boolean; whole?: boolean }) => {
       if (typeof input?.url !== "string" || input.url.length > 500) fail("invalid");
       if (queue.length >= QUEUE_MAX) fail("queue_full");
       const link = parseLink(input.url);
+      const list = youtubeListId(input.url);
+
+      if (list && (input.whole || !link)) {
+        if (!youtubeEnabled()) fail("youtube_not_configured");
+        const room = QUEUE_MAX - queue.length;
+        let pl: Awaited<ReturnType<typeof playlist>>;
+        try {
+          pl = await playlist(list, room);
+        } catch (err) {
+          throw err instanceof YouTubeError ? new ActionError(err.message) : err;
+        }
+        if (!pl.items.length) fail("playlist_unavailable");
+        const items: MediaItem[] = pl.items.map((v) => ({
+          id: randomUUID(), kind: "youtube", ref: v.id, startAt: 0, title: v.title, author: v.author,
+          thumbnail: v.thumbnail, duration: v.duration, addedBy: who(s), addedAt: Date.now(),
+        }));
+        audit({ actorId: s.user.id, action: "media.added_playlist", target: { type: "playlist", id: list, name: pl.title }, details: { videos: items.length, skipped: pl.skipped } });
+        if (!now) start(items.shift()!, who(s));
+        if (input.playNext) queue.unshift(...items);
+        else queue.push(...items);
+        commit();
+        return;
+      }
+
       if (!link) fail("unsupported_link");
       const meta = await fetchMeta(link!);
       if (!meta) fail("video_unavailable");

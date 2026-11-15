@@ -6,6 +6,7 @@ import { useLoad } from "./useLoad";
 interface SystemInfo {
   version: string; node: string; startedAt: number; dbBytes: number;
   users: Record<string, number>; activeSessions: number; auditEntries: number; auditRetentionDays: number;
+  youtube: { used: number; limit: number } | null;
 }
 
 export function System() {
@@ -19,6 +20,7 @@ export function System() {
     ["People", Object.entries(d.users).map(([k, v]) => `${v} ${k}`).join(" · ") || "None"],
     ["Signed-in sessions", String(d.activeSessions)],
     ["Audit entries", `${d.auditEntries.toLocaleString()} (kept ${d.auditRetentionDays} days)`],
+    ["YouTube API quota today", d.youtube ? `${d.youtube.used.toLocaleString()} of ${d.youtube.limit.toLocaleString()} units (about ${Math.floor((d.youtube.limit - d.youtube.used) / 101)} searches left)` : "Not configured"],
     ["Node", d.node],
   ];
   return (

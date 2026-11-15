@@ -10,6 +10,7 @@ import { accessControl } from "./access.js";
 import { adminRoutes } from "./admin.js";
 import { pruneAudit } from "./audit.js";
 import { authRoutes } from "./auth.js";
+import { mediaRoutes } from "./mediaRoutes.js";
 import { createRealtime } from "./realtime.js";
 import { ensureOwner, pruneSessions } from "./sessions.js";
 import { startBot } from "./bot.js";
@@ -28,6 +29,7 @@ await accessControl(app);
 app.get("/healthz", async () => ({ ok: true }));
 await app.register(authRoutes);
 await app.register(adminRoutes);
+await app.register(mediaRoutes);
 
 // In production the server also serves the built web app (single container).
 const webDist = resolve(env.WEB_DIST ?? "../web/dist");

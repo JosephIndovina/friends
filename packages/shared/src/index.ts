@@ -119,6 +119,15 @@ export interface MediaState {
   history: Array<MediaItem & { playedAt: number }>;
 }
 
+export interface YouTubeResult {
+  id: string;
+  title: string;
+  author: string;
+  thumbnail: string | null;
+  duration: number | null;
+  live: boolean;
+}
+
 /** Kinds whose position can be synced (live channels and clips can't be seeked by the embed). */
 export const SEEKABLE: Record<MediaKind, boolean> = { youtube: true, "twitch-vod": true, "twitch-clip": false, "twitch-live": false };
 
@@ -136,7 +145,8 @@ export interface ClientToServer {
   /** clock sync: replies with server epoch ms */
   "time:ping": (ack: (serverNow: number) => void) => void;
   "media:subscribe": () => void;
-  "media:add": (input: { url: string; playNext?: boolean }, ack: Ack) => void;
+  /** `whole`: for a YouTube link with both a video and a playlist, queue the whole playlist */
+  "media:add": (input: { url: string; playNext?: boolean; whole?: boolean }, ack: Ack) => void;
   "media:play": (ack: Ack) => void;
   "media:pause": (input: { position: number }, ack: Ack) => void;
   "media:seek": (input: { position: number }, ack: Ack) => void;

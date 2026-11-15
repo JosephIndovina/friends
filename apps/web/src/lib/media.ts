@@ -54,6 +54,12 @@ export const MEDIA_ERRORS: Record<string, string> = {
   section_disabled: "Media is turned off.",
   slow_down: "Too many actions. Wait a moment.",
   not_found: "That item is no longer in the queue.",
+  youtube_not_configured: "YouTube search and playlists aren’t set up. An admin needs to add a YouTube API key.",
+  youtube_quota: "The daily YouTube search limit has been reached. Paste links instead.",
+  search_limit: "Too many searches. Try again later or paste a link.",
+  youtube_error: "YouTube search failed. Try again.",
+  youtube_mix: "YouTube mixes can’t be queued. Use a regular playlist.",
+  playlist_unavailable: "That playlist is private, empty, or doesn’t exist.",
 };
 export const mediaError = (e: unknown) => MEDIA_ERRORS[(e as Error)?.message] ?? "Something went wrong. Try again.";
 

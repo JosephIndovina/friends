@@ -432,3 +432,15 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
 .mini-queue { padding-left: 1.2em; color: var(--mute); display: grid; gap: 4px; }
 .mini-queue li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 860px) { .stage-art { aspect-ratio: 16 / 9 !important; } }
+
+.add-box { display: grid; gap: var(--space-3); }
+.search-field { position: relative; display: flex; align-items: center; }
+.search-field > svg { position: absolute; left: 14px; width: 18px; height: 18px; color: var(--mute); pointer-events: none; }
+.search-field .input { padding-left: 42px; padding-right: 44px; }
+.search-field .icon-btn { position: absolute; right: 4px; }
+.choice { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-s); background: var(--surface-strong); border: 1px solid var(--line); }
+.results { list-style: none; padding: 0; display: grid; gap: 2px; max-height: 26rem; overflow-y: auto; margin-inline: calc(var(--space-2) * -1); }
+.result { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-2); border-radius: var(--radius-s); }
+.result:hover { background: var(--surface); }
+.result-actions { display: flex; gap: 2px; }
+.result-actions .icon-btn { width: 32px; height: 32px; }
