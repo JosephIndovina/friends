@@ -741,16 +741,16 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
 .player-screen:has(.stream-main) { background: #000; }
 
 /* ---------- sources rail ---------- */
-/* Down the left of the stage. Collapsed: thumbnails. Expanded: floats over the stage with names and controls. */
-.stage-body { display: flex; align-items: flex-start; }
-.stage-body > .stage-screen { flex: 1; min-width: 0; }
-.rail ~ .stage-screen { border-top-left-radius: 0; }
-.rail { position: relative; flex: none; align-self: stretch; width: 60px; z-index: 20; }
-.rail-panel {
-  position: absolute; inset: 0 auto 0 0; width: 60px; display: flex; flex-direction: column;
-  background: var(--upholstery); border-right: 1px solid var(--line); border-top-left-radius: var(--radius-l);
+/* A column the full height of the stage card, beside the stage (never over it). Expanded by default. */
+.stage.has-rail { display: flex; align-items: stretch; --rail-w: 60px; }
+.stage.has-rail:has(> .rail.is-open) { --rail-w: 248px; }
+.stage-main { flex: 1; min-width: 0; }
+.stage.has-rail .stage-screen { border-top-left-radius: 0; }
+.rail {
+  flex: none; width: var(--rail-w); position: relative; z-index: 20; display: flex; flex-direction: column;
+  background: var(--upholstery); border-right: 1px solid var(--line); border-radius: var(--radius-l) 0 0 var(--radius-l);
 }
-.rail.is-open .rail-panel { width: 264px; box-shadow: 18px 0 44px -22px rgb(0 0 0 / 0.65); }
+.rail-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; position: sticky; top: 0; max-height: 100dvh; }
 .rail-head { display: flex; align-items: center; gap: var(--space-2); padding: 10px 12px 6px; }
 .rail-title { font-size: var(--step--1); font-weight: 650; white-space: nowrap; }
 .rail-list { list-style: none; margin: 0; padding: 4px 8px; display: grid; gap: 4px; align-content: start; flex: 1; min-height: 0; }
@@ -786,29 +786,35 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
 /* Your broadcast: going live and stopping sit together at the foot. */
 .rail-foot { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-2) 12px 12px; border-top: 1px solid var(--line); }
 .rail.is-open .rail-foot { justify-items: stretch; }
-.rail-own { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
-.rail-own .rail-label .live-dot { vertical-align: 1px; }
-.rail-stop { color: #ff4d5e; }
+.rail-foot-title { font-size: 12px; font-weight: 650; color: var(--ink); }
+.rail-own { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.rail-own .rail-text { flex: 1; }
+.rail-own .btn { flex: none; padding: 0 var(--space-3); }
+.rail-preview { flex: none; position: relative; width: 56px; height: 32px; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: #000; cursor: pointer; }
+.rail-preview:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.rail-preview-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; font-size: 0; }
+.rail-stop { position: relative; color: #ff4d5e; }
+.rail-stop-n { position: absolute; right: 1px; bottom: 0; font-size: 10px; font-weight: 750; line-height: 1; color: var(--ink); }
 .rail-stop:hover { color: #ff4d5e; }
 .rail.is-open .go-live .btn { width: 100%; justify-content: center; }
 .rail .golive-panel { top: auto; bottom: 0; right: auto; left: calc(100% + 20px); z-index: 70; }
 .rail .go-live-note { font-size: 12px; }
-/* Full screen: the rail floats over the left edge and shows while the pointer is there. */
-.rail.is-floating { position: fixed; top: 0; bottom: 0; left: 0; z-index: 63; }
-.rail.is-floating .rail-panel { border-radius: 0; opacity: 0; transition: opacity 0.2s var(--ease-out); }
-.rail.is-floating:hover .rail-panel, .rail.is-floating:focus-within .rail-panel { opacity: 1; }
+/* Full screen: the rail is pinned down the left of the window and the stage fills the rest. */
+.rail.is-full { position: fixed; inset: 0 auto 0 0; z-index: 63; border-radius: 0; }
+.stage.has-rail .player-screen.is-full { left: var(--rail-w); width: calc(100vw - var(--rail-w)); }
 @media (hover: hover) {
   .rail [data-tip]::after { bottom: auto; top: 50%; left: calc(100% + 10px); translate: 4px -50%; }
   .rail [data-tip]:hover::after, .rail [data-tip]:focus-visible::after { translate: 0 -50%; }
 }
+/* Home gets a wider page so the stage keeps its size beside the rail. */
+main.page:has(.media-room) { max-width: 1920px; }
+@media (min-width: 1081px) { .media-room { grid-template-columns: minmax(0, 1fr) 360px; } }
 /* Phones: a row of chips above the stage. */
 @media (max-width: 860px) {
-  .stage-body { flex-direction: column; align-items: stretch; }
-  .rail, .rail.is-floating { position: static; width: auto; }
-  .rail-panel, .rail.is-open .rail-panel {
-    position: static; width: auto; flex-direction: row; align-items: center; overflow-x: auto;
-    background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none;
-  }
+  .stage.has-rail, .stage.has-rail:has(> .rail.is-open) { flex-direction: column; --rail-w: 0px; }
+  .rail, .rail.is-full { position: static; width: auto; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+  .rail.is-full { display: none; }
+  .rail-panel { position: static; max-height: none; flex-direction: row; align-items: center; overflow-x: auto; }
   .rail-head, .rail-actions, .rail-item[aria-current]::before, .rail .go-live-note { display: none; }
   .rail-list { display: flex; flex: 1; padding: var(--space-2) var(--gutter); }
   .rail-item { flex: none; padding: 4px 10px 4px 4px; border-radius: var(--radius-pill); }

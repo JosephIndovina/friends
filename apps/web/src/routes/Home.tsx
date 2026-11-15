@@ -40,7 +40,7 @@ export function Home({ session }: { session: Session }) {
   const [musicView, setMusicView] = usePref<MusicView>("musicView", "viz");
   const [preset, setPreset] = usePref<Preset>("vizPreset2", "alchemy");
   const [theatrePref, setTheatrePref] = usePref<"on" | "off">("theatre", "off");
-  const [railOpen, setRailOpen] = usePref<"on" | "off">("railOpen", "off");
+  const [railOpen, setRailOpen] = usePref<"on" | "off">("railOpen2", "on");
   const [tab, setTab] = usePref<"queue" | "recent" | "playlists">("sideTab", "queue");
   const state = useMediaState();
   const now = state?.now ?? null;
@@ -94,13 +94,16 @@ export function Home({ session }: { session: Session }) {
 
   // Stage sources: the shared player plus everyone's live streams.
   const cast = useCast();
+  // Your own shares get one name everywhere (source row, tile, Stop), numbered when there are several.
+  const mineIds = cast.streams.filter((st) => st.mine).map((st) => st.id);
+  const ownName = (id: string) => (mineIds.length > 1 ? `Your screen ${mineIds.indexOf(id) + 1}` : "Your screen");
   const sources: StageSource[] = [
     ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible }] : []),
     ...cast.streams.map((st) => ({
       id: st.id,
       live: true,
       local: st.mine,
-      label: st.mine ? `${st.label} (you)` : st.label,
+      label: st.mine ? ownName(st.id) : st.label,
       detail: st.mode ? `Live · ${st.mode}` : "Live",
       thumbnail: st.avatarUrl,
       audible: st.mine ? false : !cast.muted.has(st.id),
@@ -134,7 +137,7 @@ export function Home({ session }: { session: Session }) {
     if (othersLive) setTheatreOverride(next);
     else setTheatrePref(next);
   };
-  const own = cast.streams.filter((st) => st.mine).map((st) => ({ id: st.id, label: st.label, detail: st.mode ?? "Live" }));
+  const own = cast.streams.filter((st) => st.mine).map((st) => ({ id: st.id, label: ownName(st.id), detail: st.mode ?? "Live", preview: <StreamVideo stream={st} className="rail-preview-video" /> }));
   const showRail = sources.length > 0 || (cast.canStream && cast.supported);
 
   // Grid sizing: tiles as large as the stage allows (the window height in theatre and full screen).
@@ -177,14 +180,14 @@ export function Home({ session }: { session: Session }) {
   return (
     <>
       <div className={`room media-room${theatre === "on" ? " is-theatre" : ""}`}>
-          <section className="stage" aria-label="Stage">
-            <div className="stage-body">
+          <section className={`stage${showRail ? " has-rail" : ""}`} aria-label="Stage">
             {showRail && (
               <StageRail sources={sources} hidden={p.hidden} setHidden={(id, h) => (h ? hide(id) : p.setHidden(id, false))}
                 current={layout === "grid" ? "all" : focusId} onShow={p.setFocused}
                 open={railOpen === "on"} setOpen={(o) => setRailOpen(o ? "on" : "off")}
-                own={own} onStop={(id) => void cast.stop(id)} floating={full} />
+                own={own} onStop={(id) => void cast.stop(id)} full={full} />
             )}
+            <div className="stage-main">
             <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}${layout === "grid" ? " is-grid" : ""}${full ? " is-full" : ""}`}>
               {layout === "idle" && sources.length === 0 && (
                 <div className="stage-idle">
@@ -233,7 +236,6 @@ export function Home({ session }: { session: Session }) {
               {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" />}
               {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
             </div>
-            </div>
 
             {/* Outside the stage screen so it stacks above the shared player. */}
             {full && <button className="icon-btn exit-full" aria-label="Exit full screen" title="Exit full screen" onClick={toggleFull}><Minimize aria-hidden /></button>}
@@ -262,7 +264,7 @@ export function Home({ session }: { session: Session }) {
             <div className="stage-info stage-bar">
               {focusedStream ? (
                 <div className="now-meta">
-                  <strong className="now-title">{focusedStream.mine ? `${focusedStream.label} (you)` : focusedStream.label}</strong>
+                  <strong className="now-title">{focusedStream.mine ? ownName(focusedStream.id) : focusedStream.label}</strong>
                   <span><span className="live-dot" aria-hidden />Live{focusedStream.mode ? ` · ${focusedStream.mode}` : ""}</span>
                 </div>
               ) : now && playerOnStage ? (
@@ -316,6 +318,7 @@ export function Home({ session }: { session: Session }) {
                 ))}
               </ul>
             )}
+            </div>
           </section>
 
         <aside className="side">

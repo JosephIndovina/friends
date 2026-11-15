@@ -19,16 +19,19 @@ export interface StageSource {
 /** One of your own streams, listed with its Stop button at the foot of the rail. */
 export interface OwnStream {
   id: string;
+  /** the same name its source row and tile use, e.g. "Your screen 2" */
   label: string;
   detail: string;
+  /** a live thumbnail of what you're sharing, so you can tell your streams apart */
+  preview: ReactNode;
 }
 
 /**
- * The stage's source list, down the left of the stage. Collapsed it is a column of thumbnails;
- * expanded it floats over the stage with names, sound and hide. Clicking a source shows it large,
- * and "All" shows every visible source as a grid. Going live and stopping live at the foot.
+ * The stage's source list: a column the full height of the stage, beside it rather than over it.
+ * Expanded it has names, sound and hide; collapsed it is thumbnails. Clicking a source shows it large,
+ * and "All" shows every visible source as a grid. Going live and stopping sit at the foot.
  */
-export function StageRail({ sources, hidden, setHidden, current, onShow, open, setOpen, own, onStop, floating }: {
+export function StageRail({ sources, hidden, setHidden, current, onShow, open, setOpen, own, onStop, full }: {
   sources: StageSource[];
   hidden: ReadonlySet<string>;
   setHidden: (id: string, hide: boolean) => void;
@@ -40,12 +43,12 @@ export function StageRail({ sources, hidden, setHidden, current, onShow, open, s
   setOpen: (open: boolean) => void;
   own: OwnStream[];
   onStop: (id: string) => void;
-  /** full screen: the rail floats over the left edge and shows on hover */
-  floating?: boolean;
+  /** full screen: the rail is pinned down the left of the window, beside the stage */
+  full?: boolean;
 }) {
   const shown = sources.filter((s) => !hidden.has(s.id)).length;
   return (
-    <nav className={`rail${open ? " is-open" : ""}${floating ? " is-floating" : ""}`} aria-label="Sources">
+    <nav className={`rail${open ? " is-open" : ""}${full ? " is-full" : ""}`} aria-label="Sources">
       <div className="rail-panel">
         <div className="rail-head">
           <button className="icon-btn rail-toggle" aria-expanded={open} aria-label={open ? "Collapse sources" : "Expand sources"} data-tip={open ? undefined : "Expand"}
@@ -97,18 +100,22 @@ export function StageRail({ sources, hidden, setHidden, current, onShow, open, s
         </ul>
 
         <div className="rail-foot">
-          {own.map((s) => (
+          {open && own.length > 0 && <span className="rail-foot-title"><span className="live-dot" aria-hidden />You're live</span>}
+          {own.map((s, i) => (
             <div key={s.id} className="rail-own">
-              {open && (
-                <span className="rail-text">
-                  <span className="rail-label"><span className="live-dot" aria-hidden />You're live</span>
-                  <span className="rail-detail">{s.detail}</span>
-                </span>
-              )}
               {open ? (
-                <button className="btn btn-danger btn-s" onClick={() => onStop(s.id)}><Square aria-hidden />Stop</button>
+                <>
+                  <button className="rail-preview" aria-label={`Show ${s.label} large`} onClick={() => onShow(s.id)}>{s.preview}</button>
+                  <span className="rail-text">
+                    <span className="rail-label">{s.label}</span>
+                    <span className="rail-detail">{s.detail}</span>
+                  </span>
+                  <button className="btn btn-danger btn-s" aria-label={`Stop ${s.label}`} onClick={() => onStop(s.id)}><Square aria-hidden />Stop</button>
+                </>
               ) : (
-                <button className="icon-btn rail-stop" aria-label={`Stop ${s.label}`} data-tip="Stop sharing" onClick={() => onStop(s.id)}><Square aria-hidden /></button>
+                <button className="icon-btn rail-stop" aria-label={`Stop ${s.label}`} data-tip={`Stop ${s.label.toLowerCase()}`} onClick={() => onStop(s.id)}>
+                  <Square aria-hidden />{own.length > 1 && <span className="rail-stop-n">{i + 1}</span>}
+                </button>
               )}
             </div>
           ))}
