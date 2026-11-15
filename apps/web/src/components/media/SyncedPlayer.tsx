@@ -14,18 +14,21 @@ const SEEK_COOLDOWN_MS = 2500;
  * Drives an embedded player so it matches the room's playback: same item, same play/pause,
  * same position (within HARD_DRIFT_S). The room is the source of truth; local controls go through the server.
  */
-export function SyncedPlayer({ playback, audible, volume, onDrift }: {
+export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: {
   playback: Playback;
   /** the viewer has opted in to sound (a user gesture unlocks unmuted playback) */
   audible: boolean;
   volume: number;
   onDrift?: (syncing: boolean) => void;
+  /** unmuted playback was refused by the browser; the caller should fall back to muted */
+  onBlocked?: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const engine = useRef<{ family: Family; e: Engine; itemId: string } | null>(null);
   const latest = useRef(playback);
   latest.current = playback;
   const lastSeek = useRef(0);
+  const stalls = useRef(0);
   const [ready, setReady] = useState(0);
 
   const family = familyOf(playback.item.kind);
@@ -68,7 +71,10 @@ export function SyncedPlayer({ playback, audible, volume, onDrift }: {
     const e = engine.current?.e;
     if (!e) return;
     e.setMuted(!audible);
-    if (audible) e.setVolume(volume);
+    if (audible) {
+      e.setVolume(volume);
+      if (latest.current.playing) e.play();
+    }
   }, [audible, volume, ready]);
 
   // Reconcile loop: nudge the local player back to the room.
@@ -78,7 +84,16 @@ export function SyncedPlayer({ playback, audible, volume, onDrift }: {
       const p = latest.current;
       if (!cur || cur.itemId !== p.item.id || cur.family === "clip") return;
       const { e } = cur;
-      if (p.playing && !e.playing()) e.play();
+      if (p.playing && !e.playing()) {
+        // Browsers refuse unmuted autoplay before any interaction: after a few failed
+        // attempts with sound on, ask the caller to drop to muted (which is always allowed).
+        if (audible && ++stalls.current >= 3) {
+          stalls.current = 0;
+          onBlocked?.();
+          return;
+        }
+        e.play();
+      } else stalls.current = 0;
       if (!p.playing && e.playing()) e.pause();
       if (!SEEKABLE[p.item.kind] || Date.now() - lastSeek.current < SEEK_COOLDOWN_MS) return;
       const drift = expectedPosition(p) - e.time();
@@ -92,7 +107,7 @@ export function SyncedPlayer({ playback, audible, volume, onDrift }: {
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, [playback, ready, onDrift]);
+  }, [playback, ready, onDrift, audible, onBlocked]);
 
   return <div ref={host} className="player-host" />;
 }

@@ -74,7 +74,6 @@ export function Home({ session }: { session: Session }) {
                 <button className="icon-btn transport-main" disabled={!control}
                   aria-label={now.playing ? "Pause for everyone" : "Play for everyone"}
                   onClick={() => {
-                    p.setAudible(true);
                     void act(now.playing ? mediaAction("media:pause", { position: pos }) : mediaAction("media:play"));
                   }}>
                   {now.playing ? <Pause aria-hidden /> : <Play aria-hidden />}
@@ -85,9 +84,9 @@ export function Home({ session }: { session: Session }) {
                 ) : (
                   <span className="live-badge">{now.item.kind === "twitch-live" ? "Live" : "Clip"}</span>
                 )}
-                {p.audible
-                  ? <Volume volume={p.volume} muted={false} onChange={p.setVolume} onToggle={() => p.setAudible(false)} />
-                  : <button className="btn btn-primary btn-s sound-on" onClick={() => p.setAudible(true)}><Volume2 aria-hidden /><span className="sound-label">Turn on sound</span></button>}
+                {p.blocked && p.audible
+                  ? <button className="btn btn-primary btn-s sound-on" onClick={() => p.setBlocked(false)}><Volume2 aria-hidden /><span className="sound-label">Click anywhere for sound</span></button>
+                  : <Volume volume={p.volume} muted={!p.audible} onChange={(v) => { p.setVolume(v); p.setAudible(v > 0); }} onToggle={() => p.setAudible(!p.audible)} />}
                 <button className="icon-btn" aria-label="Full screen" title="Full screen" onClick={() => screen?.requestFullscreen?.()}><Maximize aria-hidden /></button>
               </div>
               <div className="stage-info">

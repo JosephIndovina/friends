@@ -58,7 +58,7 @@ export async function youtubeEngine(host: HTMLElement, ev: EngineEvents, initial
       width: "100%",
       height: "100%",
       videoId: initial.item.ref,
-      playerVars: { autoplay: initial.play ? 1 : 0, controls: 0, disablekb: 1, playsinline: 1, rel: 0, start: Math.floor(initial.at), mute: 1 },
+      playerVars: { autoplay: initial.play ? 1 : 0, controls: 0, disablekb: 1, playsinline: 1, rel: 0, start: Math.floor(initial.at) },
       events: {
         onReady: () => resolve(p),
         onStateChange: (e: { data: number }) => {
