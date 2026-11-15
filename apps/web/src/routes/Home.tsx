@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Maximize, Pause, Play, SkipForward, Volume2 } from "lucide-react";
+import { Maximize, Pause, Play, Square, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { SEEKABLE, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
 import { SourceStrip, SourcesMenu, type StageSource } from "../components/stage/Sources";
+import { GoLive } from "../components/stage/GoLive";
+import { StreamVideo, useCast } from "../lib/cast";
 import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
 import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
@@ -74,33 +76,42 @@ export function Home({ session }: { session: Session }) {
 
   const pos = now ? expectedPosition(now) : 0;
 
-  // Stage sources. Cast streams join this list in Phase 4; for now the shared player is the only one.
-  const sources: StageSource[] = now
-    ? [{
-        id: "player",
-        label: "Player",
-        detail: now.item.title,
-        thumbnail: now.item.thumbnail,
-        audible: p.audible,
-        setAudible: p.setAudible,
-      }]
-    : [];
+  // Stage sources: the shared player plus everyone's live streams.
+  const cast = useCast();
+  const sources: StageSource[] = [
+    ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible }] : []),
+    ...cast.streams.map((st) => ({
+      id: st.id,
+      label: st.local ? `${st.label} (you)` : st.label,
+      detail: st.mode ? `Live · ${st.mode}` : "Live",
+      thumbnail: st.avatarUrl,
+      audible: st.local ? false : !cast.muted.has(st.id),
+      setAudible: (v: boolean) => cast.setMuted(st.id, !v),
+    })),
+  ];
   const visible = sources.filter((x) => !p.hidden.has(x.id));
   const focusId = visible.some((x) => x.id === p.focused) ? p.focused : (visible[0]?.id ?? null);
   const playerFocused = focusId === "player";
+  const focusedStream = cast.streams.find((st) => st.id === focusId) ?? null;
+  const canStopOthers = can(session, "playback.moderate");
 
   return (
     <>
       <div className="room media-room">
-        <section className="stage" aria-label="Player">
-          <div ref={setScreen} className={`stage-screen player-screen${music ? " is-music" : ""}`}>
-            {!now && (
+        <section className="stage" aria-label="Stage">
+          <div className="stage-tools">
+            {cast.streams.length > 0 && <span className="live-count"><span className="live-dot" aria-hidden />{cast.streams.length} live</span>}
+            <GoLive />
+            <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
+          </div>
+          <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}`}>
+            {sources.length === 0 && (
               <div className="stage-idle">
                 <h1>Nothing playing</h1>
-                <p>Search YouTube, or paste a YouTube, Spotify or Twitch link.</p>
+                <p>Search YouTube, or paste a YouTube, Spotify or Twitch link. Or go live and share your screen.</p>
               </div>
             )}
-            {now && !focusId && (
+            {sources.length > 0 && !focusId && (
               <div className="stage-idle">
                 <h1>All sources hidden</h1>
                 <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
@@ -133,6 +144,7 @@ export function Home({ session }: { session: Session }) {
                 </div>
               </div>
             )}
+            {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" />}
             {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
           </div>
 
@@ -168,15 +180,45 @@ export function Home({ session }: { session: Session }) {
                 <div className="info-actions">
                   {now.item.kind === "youtube" && <ModeToggle item={now.item} mode={music ? "music" : "video"} onChange={p.setViewOverride} />}
                   {can(session, "player.queue") && <SaveToPlaylist itemId={now.item.id} label={now.item.title} />}
-                  <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
                 </div>
               </div>
             </>
           )}
+          {focusedStream && (
+            <div className="stage-info stream-info">
+              <div className="now-meta">
+                <strong className="now-title">{focusedStream.local ? `${focusedStream.label} (you)` : focusedStream.label}</strong>
+                <span><span className="live-dot" aria-hidden />Live{focusedStream.mode ? ` · ${focusedStream.mode}` : ""}</span>
+              </div>
+              <div className="info-actions">
+                {!focusedStream.local && (
+                  <>
+                    <button className="icon-btn" aria-label={cast.muted.has(focusedStream.id) ? "Unmute stream" : "Mute stream"} onClick={() => cast.setMuted(focusedStream.id, !cast.muted.has(focusedStream.id))}>
+                      {cast.muted.has(focusedStream.id) ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
+                    </button>
+                    <input type="range" className="range stream-volume" min={0} max={100} aria-label="Stream volume" value={cast.volume[focusedStream.id] ?? 100}
+                      style={{ "--fill": `${cast.volume[focusedStream.id] ?? 100}%` } as React.CSSProperties}
+                      onChange={(e) => cast.setVolume(focusedStream.id, Number(e.target.value))} />
+                  </>
+                )}
+                <button className="icon-btn" aria-label="Full screen" title="Full screen" onClick={() => screen?.requestFullscreen?.()}><Maximize aria-hidden /></button>
+                {(focusedStream.local || canStopOthers) && (
+                  <button className="btn btn-quiet btn-s" onClick={() => { if (focusedStream.local || window.confirm(`End ${focusedStream.label}'s stream?`)) void cast.stop(focusedStream.id); }}>
+                    <Square aria-hidden />{focusedStream.local ? "Stop" : "End stream"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <SourceStrip
             sources={visible.filter((x) => x.id !== focusId)}
             onFocus={p.setFocused}
-            renderTile={(x) => (x.id === "player" ? <div ref={slotRef} className="player-slot" /> : null)}
+            renderTile={(x) => {
+              if (x.id === "player") return <div ref={slotRef} className="player-slot" />;
+              const st = cast.streams.find((c) => c.id === x.id);
+              return st ? <StreamVideo stream={st} className="stream-thumb" /> : null;
+            }}
           />
         </section>
 

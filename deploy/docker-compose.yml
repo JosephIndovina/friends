@@ -13,6 +13,8 @@ services:
       DATA_DIR: /data
     volumes:
       - /mnt/NAS/friends/data:/data
+    extra_hosts:
+      - host.docker.internal:host-gateway   # reach LiveKit's signalling port on the host
     # No published ports: the Cloudflare tunnel reaches it on the internal network.
 
   cloudflared:
@@ -21,6 +23,16 @@ services:
     command: tunnel --no-autoupdate run
     env_file: /mnt/NAS/friends/.env   # needs TUNNEL_TOKEN
     depends_on: [app]
+
+  # Cast: self-hosted LiveKit. Host networking so WebRTC can use the forwarded ports directly
+  # (TCP 7881, UDP 3478 TURN, UDP 50000-50200 media). Signalling (7880) is proxied by the app.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    restart: unless-stopped
+    network_mode: host
+    command: --config /etc/livekit.yaml
+    volumes:
+      - /mnt/NAS/friends/livekit.yaml:/etc/livekit.yaml:ro
 
   # Keeps rtc.indovina.dev (DNS-only, grey cloud) pointed at your home IP for Cast/LiveKit.
   ddns:

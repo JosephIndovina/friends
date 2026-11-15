@@ -5,6 +5,7 @@ import type { Activity, Section, Session } from "@friends/shared";
 import { isAdminish } from "../lib/api";
 import { useMediaState } from "../lib/media";
 import { PlayerProvider, usePlayer, viewModeOf } from "../lib/player";
+import { CastProvider, StreamAudio, useCast } from "../lib/cast";
 import { reportActivity, reportSection } from "../lib/presence";
 import { Avatar } from "./Avatar";
 import { PlayerDock } from "./media/PlayerDock";
@@ -20,10 +21,23 @@ function sectionFor(path: string): Section {
 function ActivityReporter() {
   const now = useMediaState()?.now ?? null;
   const p = usePlayer();
+  const cast = useCast();
   const visible = !p.hidden.has("player") && (Boolean(p.slot) || p.dismissedFor !== now?.item.id);
-  const activity: Activity = now?.playing && p.audible && visible ? (viewModeOf(now.item, p.viewOverrides) === "music" ? "listening" : "watching") : "idle";
+  const watchingStream = cast.streams.some((st) => !st.local && !p.hidden.has(st.id));
+  const activity: Activity = cast.streams.some((st) => st.local)
+    ? "casting"
+    : now?.playing && p.audible && visible
+      ? viewModeOf(now.item, p.viewOverrides) === "music" ? "listening" : "watching"
+      : watchingStream ? "watching" : "idle";
   useEffect(() => reportActivity(activity), [activity]);
   return null;
+}
+
+/** Sound for every visible stream, on every page (each with this viewer's own volume and mute). */
+function StreamSound() {
+  const cast = useCast();
+  const p = usePlayer();
+  return <>{cast.streams.filter((st) => !st.local && !p.hidden.has(st.id)).map((st) => <StreamAudio key={st.id} stream={st} />)}</>;
 }
 
 export function Shell({ session }: { session: Session }) {
@@ -38,6 +52,7 @@ export function Shell({ session }: { session: Session }) {
 
   return (
     <PlayerProvider>
+     <CastProvider session={session}>
       <div className="shell">
         <header className="topbar">
           <Link to="/" className="wordmark">friends</Link>
@@ -59,6 +74,7 @@ export function Shell({ session }: { session: Session }) {
         </main>
 
         <PlayerDock session={session} />
+        <StreamSound />
         <ActivityReporter />
 
         <nav className="tabbar" aria-label="Sections" style={{ gridTemplateColumns: `repeat(${nav.length}, 1fr)` }}>
@@ -70,6 +86,7 @@ export function Shell({ session }: { session: Session }) {
           ))}
         </nav>
       </div>
+     </CastProvider>
     </PlayerProvider>
   );
 }

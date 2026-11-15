@@ -11,6 +11,7 @@ export default defineConfig({
       "/api": api,
       "/auth": api,
       "/socket.io": { target: api, ws: true },
+      "/livekit": { target: api, ws: true },
     },
   },
 });

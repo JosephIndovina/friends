@@ -661,3 +661,26 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
 .lightbox img { max-width: 96vw; max-height: 92vh; object-fit: contain; border-radius: var(--radius-s); }
 .lightbox-close { position: fixed; top: var(--space-4); right: var(--space-4); background: rgb(0 0 0 / 0.6); color: #fff; }
 .viz-note { font-size: var(--step--1); color: rgb(255 255 255 / 0.7); padding: 6px 10px; border-radius: var(--radius-pill); background: rgb(0 0 0 / 0.45); }
+
+/* ---------- stage tools and streams ---------- */
+.stage-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); padding: 0 0 var(--space-3); }
+.stage-tools .sources-panel, .stage-tools .golive-panel { top: calc(100% + 8px); bottom: auto; right: 0; }
+.live-count { margin-right: auto; display: inline-flex; align-items: center; gap: 6px; font-size: var(--step--1); font-weight: 650; }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff4d5e; box-shadow: 0 0 0 3px color-mix(in oklab, #ff4d5e 25%, transparent); margin-right: 6px; vertical-align: 1px; }
+.go-live-note { font-size: var(--step--1); }
+.golive-panel { width: min(26rem, calc(100vw - 32px)); display: grid; gap: var(--space-3); }
+.golive-panel h2 { margin: 0; }
+.modes { display: grid; gap: 4px; }
+.mode { position: relative; display: grid; grid-template-columns: 1fr auto; gap: var(--space-2); align-items: baseline; padding: var(--space-2) var(--space-3); border-radius: var(--radius-s); border: 1px solid var(--line); cursor: pointer; }
+.mode input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.mode.is-on { border-color: var(--ink); background: color-mix(in oklab, var(--ink) 8%, transparent); }
+.mode:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.mode-label { font-weight: 650; }
+.mode .quiet { font-size: var(--step--1); }
+.custom-mode { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; }
+.stream-main { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.stream-thumb { width: 100%; height: 100%; object-fit: cover; background: #000; }
+.stream-waiting { display: grid; place-items: center; color: rgb(255 255 255 / 0.7); font-size: var(--step--1); background: #000; }
+.stream-volume { width: 96px; flex: none; }
+.player-screen:has(.stream-main) { background: #000; }
+@media (max-width: 860px) { .stage-tools { padding-inline: 0; } }

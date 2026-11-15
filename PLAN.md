@@ -107,7 +107,12 @@ ddns         keeps rtc.indovina.dev (DNS-only) on the home IP for LiveKit media
    - **Posts on Home:** text, up to 6 image or video attachments per post (type checked from the file bytes; images up to 15 MB, video up to 200 MB). Previews for the first link: YouTube, Spotify and Twitch links get an Add to queue button, and web pages show their Open Graph details, fetched behind a guard that refuses private and internal addresses.
    - Reactions; delete your own posts, or anyone's with posts.moderate. Updates arrive live.
    - **Discord:** new posts are batched into one message per 10 minutes. Slash commands /play, /queue and /skip map the Discord account to its site account, so site permissions apply.
-4. **Cast:** LiveKit, multiple simultaneous streams with the grid and focus view, choosing which streams to hear, simulcast.
+4. **Cast** (built 2026-11-15):
+   - Self-hosted LiveKit with host networking on the NAS. Signaling is proxied through the app at /livekit/rtc, so it rides the tunnel.
+   - Go live from the Home stage with streaming modes: game smooth/light, balanced, sharp, text and code, low bandwidth, or custom resolution/fps/bitrate. Simulcast layers serve thumbnails and slow connections.
+   - Streams are stage sources. Each viewer focuses, hides (which unsubscribes) or mutes streams and sets per-stream volume. Several screens per person.
+   - Permissions: cast.watch and cast.stream are enforced in the LiveKit token. Moderators can end streams. Suspensions, lockdown and the section switch remove people from the room.
+   - Audited start and end; the "went live" Discord post is limited to one per person per 10 minutes.
 5. **Extras (pick later):**
    - Synced lyrics.
    - Reaction timeline.
