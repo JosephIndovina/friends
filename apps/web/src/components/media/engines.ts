@@ -52,6 +52,9 @@ export async function youtubeEngine(host: HTMLElement, ev: EngineEvents, initial
   host.replaceChildren(mount);
   let currentId = initial.item.ref;
   let reportedFor = "";
+  // Where a loaded-but-never-started video will begin. YouTube reports 0 until it plays, and seekTo
+  // on an unstarted or cued video starts playback, so a paused room would play for a moment.
+  let cuedAt: number | null = initial.play ? null : initial.at;
 
   const player: any = await new Promise((resolve) => {
     const p = new YT.Player(mount, {
@@ -62,6 +65,7 @@ export async function youtubeEngine(host: HTMLElement, ev: EngineEvents, initial
       events: {
         onReady: () => resolve(p),
         onStateChange: (e: { data: number }) => {
+          if (e.data === YT.PlayerState.PLAYING) cuedAt = null;
           if (e.data === YT.PlayerState.ENDED) ev.onEnded();
           if (e.data === YT.PlayerState.PLAYING && reportedFor !== currentId) {
             const d = p.getDuration();
@@ -78,13 +82,18 @@ export async function youtubeEngine(host: HTMLElement, ev: EngineEvents, initial
   return {
     load(item, at, play) {
       currentId = item.ref;
+      cuedAt = play ? null : at;
       if (play) player.loadVideoById({ videoId: item.ref, startSeconds: at });
       else player.cueVideoById({ videoId: item.ref, startSeconds: at });
     },
     play: () => player.playVideo(),
     pause: () => player.pauseVideo(),
-    seek: (s) => player.seekTo(s, true),
-    time: () => player.getCurrentTime?.() ?? 0,
+    seek(s) {
+      if (cuedAt === null) return player.seekTo(s, true);
+      cuedAt = s;
+      player.cueVideoById({ videoId: currentId, startSeconds: s });
+    },
+    time: () => cuedAt ?? player.getCurrentTime?.() ?? 0,
     playing: () => player.getPlayerState?.() === YT.PlayerState.PLAYING || player.getPlayerState?.() === YT.PlayerState.BUFFERING,
     setVolume: (v) => player.setVolume(v),
     setMuted: (m) => (m ? player.mute() : player.unMute()),
