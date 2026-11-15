@@ -6,13 +6,42 @@ import { audit } from "./audit.js";
 import { db } from "./db.js";
 import { env } from "./env.js";
 import { events } from "./events.js";
-import { deleteUserSessions, isOwner } from "./sessions.js";
+import { deleteUserSessions, getUser, isOwner, sessionFor } from "./sessions.js";
+import { gate } from "./access.js";
+import { mediaRoom } from "./media.js";
+import { getPost } from "./posts.js";
+import { search, YouTubeError } from "./youtube.js";
 import { getSettings } from "./settings.js";
 
 const MEMBERSHIP_CHECK_MS = 15 * 60 * 1000;
 const UNKNOWN_MEMBER = 10007;
 
-const commands = [new SlashCommandBuilder().setName("site").setDescription("Get the link to the friends site")];
+const commands = [
+  new SlashCommandBuilder().setName("site").setDescription("Link to the friends site"),
+  new SlashCommandBuilder()
+    .setName("play")
+    .setDescription("Add something to the player queue")
+    .addStringOption((o) => o.setName("what").setDescription("Search words, or a YouTube / Spotify / Twitch link").setRequired(true).setMaxLength(300))
+    .addBooleanOption((o) => o.setName("next").setDescription("Play it next instead of at the end")),
+  new SlashCommandBuilder().setName("queue").setDescription("What's playing and what's up next"),
+  new SlashCommandBuilder().setName("skip").setDescription("Skip what's playing"),
+];
+
+const COMMAND_ERRORS: Record<string, string> = {
+  unauthenticated: "Sign in at the site first, then try again.",
+  pending: "Your access request is still waiting for an admin.",
+  inactive: "Your access is suspended.",
+  lockdown: "The site is currently limited to admins.",
+  missing_permission: "You don't have permission to do that.",
+  section_disabled: "The player is turned off.",
+  nothing_playing: "Nothing is playing.",
+  unsupported_link: "That link isn't supported.",
+  video_unavailable: "That video is private, removed, or can't be embedded.",
+  queue_full: "The queue is full.",
+  no_match: "Couldn't find that track on YouTube.",
+  youtube_quota: "The daily YouTube search limit has been reached. Paste a link instead.",
+  no_results: "No results.",
+};
 
 // View Channels, Send Messages, Send Messages in Threads, Embed Links, Attach Files, Read Message History
 const BOT_PERMISSIONS = (1n << 10n) | (1n << 11n) | (1n << 38n) | (1n << 14n) | (1n << 15n) | (1n << 16n);
@@ -54,8 +83,60 @@ export async function startBot(log: FastifyBaseLogger) {
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand() || interaction.guildId !== env.DISCORD_GUILD_ID) return;
-    if (interaction.commandName === "site") {
-      await interaction.reply({ content: "friends.indovina.dev", components: [linkButton("Open friends", siteUrl())], flags: MessageFlags.Ephemeral });
+    const name = interaction.commandName;
+    if (name === "site") {
+      await interaction.reply({ content: "Open the site:", components: [linkButton("Open friends", siteUrl())], flags: MessageFlags.Ephemeral });
+      return;
+    }
+    // Same Discord account = same site account: site permissions apply to commands too.
+    const row = getUser(interaction.user.id);
+    const session = row ? sessionFor(row) : null;
+    const blocked = gate(session);
+    const reply = (content: string, ephemeral = true) =>
+      interaction.deferred || interaction.replied
+        ? interaction.editReply({ content })
+        : interaction.reply({ content, ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}) });
+    if (blocked) return void (await reply(COMMAND_ERRORS[blocked] ?? COMMAND_ERRORS.missing_permission!));
+    const s = session!;
+    try {
+      if (!getSettings().sections.player) throw new Error("section_disabled");
+      if (name === "queue") {
+        const st = mediaRoom().snapshot();
+        if (!st.now) return void (await reply("Nothing is playing."));
+        const lines = [`**Now:** ${st.now.item.title}${st.now.playing ? "" : " (paused)"}`, ...st.queue.slice(0, 5).map((q, i) => `${i + 1}. ${q.title}`)];
+        if (st.queue.length > 5) lines.push(`…and ${st.queue.length - 5} more`);
+        return void (await interaction.reply({ content: lines.join("\n"), components: [linkButton("Open player", siteUrl())], flags: MessageFlags.Ephemeral }));
+      }
+      if (name === "skip") {
+        if (!s.permissions.includes("player.control")) throw new Error("missing_permission");
+        await mediaRoom().skip(s);
+        const now = mediaRoom().snapshot().now;
+        return void (await reply(now ? `Skipped. Now playing: ${now.item.title}` : "Skipped. The queue is empty.", false));
+      }
+      if (name === "play") {
+        if (!s.permissions.includes("player.queue")) throw new Error("missing_permission");
+        const what = interaction.options.getString("what", true).trim();
+        const next = interaction.options.getBoolean("next") ?? false;
+        if (next && !s.permissions.includes("player.control")) throw new Error("missing_permission");
+        await interaction.deferReply();
+        let url = what;
+        if (!/^(https?:\/\/|spotify:)/i.test(what) && !/^(www\.)?(youtube\.com|youtu\.be|twitch\.tv|open\.spotify\.com)\//i.test(what)) {
+          const hit = (await search(what)).results[0];
+          if (!hit) throw new Error("no_results");
+          url = `https://youtu.be/${hit.id}`;
+        }
+        const before = mediaRoom().snapshot();
+        await mediaRoom().add(s, { url, playNext: next });
+        const after = mediaRoom().snapshot();
+        const added = after.now?.item.addedAt && after.now.item.id !== before.now?.item.id ? after.now.item : (next ? after.queue[0] : after.queue.at(-1));
+        const where = after.now?.item.id === added?.id ? "Now playing" : next ? "Playing next" : `Queued (#${after.queue.length})`;
+        await interaction.editReply({ content: `${where}: **${added?.title ?? "it"}**`, components: [linkButton("Open player", siteUrl())] });
+        return;
+      }
+    } catch (err) {
+      const code = err instanceof YouTubeError ? err.message : (err as Error).message;
+      log.info({ code, command: name, user: interaction.user.id }, "command refused");
+      await reply(COMMAND_ERRORS[code] ?? "Something went wrong. Try again on the site.").catch(() => {});
     }
   });
 
@@ -94,6 +175,29 @@ export async function startBot(log: FastifyBaseLogger) {
 
   events.on("notify", (n) => {
     notify({ ...n, url: siteUrl(n.url) }).catch((err) => log.warn({ err }, "notification failed"));
+  });
+
+  // New posts are batched: one message per 10 minutes, listing who posted.
+  let pending: string[] = [];
+  let timer: NodeJS.Timeout | null = null;
+  events.on("post:created", (id) => {
+    if (!getSettings().notify.posts) return;
+    pending.push(id);
+    timer ??= setTimeout(() => {
+      const ids = pending;
+      pending = [];
+      timer = null;
+      const posts = ids.map((i) => getPost(i, "")).filter((p) => p !== null);
+      if (!posts.length) return;
+      const names = [...new Set(posts.map((p) => p.author.name))];
+      const first = posts[0]!;
+      notify({
+        title: posts.length === 1 ? `New post from ${first.author.name}` : `${posts.length} new posts`,
+        description: posts.length === 1 ? first.text.slice(0, 300) || "Shared an attachment." : `From ${names.join(", ")}.`,
+        url: siteUrl("/"),
+        buttonLabel: "View",
+      }).catch((err) => log.warn({ err }, "post digest failed"));
+    }, 10 * 60 * 1000);
   });
 
   events.on("access:requested", (user) => {

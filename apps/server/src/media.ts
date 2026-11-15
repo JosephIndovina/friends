@@ -181,40 +181,11 @@ export function createMediaRoom(io: IO) {
     }
   });
 
-  // ---------- socket actions ----------
+  const who = (s: Session) => ({ id: s.user.id, name: s.user.name });
+  const ref = (item: MediaItem) => ({ type: "media", id: item.ref, name: item.title });
 
-  function attach(socket: Sock) {
-    let tokens = 20;
-    const refill = setInterval(() => (tokens = Math.min(20, tokens + 2)), 1000);
-    socket.on("disconnect", () => clearInterval(refill));
-
-    const handle = <A extends unknown[]>(perm: Permission | null, fn: (session: Session, ...args: A) => Promise<void> | void) =>
-      async (...args: [...A, Ack]) => {
-        const ack = args.pop() as Ack;
-        const session = socket.data.session;
-        try {
-          if (typeof ack !== "function") return;
-          if (tokens-- <= 0) fail("slow_down");
-          if (!getSettings().sections.player) fail("section_disabled");
-          if (perm && !session.permissions.includes(perm)) {
-            audit({ actorId: session.user.id, action: "access.forbidden", details: { socket: true, perm } });
-            fail("missing_permission");
-          }
-          await fn(session, ...(args as unknown as A));
-          ack({ ok: true });
-        } catch (err) {
-          ack({ ok: false, error: err instanceof ActionError ? err.message : "server_error" });
-          if (!(err instanceof ActionError)) console.error(err);
-        }
-      };
-
-    const who = (s: Session) => ({ id: s.user.id, name: s.user.name });
-    const ref = (item: MediaItem) => ({ type: "media", id: item.ref, name: item.title });
-    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : fail("invalid"));
-
-    socket.on("media:subscribe", () => socket.emit("media:state", snapshot()));
-
-    socket.on("media:add", handle("player.queue", async (s, input: { url: string; playNext?: boolean; whole?: boolean }) => {
+  /** Queue a link (YouTube video/playlist, Twitch, Spotify). Used by the site and by Discord's /play. */
+  async function add(s: Session, input: { url: string; playNext?: boolean; whole?: boolean }): Promise<void> {
       if (typeof input?.url !== "string" || input.url.length > 500) fail("invalid");
       if (queue.length >= QUEUE_MAX) fail("queue_full");
       const sp = parseSpotify(input.url);
@@ -277,7 +248,40 @@ export function createMediaRoom(io: IO) {
       else if (input.playNext) queue.unshift(item);
       else queue.push(item);
       commit();
-    }));
+    }
+
+  // ---------- socket actions ----------
+
+  function attach(socket: Sock) {
+    let tokens = 20;
+    const refill = setInterval(() => (tokens = Math.min(20, tokens + 2)), 1000);
+    socket.on("disconnect", () => clearInterval(refill));
+
+    const handle = <A extends unknown[]>(perm: Permission | null, fn: (session: Session, ...args: A) => Promise<void> | void) =>
+      async (...args: [...A, Ack]) => {
+        const ack = args.pop() as Ack;
+        const session = socket.data.session;
+        try {
+          if (typeof ack !== "function") return;
+          if (tokens-- <= 0) fail("slow_down");
+          if (!getSettings().sections.player) fail("section_disabled");
+          if (perm && !session.permissions.includes(perm)) {
+            audit({ actorId: session.user.id, action: "access.forbidden", details: { socket: true, perm } });
+            fail("missing_permission");
+          }
+          await fn(session, ...(args as unknown as A));
+          ack({ ok: true });
+        } catch (err) {
+          ack({ ok: false, error: err instanceof ActionError ? err.message : "server_error" });
+          if (!(err instanceof ActionError)) console.error(err);
+        }
+      };
+
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : fail("invalid"));
+
+    socket.on("media:subscribe", () => socket.emit("media:state", snapshot()));
+
+    socket.on("media:add", handle("player.queue", (s, input: { url: string; playNext?: boolean; whole?: boolean }) => add(s, input)));
 
     socket.on("media:play", handle("player.control", async (s) => {
       if (!now) {
@@ -417,7 +421,14 @@ export function createMediaRoom(io: IO) {
   }
 
   scheduleEnd();
-  const room = { attach, snapshot, enqueue, findItem };
+  /** Skip on behalf of someone (Discord /skip). */
+  async function skip(s: Session) {
+    if (!now) throw new ActionError("nothing_playing");
+    audit({ actorId: s.user.id, action: "media.skipped", target: ref(now.item), details: { via: "discord" } });
+    await advance(s.user);
+  }
+
+  const room = { attach, snapshot, enqueue, findItem, add, skip };
   current = room;
   return room;
 }
@@ -427,6 +438,8 @@ let current: {
   enqueue: (items: MediaItem[], by: { id: string; name: string }, opts?: { playNext?: boolean }) => Promise<number>;
   findItem: (id: string) => MediaItem | null;
   snapshot: () => MediaState;
+  add: (s: Session, input: { url: string; playNext?: boolean; whole?: boolean }) => Promise<void>;
+  skip: (s: Session) => Promise<void>;
 } | null = null;
 export const mediaRoom = () => {
   if (!current) throw new Error("media room not started");

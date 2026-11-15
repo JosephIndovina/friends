@@ -131,6 +131,13 @@ function glowHue(): number {
   return (h * 60 + 360) % 360;
 }
 
+/**
+ * Tab audio capture only exists in Chromium (Chrome, Edge, Brave, Opera). Firefox and Safari can share
+ * a tab's picture but never its sound, so the button would always fail there. CaptureController ships
+ * with the same Chromium capture stack, which makes it a reliable feature test.
+ */
+const TAB_AUDIO_SUPPORTED = typeof window !== "undefined" && "CaptureController" in window && Boolean(navigator.mediaDevices?.getDisplayMedia);
+
 const MAX_W = 1100; // render resolution cap: feedback effects redraw the whole frame every tick
 
 export function Visualizer({ playback, preset }: { playback: Playback | null; preset: Preset }) {
@@ -343,7 +350,9 @@ export function Visualizer({ playback, preset }: { playback: Playback | null; pr
     <>
       <canvas ref={canvas} className="viz-canvas" aria-hidden />
       <div className="viz-audio">
-        {live ? (
+        {!TAB_AUDIO_SUPPORTED ? (
+          <span className="viz-note">Reacting to real audio needs Chrome or Edge.</span>
+        ) : live ? (
           <button className="btn btn-quiet btn-s" onClick={() => { source.current.release(); setLive(false); }}><X aria-hidden />Stop using tab audio</button>
         ) : (
           <button className="btn btn-primary btn-s" title="Uses this tab’s sound only, so the visuals follow the actual music (Chrome or Edge)"

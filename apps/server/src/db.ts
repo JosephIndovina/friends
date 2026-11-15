@@ -105,6 +105,35 @@ const migrations: Array<string | (() => void)> = [
      youtube_id  TEXT,                      -- null = no acceptable match found
      resolved_at INTEGER NOT NULL
    );`,
+
+  `CREATE TABLE uploads (
+     id          TEXT PRIMARY KEY,
+     owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     post_id     TEXT,                      -- null until attached; unattached uploads are pruned after a day
+     kind        TEXT NOT NULL,             -- image | video
+     mime        TEXT NOT NULL,
+     ext         TEXT NOT NULL,
+     bytes       INTEGER NOT NULL,
+     name        TEXT,
+     created_at  INTEGER NOT NULL
+   );
+   CREATE INDEX uploads_post ON uploads(post_id);
+   CREATE TABLE posts (
+     id          TEXT PRIMARY KEY,
+     author_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     text        TEXT NOT NULL,
+     preview     TEXT,                      -- JSON link preview for the first link
+     created_at  INTEGER NOT NULL,
+     deleted_at  INTEGER,
+     deleted_by  TEXT
+   );
+   CREATE INDEX posts_created ON posts(created_at);
+   CREATE TABLE post_reactions (
+     post_id     TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     emoji       TEXT NOT NULL,
+     PRIMARY KEY (post_id, user_id, emoji)
+   );`,
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;

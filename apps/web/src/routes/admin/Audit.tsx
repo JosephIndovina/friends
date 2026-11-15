@@ -14,7 +14,8 @@ const CATEGORIES = [
   { value: "settings.", label: "Settings" },
   { value: "media.", label: "Player" },
   { value: "playlist.", label: "Playlists" },
-  ...["cast.", "posts."].map((v) => ({ value: v, label: v[0]!.toUpperCase() + v.slice(1, -1) })),
+  { value: "post.", label: "Posts" },
+  { value: "cast.", label: "Cast" },
 ];
 
 function details(e: AuditEntry): string {

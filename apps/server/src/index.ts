@@ -12,6 +12,7 @@ import { pruneAudit } from "./audit.js";
 import { authRoutes } from "./auth.js";
 import { mediaRoutes } from "./mediaRoutes.js";
 import { playlistRoutes } from "./playlists.js";
+import { postRoutes, pruneUploads, UPLOAD_DIR } from "./posts.js";
 import { createRealtime } from "./realtime.js";
 import { ensureOwner, pruneSessions } from "./sessions.js";
 import { startBot } from "./bot.js";
@@ -32,11 +33,14 @@ await app.register(authRoutes);
 await app.register(adminRoutes);
 await app.register(mediaRoutes);
 await app.register(playlistRoutes);
+await app.register(postRoutes);
 
 // In production the server also serves the built web app (single container).
 const webDist = resolve(env.WEB_DIST ?? "../web/dist");
-if (existsSync(webDist)) {
-  await app.register(fastifyStatic, { root: webDist, wildcard: false });
+const hasWeb = existsSync(webDist);
+// Always registered: uploads are sent with reply.sendFile even when there's no built web app (dev).
+await app.register(fastifyStatic, { root: hasWeb ? webDist : resolve(UPLOAD_DIR), serve: hasWeb, wildcard: false });
+if (hasWeb) {
   app.setNotFoundHandler((req, reply) => {
     if (req.method !== "GET" || req.url.startsWith("/api/") || req.url.startsWith("/auth/")) {
       return reply.code(404).send({ error: "not_found" });
@@ -49,7 +53,8 @@ createRealtime(app.server);
 ensureOwner();
 pruneSessions();
 pruneAudit();
-setInterval(() => (pruneSessions(), pruneAudit()), 60 * 60 * 1000).unref();
+void pruneUploads();
+setInterval(() => (pruneSessions(), pruneAudit(), void pruneUploads()), 60 * 60 * 1000).unref();
 
 await app.listen({ host: "0.0.0.0", port: env.PORT });
 

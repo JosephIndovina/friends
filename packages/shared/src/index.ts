@@ -152,6 +152,8 @@ export interface ServerToClient {
   "media:state": (state: MediaState) => void;
   /** site settings that affect every viewer changed: refetch /api/site */
   "site:changed": () => void;
+  /** a post was created, updated (preview, reactions) or deleted; refetch it by id */
+  "posts:changed": (input: { id: string; deleted?: boolean }) => void;
 }
 
 export interface ClientToServer {
@@ -200,4 +202,36 @@ export interface PlaylistSummary {
 
 export interface Playlist extends PlaylistSummary {
   items: MediaItem[];
+}
+
+// ---------- posts ----------
+
+export const REACTIONS = ["👍", "😂", "❤️", "🔥", "😮", "😢"] as const;
+export type Reaction = (typeof REACTIONS)[number];
+
+export interface PostMedia {
+  id: string;
+  kind: "image" | "video";
+  url: string;
+  mime: string;
+}
+
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  site: string | null;
+  /** the link can be queued in the player (YouTube, Spotify, Twitch) */
+  playable: boolean;
+}
+
+export interface Post {
+  id: string;
+  author: Me;
+  text: string;
+  media: PostMedia[];
+  preview: LinkPreview | null;
+  reactions: Array<{ emoji: string; count: number; mine: boolean; names: string[] }>;
+  createdAt: number;
 }

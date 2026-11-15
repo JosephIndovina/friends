@@ -47,6 +47,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "media.searched": "Searched YouTube",
   "media.mode_changed": "Changed view",
   "media.unmatched": "No YouTube match",
+  "post.created": "Posted",
+  "post.deleted": "Deleted post",
   "playlist.created": "Created playlist",
   "playlist.renamed": "Renamed playlist",
   "playlist.deleted": "Deleted playlist",

@@ -59,6 +59,7 @@ export function createRealtime(http: HttpServer) {
       if (socket.connected) socket.emit("session:changed");
     }
   });
+  events.on("posts:changed", (change) => io.emit("posts:changed", change));
   events.on("settings:changed", async () => {
     for (const socket of io.sockets.sockets.values()) recheck(socket);
     io.emit("site:changed");

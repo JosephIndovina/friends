@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Maximize, Pause, Play, SkipForward, Volume2 } from "lucide-react";
 import { SEEKABLE, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
+import { Feed } from "../components/posts/Feed";
 import { SourceStrip, SourcesMenu, type StageSource } from "../components/stage/Sources";
 import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
@@ -204,10 +205,7 @@ export function Home({ session }: { session: Session }) {
         </aside>
       </div>
 
-      <section className="stream" aria-labelledby="stream-title">
-        <h2 id="stream-title">Posts</h2>
-        <p className="empty">No posts yet.</p>
-      </section>
+      <Feed session={session} />
     </>
   );
 }
