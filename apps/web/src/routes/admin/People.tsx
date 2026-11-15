@@ -1,212 +1,300 @@
-import { useRef, useState } from "react";
-import { Check, LogOut, Ban, PauseCircle, RotateCcw, UserPlus, X } from "lucide-react";
-import type { AdminUser, Role, Session, UserStatus } from "@friends/shared";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { Ban, Check, ChevronRight, Copy, LogOut, PauseCircle, RotateCcw, Search, UserPlus, X } from "lucide-react";
+import type { AdminUser, AuditEntry, Role, Session, UserStatus } from "@friends/shared";
 import { Avatar } from "../../components/Avatar";
-import { api } from "../../lib/api";
-import { ago, errorText } from "../../lib/format";
+import { LoadError, Loading, PageHead } from "../../components/settings/ui";
+import { api, can } from "../../lib/api";
+import { actionLabel, ago, shortDateTime, errorText, fullDate } from "../../lib/format";
+import { useToast } from "../../lib/toast";
+import { ranks } from "./rank";
+import { Requests } from "./Requests";
 import { useLoad } from "./useLoad";
 
-const STATUS_LABEL: Record<UserStatus, string> = {
+export const STATUS_LABEL: Record<UserStatus, string> = {
   pending: "Waiting", active: "Active", suspended: "Suspended", banned: "Banned", left: "Left server",
 };
-
-type Confirm = { user: AdminUser; action: "suspended" | "banned" | "deny" } | null;
+const FILTERS: { value: UserStatus | "all"; label: string }[] = [
+  { value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "suspended", label: "Suspended" },
+  { value: "banned", label: "Banned" }, { value: "left", label: "Left" },
+];
 
 export function People({ session }: { session: Session }) {
   const users = useLoad(() => api<AdminUser[]>("GET", "/api/admin/users"));
   const roles = useLoad(() => api<Role[]>("GET", "/api/admin/roles"));
-  const [busy, setBusy] = useState<string | null>(null);
-  const [flash, setFlash] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-  const [confirm, setConfirm] = useState<Confirm>(null);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [reason, setReason] = useState("");
-
-  const myRank = session.isOwner ? -1 : (roles.data?.find((r) => r.id === session.role?.id)?.position ?? 1000);
-  const rankOf = (u: AdminUser) => (u.isOwner ? -1 : (roles.data?.find((r) => r.id === u.roleId)?.position ?? 1000));
-  const manageable = (u: AdminUser) => !u.isOwner && u.id !== session.user.id && (session.isOwner || myRank < rankOf(u));
-  const assignable = (roles.data ?? []).filter((r) => r.id !== "owner" && (session.isOwner || r.position > myRank));
-
-  async function run(id: string, fn: () => Promise<unknown>, ok: string) {
-    setBusy(id);
-    setFlash(null);
-    try {
-      await fn();
-      setFlash({ kind: "ok", text: ok });
-      await users.reload();
-    } catch (e) {
-      setFlash({ kind: "error", text: errorText(e) });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  function ask(c: NonNullable<Confirm>) {
-    setConfirm(c);
-    setReason("");
-    dialog.current?.showModal();
-  }
-
-  async function confirmAction() {
-    if (!confirm) return;
-    const { user, action } = confirm;
-    dialog.current?.close();
-    if (action === "deny") await run(user.id, () => api("POST", `/api/admin/users/${user.id}/deny`, { reason: reason || undefined }), `Denied ${user.name}.`);
-    else await run(user.id, () => api("POST", `/api/admin/users/${user.id}/status`, { status: action, reason: reason || undefined }), `${user.name} is now ${action}.`);
-  }
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<UserStatus | "all">("all");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const addRef = useRef<HTMLDialogElement>(null);
+  const r = ranks(session, roles.data);
 
   const pending = users.data?.filter((u) => u.status === "pending") ?? [];
   const everyone = users.data?.filter((u) => u.status !== "pending") ?? [];
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: everyone.length };
+    for (const u of everyone) c[u.status] = (c[u.status] ?? 0) + 1;
+    return c;
+  }, [everyone]);
+  const q = query.trim().toLowerCase();
+  const shown = everyone.filter((u) => (filter === "all" || u.status === filter) && (!q || u.name.toLowerCase().includes(q) || u.id.includes(q)));
+  const open = users.data?.find((u) => u.id === openId) ?? null;
+  const reload = () => void users.reload();
 
   return (
-    <div className="admin-stack">
-      {flash && <p className={`flash flash-${flash.kind}`} role="status">{flash.text}</p>}
-      {(users.error || roles.error) && <p className="flash flash-error" role="alert">{users.error ?? roles.error}</p>}
+    <div className="pane pane-wide">
+      <PageHead title="People" back={{ to: "/settings", label: "Settings" }}
+        actions={<button className="btn btn-quiet btn-s" onClick={() => addRef.current?.showModal()}><UserPlus aria-hidden />Add person</button>} />
 
-      <section aria-labelledby="pending-title">
-        <h2 id="pending-title" className="admin-h2">Waiting for approval {pending.length > 0 && <span className="count">{pending.length}</span>}</h2>
-        {users.data && pending.length === 0 && <p className="quiet">No pending requests.</p>}
-        <ul className="requests">
-          {pending.map((u) => (
-            <PendingRow key={u.id} user={u} roles={assignable} busy={busy === u.id}
-              onApprove={(roleId) => run(u.id, () => api("POST", `/api/admin/users/${u.id}/approve`, { roleId }), `Approved ${u.name}.`)}
-              onDeny={() => ask({ user: u, action: "deny" })} />
-          ))}
-        </ul>
-      </section>
+      {users.error ? <LoadError text={users.error} onRetry={reload} /> : !users.data || !roles.data ? <Loading rows={5} /> : (
+        <>
+          {pending.length > 0 && (
+            <section className="pblock" aria-labelledby="pending-title">
+              <div className="block-head"><h2 id="pending-title">Waiting for approval <span className="count">{pending.length}</span></h2></div>
+              <Requests pending={pending} roles={r.assignable} onChanged={reload} />
+            </section>
+          )}
 
-      <section aria-labelledby="people-title">
-        <h2 id="people-title" className="admin-h2">Everyone</h2>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr><th scope="col">Person</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Last seen</th><th scope="col"><span className="visually-hidden">Actions</span></th></tr>
-            </thead>
-            <tbody>
-              {everyone.map((u) => {
-                const can = manageable(u);
-                return (
-                  <tr key={u.id} aria-busy={busy === u.id}>
-                    <td>
-                      <span className="person">
-                        <Avatar src={u.avatarUrl} name={u.name} size={32} />
-                        <span><span className="person-name">{u.name}{u.id === session.user.id && <span className="quiet"> (you)</span>}</span><span className="person-id">{u.id}</span></span>
-                      </span>
-                    </td>
-                    <td>
-                      {u.isOwner ? <span className="role-tag">Owner</span> : (
-                        <select className="select" aria-label={`Role for ${u.name}`} value={u.roleId ?? ""} disabled={!can || busy === u.id}
-                          onChange={(e) => run(u.id, () => api("PATCH", `/api/admin/users/${u.id}/role`, { roleId: e.target.value }), `${u.name} is now ${roles.data?.find((r) => r.id === e.target.value)?.name}.`)}>
-                          {!u.roleId && <option value="">No role</option>}
-                          {(roles.data ?? []).filter((r) => r.id !== "owner").map((r) => (
-                            <option key={r.id} value={r.id} disabled={!assignable.some((a) => a.id === r.id)}>{r.name}</option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`status status-${u.status}`}>{STATUS_LABEL[u.status]}</span>
-                      {u.statusReason && <span className="status-reason">{u.statusReason}</span>}
-                    </td>
-                    <td className="nowrap">{ago(u.lastSeenAt)}{u.activeSessions > 0 && <span className="quiet"> · {u.activeSessions} {u.activeSessions === 1 ? "session" : "sessions"}</span>}</td>
-                    <td>
-                      {can && (
-                        <div className="row-actions">
-                          {u.activeSessions > 0 && (
-                            <button className="icon-btn" title="Sign out everywhere" aria-label={`Sign ${u.name} out everywhere`} disabled={busy === u.id}
-                              onClick={() => run(u.id, () => api("POST", `/api/admin/users/${u.id}/signout`), `Signed ${u.name} out.`)}><LogOut aria-hidden /></button>
-                          )}
-                          {u.status === "active" || u.status === "left" ? (
-                            <>
-                              <button className="icon-btn" title="Suspend" aria-label={`Suspend ${u.name}`} disabled={busy === u.id} onClick={() => ask({ user: u, action: "suspended" })}><PauseCircle aria-hidden /></button>
-                              <button className="icon-btn danger" title="Ban" aria-label={`Ban ${u.name}`} disabled={busy === u.id} onClick={() => ask({ user: u, action: "banned" })}><Ban aria-hidden /></button>
-                            </>
-                          ) : (
-                            <button className="btn btn-quiet btn-s" disabled={busy === u.id}
-                              onClick={() => run(u.id, () => api("POST", `/api/admin/users/${u.id}/status`, { status: "active" }), `Reinstated ${u.name}.`)}><RotateCcw aria-hidden />Reinstate</button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <PreApprove roles={assignable} onDone={(t) => { setFlash({ kind: "ok", text: t }); void users.reload(); }} onError={(t) => setFlash({ kind: "error", text: t })} />
-
-      <dialog ref={dialog} className="dialog" onClose={() => setConfirm(null)}>
-        {confirm && (
-          <form method="dialog" onSubmit={(e) => { e.preventDefault(); void confirmAction(); }}>
-            <h2>{confirm.action === "deny" ? `Deny ${confirm.user.name}?` : confirm.action === "banned" ? `Ban ${confirm.user.name}?` : `Suspend ${confirm.user.name}?`}</h2>
-            <p className="quiet">
-              {confirm.action === "suspended"
-                ? "They’re signed out right away and can’t get back in until someone reinstates them."
-                : "They’re signed out right away and blocked from signing in. You can reinstate them later."}
-            </p>
-            <label className="field">
-              <span>Reason <span className="quiet">(optional, shown in the audit log)</span></span>
-              <input className="input" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} autoFocus />
-            </label>
-            <div className="dialog-actions">
-              <button type="button" className="btn btn-quiet" onClick={() => dialog.current?.close()}>Cancel</button>
-              <button type="submit" className="btn btn-danger">{confirm.action === "deny" ? "Deny" : confirm.action === "banned" ? "Ban" : "Suspend"}</button>
+          <section className="pblock" aria-label="Everyone">
+            <div className="list-tools">
+              <label className="search">
+                <Search aria-hidden />
+                <input className="input" type="search" placeholder="Search by name or ID" aria-label="Search people" value={query} onChange={(e) => setQuery(e.target.value)} />
+              </label>
+              <div className="chips" role="radiogroup" aria-label="Filter by status">
+                {FILTERS.filter((f) => f.value === "all" || counts[f.value]).map((f) => (
+                  <label key={f.value} className="chip">
+                    <input type="radio" name="status-filter" checked={filter === f.value} onChange={() => setFilter(f.value)} />
+                    <span>{f.label} <span className="chip-count">{counts[f.value] ?? 0}</span></span>
+                  </label>
+                ))}
+              </div>
             </div>
-          </form>
-        )}
-      </dialog>
+
+            {shown.length === 0 ? <p className="empty-line">{q ? `No one matches “${query.trim()}”.` : "No one here."}</p> : (
+              <ul className="people-list">
+                {shown.map((u) => (
+                  <li key={u.id}>
+                    <button className="person-row" onClick={() => setOpenId(u.id)} aria-haspopup="dialog">
+                      <Avatar src={u.avatarUrl} name={u.name} size={36} />
+                      <span className="person-main">
+                        <span className="person-name">{u.name}{u.id === session.user.id && <span className="quiet"> (you)</span>}</span>
+                        <span className="quiet">{u.isOwner ? "Owner" : r.roleName(u.roleId)}</span>
+                      </span>
+                      <span className={`status status-${u.status}`}>{STATUS_LABEL[u.status]}</span>
+                      <span className="person-seen quiet">{u.activeSessions > 0 ? "Signed in" : `Seen ${ago(u.lastSeenAt).toLowerCase()}`}</span>
+                      <ChevronRight aria-hidden className="row-chevron" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
+
+      <PersonSheet session={session} user={open} roles={roles.data ?? []} onClose={() => setOpenId(null)} onChanged={reload} />
+      <AddPerson dialogRef={addRef} roles={r.assignable} onDone={reload} />
     </div>
   );
 }
 
-function PendingRow({ user, roles, busy, onApprove, onDeny }: { user: AdminUser; roles: Role[]; busy: boolean; onApprove: (roleId: string) => void; onDeny: () => void }) {
-  const [roleId, setRoleId] = useState(roles.find((r) => r.id === "member")?.id ?? roles.at(-1)?.id ?? "member");
+type Pending = { action: "suspended" | "banned" } | null;
+
+function PersonSheet({ session, user, roles, onClose, onChanged }: { session: Session; user: AdminUser | null; roles: Role[]; onClose: () => void; onChanged: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState<Pending>(null);
+  const [reason, setReason] = useState("");
+  const [activity, setActivity] = useState<AuditEntry[] | null>(null);
+  const r = ranks(session, roles);
+  const userId = user?.id ?? null;
+
+  useEffect(() => {
+    if (userId && !ref.current?.open) ref.current?.showModal();
+    if (!userId) ref.current?.close();
+    setConfirm(null);
+    setActivity(null);
+    if (!userId || !can(session, "admin.audit")) return;
+    let live = true;
+    Promise.all([
+      api<AuditEntry[]>("GET", `/api/admin/audit?actor=${userId}&limit=8`),
+      api<AuditEntry[]>("GET", `/api/admin/audit?target=${userId}&limit=8`),
+    ]).then(([a, b]) => {
+      if (!live) return;
+      const seen = new Set<number>();
+      setActivity([...a, ...b].sort((x, y) => y.id - x.id).filter((e) => !seen.has(e.id) && seen.add(e.id)).slice(0, 8));
+    }).catch(() => live && setActivity([]));
+    return () => { live = false; };
+  }, [userId, session]);
+
+  async function run(fn: () => Promise<unknown>, ok: string, undo?: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await fn();
+      toast(ok, undo ? { action: { label: "Undo", run: () => void undo().then(onChanged, (e) => toast(errorText(e), { kind: "error" })) } } : undefined);
+      onChanged();
+      setConfirm(null);
+    } catch (e) {
+      toast(errorText(e), { kind: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const u = user;
+  const manage = u ? r.manageable(u) : false;
+  const setRole = (id: string) => api("PATCH", `/api/admin/users/${u!.id}/role`, { roleId: id });
+
   return (
-    <li className="request">
-      <Avatar src={user.avatarUrl} name={user.name} size={40} />
-      <span className="request-who"><span className="person-name">{user.name}</span><span className="quiet">Asked {ago(user.createdAt)}</span></span>
-      <select className="select" aria-label={`Role for ${user.name}`} value={roleId} onChange={(e) => setRoleId(e.target.value)} disabled={busy}>
-        {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-      </select>
-      <button className="btn btn-primary btn-s" disabled={busy} onClick={() => onApprove(roleId)}><Check aria-hidden />Approve</button>
-      <button className="btn btn-quiet btn-s" disabled={busy} onClick={onDeny}><X aria-hidden />Deny</button>
-    </li>
+    <dialog ref={ref} className="sheet" aria-labelledby="sheet-title" onClose={onClose}
+      onClick={(e) => e.target === ref.current && ref.current.close()}>
+      {u && (
+        <div className="sheet-body">
+          <header className="sheet-head">
+            <Avatar src={u.avatarUrl} name={u.name} size={56} />
+            <div>
+              <h2 id="sheet-title" tabIndex={-1} autoFocus>{u.name}</h2>
+              <span className={`status status-${u.status}`}>{STATUS_LABEL[u.status]}</span>
+              {u.statusReason && <span className="quiet sheet-reason">{u.statusReason}</span>}
+            </div>
+            <button className="icon-btn sheet-close" aria-label="Close" onClick={() => ref.current?.close()}><X aria-hidden /></button>
+          </header>
+
+          <dl className="kv">
+            <div>
+              <dt>Role</dt>
+              <dd>
+                {u.isOwner ? "Owner" : manage ? (
+                  <select className="select" aria-label={`Role for ${u.name}`} value={u.roleId ?? ""} disabled={busy}
+                    onChange={(e) => {
+                      const prev = u.roleId;
+                      const next = e.target.value;
+                      void run(() => setRole(next), `${u.name} is now ${r.roleName(next)}.`, prev ? () => setRole(prev) : undefined);
+                    }}>
+                    {!u.roleId && <option value="">No role</option>}
+                    {roles.filter((x) => x.id !== "owner").map((x) => (
+                      <option key={x.id} value={x.id} disabled={!r.assignable.some((a) => a.id === x.id)}>{x.name}</option>
+                    ))}
+                  </select>
+                ) : r.roleName(u.roleId)}
+              </dd>
+            </div>
+            <div>
+              <dt>Discord ID</dt>
+              <dd className="copyable">
+                <span className="mono-num">{u.id}</span>
+                <button className="icon-btn" aria-label="Copy Discord ID" onClick={() => navigator.clipboard?.writeText(u.id).then(() => toast("Copied."), () => {})}><Copy aria-hidden /></button>
+              </dd>
+            </div>
+            <div><dt>Joined</dt><dd>{fullDate(u.createdAt)}</dd></div>
+            <div><dt>Last seen</dt><dd>{ago(u.lastSeenAt)}</dd></div>
+            <div><dt>Sessions</dt><dd>{u.activeSessions ? `${u.activeSessions} signed in` : "None"}</dd></div>
+          </dl>
+
+          {manage && !confirm && (
+            <div className="sheet-actions">
+              {u.activeSessions > 0 && (
+                <button className="btn btn-quiet btn-s" disabled={busy} onClick={() => void run(() => api("POST", `/api/admin/users/${u.id}/signout`), `Signed ${u.name} out everywhere.`)}>
+                  <LogOut aria-hidden />Sign out everywhere
+                </button>
+              )}
+              {u.status === "active" || u.status === "left" ? (
+                <>
+                  <button className="btn btn-quiet btn-s" disabled={busy} onClick={() => { setReason(""); setConfirm({ action: "suspended" }); }}><PauseCircle aria-hidden />Suspend</button>
+                  <button className="btn btn-quiet btn-s btn-danger-quiet" disabled={busy} onClick={() => { setReason(""); setConfirm({ action: "banned" }); }}><Ban aria-hidden />Ban</button>
+                </>
+              ) : u.status !== "pending" && (
+                <button className="btn btn-primary btn-s" disabled={busy} onClick={() => void run(() => api("POST", `/api/admin/users/${u.id}/status`, { status: "active" }), `Reinstated ${u.name}.`)}>
+                  <RotateCcw aria-hidden />Reinstate
+                </button>
+              )}
+            </div>
+          )}
+          {!manage && !u.isOwner && u.id !== session.user.id && <p className="quiet">They’re ranked the same as or above you, so you can’t change their access.</p>}
+
+          {confirm && (
+            <form className="inline-confirm" onSubmit={(e) => {
+              e.preventDefault();
+              void run(() => api("POST", `/api/admin/users/${u.id}/status`, { status: confirm.action, reason: reason.trim() || undefined }), `${u.name} is ${confirm.action}.`);
+            }}>
+              <h3>{confirm.action === "banned" ? `Ban ${u.name}?` : `Suspend ${u.name}?`}</h3>
+              <p className="quiet">They’re signed out right away and can’t sign in until someone reinstates them.</p>
+              <label className="field"><span>Reason (optional, shown in the audit log)</span>
+                <input className="input" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} autoFocus />
+              </label>
+              <div className="dialog-actions">
+                <button type="button" className="btn btn-quiet btn-s" onClick={() => setConfirm(null)}>Cancel</button>
+                <button className="btn btn-danger btn-s" disabled={busy}>{confirm.action === "banned" ? "Ban" : "Suspend"}</button>
+              </div>
+            </form>
+          )}
+
+          {can(session, "admin.audit") && (
+            <section className="sheet-section" aria-labelledby="activity-title">
+              <div className="block-head">
+                <h3 id="activity-title">Recent activity</h3>
+                <Link to="/admin/audit" search={{ target: u.id, name: u.name }} className="text-link">All</Link>
+              </div>
+              {!activity ? <Loading rows={2} /> : activity.length === 0 ? <p className="empty-line">Nothing recorded.</p> : (
+                <ul className="event-list event-list-compact">
+                  {activity.map((e) => (
+                    <li key={e.id}>
+                      <span className="event-what">{actionLabel(e.action)}</span>
+                      <span className="quiet">{e.actor?.id === u.id ? (e.targetName && e.targetId !== u.id ? e.targetName : "") : `by ${e.actor?.name ?? "System"}`}</span>
+                      <time className="quiet nowrap" dateTime={new Date(e.at).toISOString()}>{shortDateTime(e.at)}</time>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+        </div>
+      )}
+    </dialog>
   );
 }
 
-function PreApprove({ roles, onDone, onError }: { roles: Role[]; onDone: (t: string) => void; onError: (t: string) => void }) {
+function AddPerson({ dialogRef, roles, onDone }: { dialogRef: React.RefObject<HTMLDialogElement | null>; roles: Role[]; onDone: () => void }) {
+  const toast = useToast();
   const [id, setId] = useState("");
   const [roleId, setRoleId] = useState("member");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const valid = /^\d{15,22}$/.test(id.trim());
   return (
-    <section aria-labelledby="pre-title" className="panel">
-      <h2 id="pre-title">Pre-approve</h2>
-      <p className="quiet">Discord user ID (in Discord: right-click the user → Copy User ID). Their account is approved on first sign-in.</p>
-      <form className="inline-form" onSubmit={async (e) => {
+    <dialog ref={dialogRef} className="dialog" aria-labelledby="add-title" onClose={() => { setId(""); setError(null); }}>
+      <form onSubmit={async (e) => {
         e.preventDefault();
         if (!valid) return;
         setBusy(true);
+        setError(null);
         try {
           await api("POST", "/api/admin/preapprove", { discordId: id.trim(), roleId });
-          onDone("Pre-approved.");
-          setId("");
+          toast("Pre-approved. They can sign in straight away.");
+          dialogRef.current?.close();
+          onDone();
         } catch (err) {
-          onError(errorText(err));
+          setError(errorText(err));
         } finally {
           setBusy(false);
         }
       }}>
-        <label className="field grow"><span>Discord user ID</span>
-          <input className="input" inputMode="numeric" placeholder="e.g. 164143056172482562" value={id} onChange={(e) => setId(e.target.value)} aria-invalid={id !== "" && !valid} />
+        <h2 id="add-title">Add person</h2>
+        <p className="quiet">Approve someone before they sign in. In Discord, right-click them and choose Copy User ID (turn on Developer Mode in Discord’s Advanced settings if you don’t see it).</p>
+        <label className="field"><span>Discord user ID</span>
+          <input className="input" inputMode="numeric" autoComplete="off" placeholder="164143056172482562" value={id} onChange={(e) => setId(e.target.value)} aria-invalid={id !== "" && !valid} autoFocus />
+          {id !== "" && !valid && <span className="field-error">Discord user IDs are 15–22 digits.</span>}
         </label>
         <label className="field"><span>Role</span>
           <select className="select" value={roleId} onChange={(e) => setRoleId(e.target.value)}>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
         </label>
-        <button className="btn btn-primary" disabled={!valid || busy}><UserPlus aria-hidden />Pre-approve</button>
+        {error && <p className="field-error" role="alert">{error}</p>}
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-quiet" onClick={() => dialogRef.current?.close()}>Cancel</button>
+          <button className="btn btn-primary" disabled={!valid || busy}><Check aria-hidden />Pre-approve</button>
+        </div>
       </form>
-    </section>
+    </dialog>
   );
 }

@@ -12,6 +12,7 @@ import { mediaRoom } from "./media.js";
 import { getPost } from "./posts.js";
 import { search, YouTubeError } from "./youtube.js";
 import { getSettings } from "./settings.js";
+import { setDiscordClient } from "./discord.js";
 
 const MEMBERSHIP_CHECK_MS = 15 * 60 * 1000;
 const UNKNOWN_MEMBER = 10007;
@@ -162,16 +163,20 @@ export async function startBot(log: FastifyBaseLogger) {
     }
   }
 
-  async function notify(opts: { title: string; description?: string; url: string; buttonLabel?: string; thumbnail?: string }) {
-    const channelId = getSettings().notify.channelId;
+  async function notify(opts: { title: string; description?: string; url: string; buttonLabel?: string; thumbnail?: string }, channelId = getSettings().notify.channelId) {
     if (!channelId) return;
     const channel = await client.channels.fetch(channelId);
-    if (!channel?.isSendable()) return;
+    if (!channel?.isSendable()) throw new Error("channel_not_sendable");
     const embed = new EmbedBuilder().setTitle(opts.title).setURL(opts.url).setColor(0x6f95d8);
     if (opts.description) embed.setDescription(opts.description);
     if (opts.thumbnail) embed.setThumbnail(opts.thumbnail);
     await channel.send({ embeds: [embed], components: [linkButton(opts.buttonLabel ?? "Join", opts.url)] });
   }
+
+  events.on("notify:test", (channelId, done) => {
+    notify({ title: "Test notification", description: "Notifications from the site will be posted in this channel.", url: siteUrl("/"), buttonLabel: "Open" }, channelId)
+      .then(() => done(null), (err) => done(err instanceof Error ? err : new Error(String(err))));
+  });
 
   events.on("notify", (n) => {
     notify({ ...n, url: siteUrl(n.url) }).catch((err) => log.warn({ err }, "notification failed"));
@@ -212,5 +217,6 @@ export async function startBot(log: FastifyBaseLogger) {
   });
 
   await client.login(env.DISCORD_BOT_TOKEN);
+  setDiscordClient(client);
   return { client, notify };
 }

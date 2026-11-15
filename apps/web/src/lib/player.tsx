@@ -28,6 +28,7 @@ interface PlayerCtx {
   /** this viewer's music/video view choice per track (keyed by source ref); overrides the room's default */
   viewOverrides: Readonly<Record<string, MediaMode>>;
   setViewOverride: (item: MediaItem, mode: MediaMode) => void;
+  clearViewOverrides: () => void;
 }
 
 const Ctx = createContext<PlayerCtx | null>(null);
@@ -86,6 +87,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+  const clearViewOverrides = useCallback(() => {
+    setViewOverrides({});
+    try {
+      localStorage.removeItem("viewModes");
+    } catch {
+      /* this visit only */
+    }
+  }, []);
   const setHidden = useCallback((id: string, hide: boolean) => {
     setHiddenSet((prev) => {
       const next = new Set(prev);
@@ -122,8 +131,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [blocked]);
   const value = useMemo(
-    () => ({ audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, dismissedFor, setDismissedFor, hidden, setHidden, focused, setFocused, viewOverrides, setViewOverride }),
-    [audible, blocked, volume, syncing, slot, dismissedFor, hidden, setHidden, focused, viewOverrides, setViewOverride],
+    () => ({ audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, dismissedFor, setDismissedFor, hidden, setHidden, focused, setFocused, viewOverrides, setViewOverride, clearViewOverrides }),
+    [audible, blocked, volume, syncing, slot, dismissedFor, hidden, setHidden, focused, viewOverrides, setViewOverride, clearViewOverrides],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

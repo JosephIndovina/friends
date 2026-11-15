@@ -73,14 +73,8 @@ export function useSession(): SessionState {
 }
 
 export const can = (s: Session, p: Permission) => s.permissions.includes(p);
-export const ADMIN_TABS = [
-  { to: "/admin/people", label: "People", perm: "admin.people" },
-  { to: "/admin/roles", label: "Roles", perm: "admin.roles" },
-  { to: "/admin/audit", label: "Audit log", perm: "admin.audit" },
-  { to: "/admin/settings", label: "Settings", perm: "admin.settings" },
-  { to: "/admin/system", label: "System", perm: "admin.settings" },
-] as const satisfies ReadonlyArray<{ to: string; label: string; perm: Permission }>;
-export const isAdminish = (s: Session) => ADMIN_TABS.some((t) => can(s, t.perm));
+export const ADMIN_PERMS: Permission[] = ["admin.people", "admin.roles", "admin.audit", "admin.settings"];
+export const isAdminish = (s: Session) => ADMIN_PERMS.some((p) => can(s, p));
 
 export async function signOut() {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });

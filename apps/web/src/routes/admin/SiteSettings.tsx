@@ -1,82 +1,142 @@
-import { useEffect, useState } from "react";
-import type { SiteSettings as Settings } from "@friends/shared";
-import { api } from "../../lib/api";
+import { useState } from "react";
+import { Send } from "lucide-react";
+import type { DiscordChannel, SiteSettings as Settings } from "@friends/shared";
+import { LoadError, Loading, PageHead, Toggle, useConfirm } from "../../components/settings/ui";
+import { api, ApiError } from "../../lib/api";
 import { errorText } from "../../lib/format";
+import { useToast } from "../../lib/toast";
 import { useLoad } from "./useLoad";
 
-function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="toggle">
-      <span className="toggle-text"><span>{label}</span>{hint && <span className="quiet">{hint}</span>}</span>
-      <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <span className="switch" aria-hidden />
-    </label>
-  );
-}
-
+/** Site settings. Each change saves on its own; changes that interrupt everyone ask first. */
 export function SiteSettings() {
   const saved = useLoad(() => api<Settings>("GET", "/api/admin/settings"));
-  const [s, setS] = useState<Settings | null>(null);
-  const [flash, setFlash] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-  const [saving, setSaving] = useState(false);
-  useEffect(() => setS(saved.data), [saved.data]);
-  if (!s) return saved.error ? <p className="flash flash-error">{saved.error}</p> : null;
+  const channels = useLoad(() => api<DiscordChannel[]>("GET", "/api/admin/discord/channels"));
+  const toast = useToast();
+  const [ask, dialog] = useConfirm();
+  const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [manualId, setManualId] = useState<string | null>(null);
 
-  const dirty = JSON.stringify(s) !== JSON.stringify(saved.data);
-  const channelValid = s.notify.channelId === null || /^\d{15,22}$/.test(s.notify.channelId);
+  const s = saved.data;
+  if (!s) {
+    return (
+      <div className="pane">
+        <PageHead title="Site" />
+        {saved.error ? <LoadError text={saved.error} onRetry={saved.reload} /> : <Loading rows={4} />}
+      </div>
+    );
+  }
 
-  async function save() {
-    setSaving(true);
+  async function update(next: Settings, ok = "Saved.") {
+    setBusy(true);
     try {
-      saved.setData(await api<Settings>("PUT", "/api/admin/settings", s));
-      setFlash({ kind: "ok", text: "Settings saved." });
+      saved.setData(await api<Settings>("PUT", "/api/admin/settings", next));
+      toast(ok);
+      return true;
     } catch (e) {
-      setFlash({ kind: "error", text: errorText(e) });
+      toast(errorText(e), { kind: "error" });
+      return false;
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
-  return (
-    <div className="admin-stack settings-narrow">
-      {flash && <p className={`flash flash-${flash.kind}`} role="status">{flash.text}</p>}
+  async function setSection(key: "player" | "cast", on: boolean) {
+    if (!on) {
+      const body = key === "player" ? "Playback stops for everyone and the player is hidden until you turn it back on." : "Every live stream ends and no one can go live until you turn it back on.";
+      if ((await ask({ title: `Turn off ${key === "player" ? "the player" : "Cast"}?`, body, confirm: "Turn off", danger: true })) === null) return;
+    }
+    await update({ ...s!, sections: { ...s!.sections, [key]: on } }, `${key === "player" ? "Player" : "Cast"} is ${on ? "on" : "off"}.`);
+  }
 
-      <section className={`panel${s.lockdown ? " panel-alarm" : ""}`} aria-labelledby="lock-title">
-        <h2 id="lock-title">Lockdown</h2>
-        <Toggle label="Only admins can use the site" hint="Disconnects all non-admin users immediately."
-          checked={s.lockdown} onChange={(v) => setS({ ...s, lockdown: v })} />
+  const notify = (patch: Partial<Settings["notify"]>, ok?: string) => update({ ...s, notify: { ...s.notify, ...patch } }, ok);
+
+  async function sendTest() {
+    if (!s?.notify.channelId) return;
+    setTesting(true);
+    try {
+      await api("POST", "/api/admin/discord/test", { channelId: s.notify.channelId });
+      toast("Test message sent. Check the channel in Discord.");
+    } catch (e) {
+      toast(errorText(e), { kind: "error" });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const botOffline = channels.error !== null;
+  const list = channels.data ?? [];
+  const current = s.notify.channelId;
+  const unknownCurrent = current && channels.data && !list.some((c) => c.id === current);
+  const manualValid = manualId !== null && /^\d{15,22}$/.test(manualId.trim());
+  const byCategory = list.reduce<Record<string, DiscordChannel[]>>((acc, c) => ((acc[c.category ?? ""] ??= []).push(c), acc), {});
+
+  return (
+    <div className="pane">
+      <PageHead title="Site" note="Changes save as you make them and apply to everyone right away." />
+
+      <section className="panel" aria-labelledby="sections-title">
+        <h2 id="sections-title">Sections</h2>
+        <Toggle label="Player" hint="Music and video for everyone. Turning it off stops playback." checked={s.sections.player} disabled={busy}
+          onChange={(v) => void setSection("player", v)} />
+        <Toggle label="Cast" hint="Screen and game sharing. Turning it off ends every live stream." checked={s.sections.cast} disabled={busy}
+          onChange={(v) => void setSection("cast", v)} />
       </section>
 
       <section className="panel" aria-labelledby="player-title">
         <h2 id="player-title">Player</h2>
-        <Toggle label="Hide the YouTube player in music view" hint="Shows only the visualizer, lyrics or artwork; audio keeps playing. YouTube’s API terms require the player to stay visible, so turn this off if Google flags the API key."
-          checked={s.hideVideoInMusic} onChange={(v) => setS({ ...s, hideVideoInMusic: v })} />
-      </section>
-
-      <section className="panel" aria-labelledby="sections-title">
-        <h2 id="sections-title">Sections</h2>
-        <Toggle label="Player" hint="Turning this off stops playback for everyone." checked={s.sections.player} onChange={(v) => setS({ ...s, sections: { ...s.sections, player: v } })} />
-        <Toggle label="Cast" hint="Turning this off ends every live stream." checked={s.sections.cast} onChange={(v) => setS({ ...s, sections: { ...s.sections, cast: v } })} />
+        <Toggle label="Hide the YouTube player in music view"
+          hint="Shows only the visualizer, lyrics or artwork while audio keeps playing. YouTube’s API terms require the player to stay visible, so turn this off if Google flags the API key."
+          checked={s.hideVideoInMusic} disabled={busy} onChange={(v) => void update({ ...s, hideVideoInMusic: v })} />
       </section>
 
       <section className="panel" aria-labelledby="notify-title">
         <h2 id="notify-title">Discord notifications</h2>
-        <label className="field"><span>Channel ID</span>
-          <input className="input" inputMode="numeric" value={s.notify.channelId ?? ""} aria-invalid={!channelValid}
-            onChange={(e) => setS({ ...s, notify: { ...s.notify, channelId: e.target.value.trim() || null } })} />
-          {!channelValid && <span className="field-error">Channel IDs are 15–22 digits.</span>}
-        </label>
-        <Toggle label="Access requests" hint="Post when someone requests access." checked={s.notify.accessRequests} onChange={(v) => setS({ ...s, notify: { ...s.notify, accessRequests: v } })} />
-        <Toggle label="Now playing" hint="Post when music or a video starts after 30 minutes of inactivity." checked={s.notify.nowPlaying} onChange={(v) => setS({ ...s, notify: { ...s.notify, nowPlaying: v } })} />
-        <Toggle label="Going live" hint="Post when someone starts casting." checked={s.notify.goLive} onChange={(v) => setS({ ...s, notify: { ...s.notify, goLive: v } })} />
-        <Toggle label="New posts" hint="Post a digest of new posts." checked={s.notify.posts} onChange={(v) => setS({ ...s, notify: { ...s.notify, posts: v } })} />
+        <div className="field">
+          <span id="channel-label">Channel</span>
+          {!botOffline && manualId === null ? (
+            channels.data ? (
+              <div className="channel-pick">
+                <select className="select grow" aria-labelledby="channel-label" value={current ?? ""} disabled={busy}
+                  onChange={(e) => void notify({ channelId: e.target.value || null }, e.target.value ? "Channel saved." : "Notifications turned off.")}>
+                  <option value="">None (don’t post)</option>
+                  {unknownCurrent && <option value={current}>Unknown channel ({current})</option>}
+                  {Object.entries(byCategory).map(([cat, chans]) => (
+                    cat ? <optgroup key={cat} label={cat}>{chans.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</optgroup>
+                      : chans.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)
+                  ))}
+                </select>
+                <button className="btn btn-quiet btn-s" disabled={!current || testing} onClick={() => void sendTest()}><Send aria-hidden />{testing ? "Sending…" : "Send test"}</button>
+              </div>
+            ) : <Loading rows={1} />
+          ) : (
+            <form className="channel-pick" onSubmit={(e) => {
+              e.preventDefault();
+              if (manualValid) void notify({ channelId: manualId!.trim() }, "Channel saved.").then((ok) => ok && !botOffline && setManualId(null));
+            }}>
+              <input className="input grow" inputMode="numeric" aria-labelledby="channel-label" placeholder="Channel ID"
+                value={manualId ?? current ?? ""} aria-invalid={manualId !== null && manualId !== "" && !manualValid}
+                onChange={(e) => setManualId(e.target.value)} />
+              <button className="btn btn-quiet btn-s" disabled={!manualValid || busy}>Save</button>
+            </form>
+          )}
+          {botOffline && (
+            <span className="quiet field-note">
+              {channels.error && (channels.error === errorText(new ApiError(503, "bot_offline")))
+                ? "The bot is offline, so channels can’t be listed. Enter a channel ID instead."
+                : "Channels couldn’t be loaded. Enter a channel ID instead."}
+            </span>
+          )}
+          {!botOffline && manualId === null && channels.data && (
+            <span className="quiet field-note">Only channels the bot can post in are listed. <button className="text-link" onClick={() => setManualId(current ?? "")}>Enter an ID instead</button></span>
+          )}
+        </div>
+        <Toggle label="Access requests" hint="When someone asks to join." checked={s.notify.accessRequests} disabled={busy} onChange={(v) => void notify({ accessRequests: v })} />
+        <Toggle label="Now playing" hint="When music or a video starts after 30 minutes of nothing playing." checked={s.notify.nowPlaying} disabled={busy} onChange={(v) => void notify({ nowPlaying: v })} />
+        <Toggle label="Going live" hint="When someone starts casting." checked={s.notify.goLive} disabled={busy} onChange={(v) => void notify({ goLive: v })} />
+        <Toggle label="New posts" hint="A digest of new posts, at most every 10 minutes." checked={s.notify.posts} disabled={busy} onChange={(v) => void notify({ posts: v })} />
       </section>
-
-      <div className={`savebar${dirty ? " is-dirty" : ""}`}>
-        <span>{dirty ? "Unsaved changes" : "All changes saved"}</span>
-        <button className="btn btn-quiet btn-s" disabled={!dirty || saving} onClick={() => setS(saved.data)}>Discard</button>
-        <button className="btn btn-primary btn-s" disabled={!dirty || saving || !channelValid} onClick={save}>{saving ? "Saving…" : "Save changes"}</button>
-      </div>
+      {dialog}
     </div>
   );
 }

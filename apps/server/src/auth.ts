@@ -96,6 +96,7 @@ export async function authRoutes(app: FastifyInstance) {
     if (isNew && row.status === "pending") {
       audit({ actorId: me.id, action: "access.requested", target: { type: "user", id: me.id, name: me.name }, req });
       events.emit("access:requested", me);
+      events.emit("admin:attention");
     }
     return reply
       .clearCookie(STATE_COOKIE, { path: "/" })

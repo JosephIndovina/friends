@@ -1,8 +1,8 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Home, Settings, Shield } from "lucide-react";
+import { Home } from "lucide-react";
 import { useEffect } from "react";
 import type { Activity, Section, Session } from "@friends/shared";
-import { isAdminish } from "../lib/api";
+import { usePendingCount } from "../lib/attention";
 import { useMediaState } from "../lib/media";
 import { PlayerProvider, usePlayer, viewModeOf } from "../lib/player";
 import { CastProvider, StreamAudio, useCast } from "../lib/cast";
@@ -44,27 +44,29 @@ export function Shell({ session }: { session: Session }) {
   const me = session.user;
   const path = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => reportSection(sectionFor(path)), [path]);
-  const nav = [
-    { to: "/", label: "Home", Icon: Home },
-    { to: "/settings", label: "Settings", Icon: Settings },
-    ...(isAdminish(session) ? [{ to: "/admin", label: "Admin", Icon: Shield }] : []),
-  ] as const;
+  const pending = usePendingCount(session);
+  // Settings and admin live behind the avatar. The section nav only shows once there's more than one section.
+  const nav = [{ to: "/", label: "Home", Icon: Home }] as const;
+  const showNav = nav.length > 1;
 
   return (
     <PlayerProvider>
      <CastProvider session={session}>
-      <div className="shell">
+      <div className={`shell${showNav ? "" : " no-tabbar"}`}>
         <header className="topbar">
           <Link to="/" className="wordmark">friends</Link>
-          <nav className="topnav" aria-label="Sections">
-            {nav.map(({ to, label }) => (
-              <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>{label}</Link>
-            ))}
-          </nav>
+          {showNav && (
+            <nav className="topnav" aria-label="Sections">
+              {nav.map(({ to, label }) => (
+                <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>{label}</Link>
+              ))}
+            </nav>
+          )}
           <div className="topbar-end">
             <PresenceStack me={me} />
-            <Link to="/settings" className="me-link" aria-label={`Settings for ${me.name}`}>
+            <Link to="/settings" className="me-link" aria-label={pending ? `Settings, ${pending} access ${pending === 1 ? "request" : "requests"} waiting` : "Settings"}>
               <Avatar src={me.avatarUrl} name={me.name} size={34} />
+              {pending > 0 && <span className="me-badge" aria-hidden>{pending}</span>}
             </Link>
           </div>
         </header>
@@ -77,14 +79,16 @@ export function Shell({ session }: { session: Session }) {
         <StreamSound />
         <ActivityReporter />
 
-        <nav className="tabbar" aria-label="Sections" style={{ gridTemplateColumns: `repeat(${nav.length}, 1fr)` }}>
-          {nav.map(({ to, label, Icon }) => (
-            <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>
-              <Icon aria-hidden strokeWidth={1.75} />
-              {label}
-            </Link>
-          ))}
-        </nav>
+        {showNav && (
+          <nav className="tabbar" aria-label="Sections" style={{ gridTemplateColumns: `repeat(${nav.length}, 1fr)` }}>
+            {nav.map(({ to, label, Icon }) => (
+              <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>
+                <Icon aria-hidden strokeWidth={1.75} />
+                {label}
+              </Link>
+            ))}
+          </nav>
+        )}
       </div>
      </CastProvider>
     </PlayerProvider>

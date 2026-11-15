@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { ALL_PERMISSIONS, type AdminUser, type Permission, type Role, type Session, type SiteSettings } from "@friends/shared";
+import { ALL_PERMISSIONS, AUDIT_RETENTION_DAYS, type AdminUser, type Permission, type Role, type Session, type SiteSettings } from "@friends/shared";
 import { audit, queryAudit, type AuditQuery } from "./audit.js";
 import { db } from "./db.js";
+import { DiscordUnavailable, listTextChannels } from "./discord.js";
 import { env } from "./env.js";
 import { events } from "./events.js";
 import { deleteUserSessions, getUser, isOwner, type UserRow } from "./sessions.js";
@@ -116,6 +117,7 @@ export async function adminRoutes(app: FastifyInstance) {
       }
       return reply.code(err.status).send({ error: err.code });
     }
+    if (err instanceof DiscordUnavailable) return reply.code(503).send({ error: "bot_offline" });
     if (err instanceof z.ZodError) return reply.code(400).send({ error: "invalid_body", issues: err.issues });
     req.log.error({ err }, "request failed");
     return reply.code((err as { statusCode?: number }).statusCode ?? 500).send({ error: "server_error" });
@@ -150,6 +152,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const role = assignableRole(me(req), roleId);
     db.prepare("UPDATE users SET status = 'active', status_reason = NULL, role_id = ? WHERE id = ?").run(role.id, target.id);
     audit({ actorId: me(req).user.id, action: "access.approved", target: ref(target), details: { role: role.name }, req });
+    events.emit("admin:attention");
     events.emit("session:changed", target.id);
     return { ok: true };
   });
@@ -161,6 +164,7 @@ export async function adminRoutes(app: FastifyInstance) {
     db.prepare("UPDATE users SET status = 'banned', status_reason = ? WHERE id = ?").run(reason || "Access request denied", target.id);
     deleteUserSessions(target.id);
     audit({ actorId: me(req).user.id, action: "access.denied", target: ref(target), details: reason ? { reason } : undefined, req });
+    events.emit("admin:attention");
     events.emit("user:kick", target.id);
     return { ok: true };
   });
@@ -224,6 +228,7 @@ export async function adminRoutes(app: FastifyInstance) {
       ).run(discordId, `Discord user ${discordId}`, now, now, role.id);
     }
     audit({ actorId: me(req).user.id, action: "user.preapproved", target: { type: "user", id: discordId, name: existing?.name ?? null }, details: { role: role.name }, req });
+    events.emit("admin:attention");
     return { ok: true };
   });
 
@@ -283,6 +288,27 @@ export async function adminRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** Reorder roles. `ids` is every role except the owner, most senior first. Roles ranked at or above you keep their place. */
+  app.post("/api/admin/roles/order", { config: { permission: "admin.roles" } }, async (req) => {
+    const actor = me(req);
+    const { ids } = z.object({ ids: z.array(z.string()).max(100) }).parse(req.body);
+    const current = listRoles().filter((r) => r.id !== "owner");
+    if (ids.length !== current.length || new Set(ids).size !== ids.length || !current.every((r) => ids.includes(r.id))) throw new HttpError(400, "invalid_order");
+    const locked = current.filter((r) => !actor.isOwner && r.position <= actorRank(actor));
+    if (locked.some((r, i) => ids[i] !== r.id)) throw new HttpError(403, "role_outranks_you");
+    const before = current.map((r) => r.name);
+    db.transaction(() => {
+      const base = locked.at(-1)?.position ?? 0;
+      ids.slice(locked.length).forEach((id, i) => db.prepare("UPDATE roles SET position = ? WHERE id = ?").run(Math.min(base + 10 * (i + 1), 999), id));
+    })();
+    const after = ids.map((id) => current.find((r) => r.id === id)!.name);
+    if (before.join() !== after.join()) {
+      audit({ actorId: actor.user.id, action: "role.reordered", details: { order: after }, req });
+      events.emit("session:changed", null);
+    }
+    return listRoles();
+  });
+
   app.delete<{ Params: { id: string } }>("/api/admin/roles/:id", { config: { permission: "admin.roles" } }, async (req) => {
     const actor = me(req);
     const role = listRoles().find((r) => r.id === req.params.id);
@@ -331,6 +357,21 @@ export async function adminRoutes(app: FastifyInstance) {
     return next;
   });
 
+  // ---------- discord ----------
+  app.get("/api/admin/discord/channels", { config: { permission: "admin.settings" } }, async () => listTextChannels());
+
+  app.post("/api/admin/discord/test", { config: { permission: "admin.settings", rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (req) => {
+    const { channelId } = z.object({ channelId: z.string().regex(/^\d{15,22}$/) }).parse(req.body);
+    if (!events.listenerCount("notify:test")) throw new HttpError(503, "bot_offline");
+    const err = await new Promise<Error | null>((resolve) => events.emit("notify:test", channelId, resolve));
+    if (err) {
+      req.log.warn({ err }, "test notification failed");
+      throw new HttpError(502, "notify_failed");
+    }
+    audit({ actorId: me(req).user.id, action: "settings.test_notification", details: { channelId }, req });
+    return { ok: true };
+  });
+
   // ---------- system ----------
   app.get("/api/admin/system", { config: { permission: "admin.settings" } }, async () => {
     const dbPath = join(env.DATA_DIR, "friends.db");
@@ -346,7 +387,7 @@ export async function adminRoutes(app: FastifyInstance) {
       users: counts,
       activeSessions: (db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?").get(Date.now()) as { n: number }).n,
       auditEntries: (db.prepare("SELECT COUNT(*) AS n FROM audit_log").get() as { n: number }).n,
-      auditRetentionDays: 365,
+      auditRetentionDays: AUDIT_RETENTION_DAYS,
       youtube: youtubeEnabled() ? quotaUsed() : null,
     };
   });

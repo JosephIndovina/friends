@@ -60,6 +60,9 @@ export function createRealtime(http: HttpServer) {
     }
   });
   events.on("posts:changed", (change) => io.emit("posts:changed", change));
+  events.on("admin:attention", () => {
+    for (const socket of io.sockets.sockets.values()) if (socket.data.session.permissions.includes("admin.people")) socket.emit("admin:attention");
+  });
   events.on("settings:changed", async () => {
     for (const socket of io.sockets.sockets.values()) recheck(socket);
     io.emit("site:changed");

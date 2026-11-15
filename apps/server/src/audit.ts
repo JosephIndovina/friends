@@ -1,8 +1,8 @@
 import type { FastifyRequest } from "fastify";
-import type { AuditEntry } from "@friends/shared";
+import { AUDIT_RETENTION_DAYS, type AuditEntry } from "@friends/shared";
 import { db } from "./db.js";
 
-export const AUDIT_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
+export const AUDIT_RETENTION_MS = AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 interface AuditInput {
   actorId: string | null;

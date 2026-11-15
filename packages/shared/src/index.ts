@@ -20,6 +20,8 @@ export const PERMISSIONS = {
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
+/** How long audit entries are kept. */
+export const AUDIT_RETENTION_DAYS = 365;
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 
 export type UserStatus = "pending" | "active" | "suspended" | "banned" | "left";
@@ -76,6 +78,13 @@ export interface SiteSettings {
   hideVideoInMusic: boolean;
   sections: { player: boolean; cast: boolean };
   notify: { channelId: string | null; accessRequests: boolean; nowPlaying: boolean; goLive: boolean; posts: boolean };
+}
+
+/** A Discord text channel the bot can post in. */
+export interface DiscordChannel {
+  id: string;
+  name: string;
+  category: string | null;
 }
 
 export interface PresenceEntry extends Me {
@@ -154,6 +163,8 @@ export interface ServerToClient {
   "site:changed": () => void;
   /** a post was created, updated (preview, reactions) or deleted; refetch it by id */
   "posts:changed": (input: { id: string; deleted?: boolean }) => void;
+  /** admins only: something that needs attention changed (access requests); refetch counts */
+  "admin:attention": () => void;
 }
 
 export interface ClientToServer {

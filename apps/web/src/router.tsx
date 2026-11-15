@@ -1,15 +1,15 @@
 import { createRootRouteWithContext, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import type { Permission, Session } from "@friends/shared";
 import { Shell } from "./components/Shell";
-import { ADMIN_TABS, can } from "./lib/api";
+import { can, isAdminish } from "./lib/api";
 import { Home } from "./routes/Home";
-import { Settings } from "./routes/Settings";
-import { AdminLayout, NotAllowed } from "./routes/admin/AdminLayout";
-import { Audit } from "./routes/admin/Audit";
+import { Audit, type AuditSearch } from "./routes/admin/Audit";
+import { Overview } from "./routes/admin/Overview";
 import { People } from "./routes/admin/People";
-import { Roles } from "./routes/admin/Roles";
+import { RoleEdit, Roles } from "./routes/admin/Roles";
 import { SiteSettings } from "./routes/admin/SiteSettings";
-import { System } from "./routes/admin/System";
+import { NotAllowed, SettingsLayout } from "./routes/settings/SettingsLayout";
+import { Account, Appearance, Playback } from "./routes/settings/You";
 
 export interface RouterContext { session: Session }
 
@@ -17,38 +17,52 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: () => <Shell session={rootRoute.useRouteContext().session} />,
 });
 const useSession = () => rootRoute.useRouteContext().session;
+const to = (path: string) => () => { throw redirect({ to: path }); };
 
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Home session={useSession()} /> });
 // Old links from Discord posts.
-const musicRoute = createRoute({ getParentRoute: () => rootRoute, path: "/music", beforeLoad: () => { throw redirect({ to: "/" }); } });
-const mediaRoute = createRoute({ getParentRoute: () => rootRoute, path: "/media", beforeLoad: () => { throw redirect({ to: "/" }); } });
+const musicRoute = createRoute({ getParentRoute: () => rootRoute, path: "/music", beforeLoad: to("/") });
+const mediaRoute = createRoute({ getParentRoute: () => rootRoute, path: "/media", beforeLoad: to("/") });
 // Casting happens on Home's stage; old links land there.
-const castRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cast", beforeLoad: () => { throw redirect({ to: "/" }); } });
-const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Settings session={useSession()} /> });
+const castRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cast", beforeLoad: to("/") });
 
-const adminRoute = createRoute({ getParentRoute: () => rootRoute, path: "/admin", component: () => <AdminLayout session={useSession()} /> });
-const adminIndex = createRoute({
-  getParentRoute: () => adminRoute, path: "/",
-  beforeLoad: ({ context }) => {
-    const first = ADMIN_TABS.find((t) => can(context.session, t.perm));
-    if (first) throw redirect({ to: first.to });
-  },
-  component: NotAllowed,
-});
-const guarded = (perm: Permission, el: (s: Session) => React.ReactNode) =>
+// Your settings and the admin pages share one layout with a sidebar.
+const prefsRoute = createRoute({ getParentRoute: () => rootRoute, id: "prefs", component: () => <SettingsLayout session={useSession()} /> });
+const settingsIndex = createRoute({ getParentRoute: () => prefsRoute, path: "/settings", component: Appearance });
+const appearanceRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/settings/appearance", component: Appearance });
+const playbackRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/settings/playback", component: Playback });
+const accountRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/settings/account", component: () => <Account session={useSession()} /> });
+
+const guarded = (perm: Permission | "any-admin", el: (s: Session) => React.ReactNode) =>
   function Guarded() {
     const s = useSession();
-    return can(s, perm) ? el(s) : <NotAllowed />;
+    return (perm === "any-admin" ? isAdminish(s) : can(s, perm)) ? el(s) : <NotAllowed />;
   };
-const peopleRoute = createRoute({ getParentRoute: () => adminRoute, path: "/people", component: guarded("admin.people", (s) => <People session={s} />) });
-const rolesRoute = createRoute({ getParentRoute: () => adminRoute, path: "/roles", component: guarded("admin.roles", (s) => <Roles session={s} />) });
-const auditRoute = createRoute({ getParentRoute: () => adminRoute, path: "/audit", component: guarded("admin.audit", (s) => <Audit session={s} />) });
-const siteSettingsRoute = createRoute({ getParentRoute: () => adminRoute, path: "/settings", component: guarded("admin.settings", () => <SiteSettings />) });
-const systemRoute = createRoute({ getParentRoute: () => adminRoute, path: "/system", component: guarded("admin.settings", () => <System />) });
+const overviewRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/admin", component: guarded("any-admin", (s) => <Overview session={s} />) });
+const peopleRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/admin/people", component: guarded("admin.people", (s) => <People session={s} />) });
+const rolesRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/admin/roles", component: guarded("admin.roles", (s) => <Roles session={s} />) });
+const roleRoute = createRoute({
+  getParentRoute: () => prefsRoute, path: "/admin/roles/$roleId",
+  component: function RoleRoute() {
+    const { roleId } = roleRoute.useParams();
+    const s = useSession();
+    return can(s, "admin.roles") ? <RoleEdit session={s} roleId={roleId} /> : <NotAllowed />;
+  },
+});
+const siteRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/admin/site", component: guarded("admin.settings", () => <SiteSettings />) });
+const auditRoute = createRoute({
+  getParentRoute: () => prefsRoute, path: "/admin/audit",
+  validateSearch: (s: Record<string, unknown>): AuditSearch =>
+    Object.fromEntries(["actor", "target", "name", "action", "from", "to"].filter((k) => typeof s[k] === "string" && s[k]).map((k) => [k, s[k] as string])),
+  component: guarded("admin.audit", (s) => <Audit session={s} />),
+});
+// Old admin paths.
+const oldSiteSettings = createRoute({ getParentRoute: () => rootRoute, path: "/admin/settings", beforeLoad: to("/admin/site") });
+const oldSystem = createRoute({ getParentRoute: () => rootRoute, path: "/admin/system", beforeLoad: to("/admin") });
 
 const routeTree = rootRoute.addChildren([
-  homeRoute, musicRoute, mediaRoute, castRoute, settingsRoute,
-  adminRoute.addChildren([adminIndex, peopleRoute, rolesRoute, auditRoute, siteSettingsRoute, systemRoute]),
+  homeRoute, musicRoute, mediaRoute, castRoute, oldSiteSettings, oldSystem,
+  prefsRoute.addChildren([settingsIndex, appearanceRoute, playbackRoute, accountRoute, overviewRoute, peopleRoute, rolesRoute, roleRoute, siteRoute, auditRoute]),
 ]);
 
 export const router = createRouter({ routeTree, context: undefined! as RouterContext });

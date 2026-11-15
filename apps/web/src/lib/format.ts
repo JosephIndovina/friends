@@ -8,6 +8,24 @@ export function ago(ms: number | null | undefined): string {
   return "Just now";
 }
 
+export const time = (ms: number) => new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(ms);
+
+export const fullDate = (ms: number) => new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(ms);
+
+/** "Today", "Yesterday", or a date, for grouping lists by day. */
+export function dayLabel(ms: number): string {
+  const d = new Date(ms);
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const diff = Math.round((start.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 864e5);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return new Intl.DateTimeFormat(undefined, { weekday: diff < 7 ? "long" : undefined, month: "short", day: "numeric", year: d.getFullYear() === start.getFullYear() ? undefined : "numeric" }).format(d);
+}
+
+export const shortDateTime = (ms: number) =>
+  new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
+
 export const dateTime = (ms: number) =>
   new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" }).format(ms);
 
@@ -37,6 +55,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "role.created": "Created role",
   "role.updated": "Edited role",
   "role.deleted": "Deleted role",
+  "role.reordered": "Reordered roles",
+  "settings.test_notification": "Sent a test notification",
   "settings.updated": "Changed settings",
   "site.lockdown_on": "Turned lockdown on",
   "site.lockdown_off": "Turned lockdown off",
@@ -83,6 +103,9 @@ export const ERROR_TEXT: Record<string, string> = {
   not_pending: "They’re no longer waiting for approval.",
   missing_permission: "You don’t have permission to do that.",
   invalid_body: "Something in the form isn’t valid.",
+  invalid_order: "The role list changed. Reload and try again.",
+  bot_offline: "The Discord bot is offline. Check the server logs.",
+  notify_failed: "Discord rejected the message. Check that the bot can post in that channel.",
   bad_origin: "That request was blocked. Reload the page and try again.",
 };
 export const errorText = (e: unknown) =>
