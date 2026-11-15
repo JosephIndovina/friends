@@ -62,6 +62,7 @@ ddns         keeps rtc.indovina.dev (DNS-only) on the home IP for LiveKit media
   - Synced YouTube player with its own queue. Twitch items can be queued alongside YouTube.
   - Reactions and timestamped comments.
   - Watch history.
+- **Cast lives on Home's stage (revised 2026-11-14):** the shared player and every cast stream are *sources* on one stage. Each viewer focuses one source large, keeps the others as thumbnails, and can hide any source (hidden = not loaded and not heard). Audio: every visible source is audible, each with its own per-viewer mute. The stage framework, Sources menu and thumbnail strip are built now; streams join as sources in Phase 4. The YouTube player's thumbnail stays at least 356×200 (YouTube's minimum player size).
 - **Cast:**
   - **Per-viewer stream toggles:** each viewer turns individual people's streams on or off. Off means not subscribed at all, so no bandwidth is used. Pinning and resizing tiles are client-side only, saved per device.
   - Multiple streams at once is a core requirement. Several people can go live at the same time, and one person can share more than one source (for example a game plus a second monitor).

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 /** Viewer-local player preferences shared by the dock, Home and the transport. */
 interface PlayerCtx {
@@ -18,9 +18,24 @@ interface PlayerCtx {
   /** viewer closed the docked mini player for this item */
   dismissedFor: string | null;
   setDismissedFor: (id: string | null) => void;
+  /** stage sources this viewer has hidden (not loaded, not heard); saved on this device */
+  hidden: ReadonlySet<string>;
+  setHidden: (id: string, hide: boolean) => void;
+  /** stage source this viewer is focusing; null = the default (the player) */
+  focused: string | null;
+  setFocused: (id: string | null) => void;
 }
 
 const Ctx = createContext<PlayerCtx | null>(null);
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? (JSON.parse(v) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function readMuted() {
   try {
@@ -46,6 +61,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [syncing, setSyncing] = useState(false);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
+  const [hidden, setHiddenSet] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>("stage.hidden", [])));
+  const [focused, setFocused] = useState<string | null>(() => readJson<string | null>("stage.focus", null));
+  const setHidden = useCallback((id: string, hide: boolean) => {
+    setHiddenSet((prev) => {
+      const next = new Set(prev);
+      if (hide) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("stage.hidden", JSON.stringify([...hidden]));
+      localStorage.setItem("stage.focus", JSON.stringify(focused));
+    } catch {
+      /* this visit only */
+    }
+  }, [hidden, focused]);
   useEffect(() => {
     try {
       localStorage.setItem("volume", String(volume));
@@ -67,8 +100,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [blocked]);
   const value = useMemo(
-    () => ({ audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, dismissedFor, setDismissedFor }),
-    [audible, blocked, volume, syncing, slot, dismissedFor],
+    () => ({ audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, dismissedFor, setDismissedFor, hidden, setHidden, focused, setFocused }),
+    [audible, blocked, volume, syncing, slot, dismissedFor, hidden, setHidden, focused],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

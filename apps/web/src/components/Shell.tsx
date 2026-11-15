@@ -21,7 +21,7 @@ function sectionFor(path: string): Section {
 function ActivityReporter() {
   const now = useMediaState()?.now ?? null;
   const p = usePlayer();
-  const visible = Boolean(p.slot) || p.dismissedFor !== now?.item.id;
+  const visible = !p.hidden.has("player") && (Boolean(p.slot) || p.dismissedFor !== now?.item.id);
   const activity: Activity = now?.playing && p.audible && visible ? (now.item.mode === "music" ? "listening" : "watching") : "idle";
   useEffect(() => reportActivity(activity), [activity]);
   return null;

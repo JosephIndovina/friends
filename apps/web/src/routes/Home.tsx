@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Maximize, Pause, Play, SkipForward, Volume2 } from "lucide-react";
 import { SEEKABLE, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
+import { SourceStrip, SourcesMenu, type StageSource } from "../components/stage/Sources";
 import { History, ModeToggle, Queue, Seek, Volume } from "../components/media/parts";
 import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
@@ -44,6 +45,21 @@ export function Home({ session }: { session: Session }) {
 
   const pos = now ? expectedPosition(now) : 0;
 
+  // Stage sources. Cast streams join this list in Phase 4; for now the shared player is the only one.
+  const sources: StageSource[] = now
+    ? [{
+        id: "player",
+        label: "Player",
+        detail: now.item.title,
+        thumbnail: now.item.thumbnail,
+        audible: p.audible,
+        setAudible: p.setAudible,
+      }]
+    : [];
+  const visible = sources.filter((x) => !p.hidden.has(x.id));
+  const focusId = visible.some((x) => x.id === p.focused) ? p.focused : (visible[0]?.id ?? null);
+  const playerFocused = focusId === "player";
+
   return (
     <>
       <div className="room media-room">
@@ -55,7 +71,13 @@ export function Home({ session }: { session: Session }) {
                 <p>Search YouTube or paste a YouTube or Twitch link.</p>
               </div>
             )}
-            {now && music && (
+            {now && !focusId && (
+              <div className="stage-idle">
+                <h1>All sources hidden</h1>
+                <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
+              </div>
+            )}
+            {now && playerFocused && music && (
               <div className="music-view">
                 {now.item.thumbnail && <img className="music-backdrop" src={now.item.thumbnail} alt="" />}
                 {now.item.thumbnail && <img className="music-art" src={now.item.thumbnail} alt="" />}
@@ -65,10 +87,10 @@ export function Home({ session }: { session: Session }) {
                 </div>
               </div>
             )}
-            {now && <div ref={slotRef} className={music ? "player-slot player-slot-mini" : "player-slot"} />}
+            {now && playerFocused && <div ref={slotRef} className={music ? "player-slot player-slot-mini" : "player-slot"} />}
           </div>
 
-          {now && (
+          {now && playerFocused && (
             <>
               <div className="transport">
                 <button className="icon-btn transport-main" disabled={!control}
@@ -97,10 +119,18 @@ export function Home({ session }: { session: Session }) {
                     {p.syncing && <span className="syncing"> · Syncing</span>}
                   </span>
                 </div>
-                {now.item.kind === "youtube" && <ModeToggle item={now.item} disabled={!control} />}
+                <div className="info-actions">
+                  {now.item.kind === "youtube" && <ModeToggle item={now.item} disabled={!control} />}
+                  <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
+                </div>
               </div>
             </>
           )}
+          <SourceStrip
+            sources={visible.filter((x) => x.id !== focusId)}
+            onFocus={p.setFocused}
+            renderTile={(x) => (x.id === "player" ? <div ref={slotRef} className="player-slot" /> : null)}
+          />
         </section>
 
         <aside className="side">

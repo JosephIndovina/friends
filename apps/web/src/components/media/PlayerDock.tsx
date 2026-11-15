@@ -41,7 +41,7 @@ export function PlayerDock({ session }: { session: Session }) {
     return () => cancelAnimationFrame(raf);
   }, [p.slot]);
 
-  if (!now) return null;
+  if (!now || p.hidden.has("player")) return null;
   const docked = !p.slot;
   const mini = p.slot?.classList.contains("player-slot-mini");
   if (docked && p.dismissedFor === now.item.id) return null;
