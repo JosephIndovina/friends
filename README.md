@@ -33,4 +33,4 @@ Every push to `main` runs CI and publishes `ghcr.io/josephindovina/friends:lates
 8. **Install the app:** Apps → Discover Apps → ⋮ → **Install via YAML**. Paste [deploy/docker-compose.yml](deploy/docker-compose.yml).
 
 ### Updating
-After CI publishes a new image, open the app in TrueNAS and choose **Pull image / Update** (or run `docker compose pull && docker compose up -d`).
+**Updates are automatic.** The app container carries the Watchtower label, so the Watchtower running in the osrs-bingo app on the same NAS pulls each new `:latest` within 5 minutes of CI publishing it. To update by hand instead, open the app in TrueNAS and choose **Pull image / Update**.

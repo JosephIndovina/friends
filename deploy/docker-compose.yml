@@ -6,6 +6,9 @@ services:
   app:
     image: ghcr.io/josephindovina/friends:latest
     restart: unless-stopped
+    # osrs-bingo's Watchtower updates labelled containers on this host within 5 minutes of a push to main.
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     env_file: /mnt/NAS/friends/.env
     environment:
       NODE_ENV: production
