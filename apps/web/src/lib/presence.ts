@@ -26,4 +26,5 @@ export const whereLabel: Record<Section, string> = {
   media: "In Media",
   cast: "In Cast",
   settings: "In Settings",
+  admin: "In Admin",
 };

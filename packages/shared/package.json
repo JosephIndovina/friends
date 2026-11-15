@@ -2,8 +2,17 @@
   "name": "@friends/shared",
   "private": true,
   "type": "module",
-  "types": "./src/index.ts",
-  "exports": { ".": { "types": "./src/index.ts" } },
-  "scripts": { "typecheck": "tsc --noEmit -p ." },
+  "files": ["dist", "src"],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p ."
+  },
   "devDependencies": { "typescript": "5.9.3" }
 }

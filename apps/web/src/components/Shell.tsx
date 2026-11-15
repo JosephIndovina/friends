@@ -1,7 +1,8 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { Clapperboard, Home, MonitorUp, Music2, Settings } from "lucide-react";
 import { useEffect } from "react";
-import type { Me, Section } from "@friends/shared";
+import type { Section, Session } from "@friends/shared";
+import { isAdminish } from "../lib/api";
 import { reportSection } from "../lib/presence";
 import { Avatar } from "./Avatar";
 
@@ -14,10 +15,12 @@ const nav = [
 ] as const satisfies ReadonlyArray<{ to: string; label: string; section: Section; Icon: unknown }>;
 
 function sectionFor(path: string): Section {
+  if (path.startsWith("/admin")) return "admin";
   return nav.find((n) => n.to !== "/" && path.startsWith(n.to))?.section ?? "home";
 }
 
-export function Shell({ me }: { me: Me }) {
+export function Shell({ session }: { session: Session }) {
+  const me = session.user;
   const path = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => reportSection(sectionFor(path)), [path]);
 
@@ -29,6 +32,7 @@ export function Shell({ me }: { me: Me }) {
           {nav.map(({ to, label }) => (
             <Link key={to} to={to} activeOptions={{ exact: to === "/" }}>{label}</Link>
           ))}
+          {isAdminish(session) && <Link to="/admin">Admin</Link>}
         </nav>
         <div className="topbar-end">
           <Link to="/settings" className="me-link" aria-label={`Settings for ${me.name}`}>

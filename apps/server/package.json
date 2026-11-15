@@ -3,14 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "dev": "tsx watch --conditions=development --env-file-if-exists=../../.env src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",
+    "@fastify/rate-limit": "11.2.2",
     "@fastify/static": "10.1.11",
+    "@friends/shared": "workspace:*",
     "better-sqlite3": "13.2.0",
     "discord.js": "14.28.1",
     "fastify": "5.12.8",
@@ -18,7 +20,6 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@friends/shared": "workspace:*",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "22.20.5",
     "tsx": "4.23.15",

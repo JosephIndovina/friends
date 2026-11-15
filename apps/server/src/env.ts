@@ -11,6 +11,8 @@ const schema = z.object({
   DISCORD_BOT_TOKEN: z.string().min(1),
   DISCORD_GUILD_ID: z.string().min(1),
   DISCORD_NOTIFY_CHANNEL_ID: z.string().optional(),
+  OWNER_DISCORD_ID: z.string().regex(/^\d{15,22}$/, "must be a Discord user id"),
+  APP_VERSION: z.string().default("dev"),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -22,4 +24,5 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === "production";
+export const publicOrigin = new URL(env.PUBLIC_URL).origin;
 export const redirectUri = new URL("/auth/discord/callback", env.PUBLIC_URL).toString();

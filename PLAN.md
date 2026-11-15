@@ -76,6 +76,24 @@ ddns         keeps rtc.indovina.dev (DNS-only) on the home IP for LiveKit media
 - **Slash commands:** `/play <query|url>`, `/watch <url>`, `/live` (who's casting), `/site`.
 - **Per-user preferences:** what triggers a notification, and optional DMs.
 
+## Access control & admin (built 2026-11-14)
+- **Who gets in:** an approval queue. Any Discord server member can sign in and request access, then waits as Pending until an admin approves them. Admins can also pre-approve people by Discord ID. The owner (`OWNER_DISCORD_ID`) always has every permission and can't be demoted.
+- **Roles:** Owner, Admin, Moderator and Member are built in. Their permissions are editable, and custom roles can be added.
+  - Roles are ranked. People can only manage roles and people ranked below them, and can't grant permissions they lack.
+- **Enforcement:**
+  - The server denies by default. Every API route must declare `public`, `allowPending`, `anyActive` or a `permission`, or the server refuses to start.
+  - State-changing requests must come from the site's own origin.
+  - Requests are rate-limited.
+  - Socket connections are gated the same way. Role and status changes apply live: affected users get `session:changed`, and suspensions drop their sockets.
+  - Discord membership is re-checked every 15 minutes. Leaving the server removes access, and rejoining and signing in restores it.
+- **Admin panel** (`/admin`):
+  - **People:** approve or deny, roles, suspend, ban, reinstate, sign out everywhere, pre-approve.
+  - **Roles:** a permission matrix.
+  - **Audit log:** filters and CSV export, kept for 1 year, append-only.
+  - **Settings:** lockdown, section switches, Discord notification options.
+  - **System:** health, counts, database backup download.
+- **Audit scope:** everything. Security and admin events now; playback, post and cast events are added as each section ships.
+
 ## Phases
 0. **Foundation:**
    - Monorepo, Docker Compose, Caddy.

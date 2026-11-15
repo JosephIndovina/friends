@@ -12,6 +12,8 @@ COPY . .
 RUN pnpm build && pnpm --filter @friends/server deploy --prod /out
 
 FROM node:22-bookworm-slim
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 ENV NODE_ENV=production DATA_DIR=/data WEB_DIST=/app/web PORT=3000
 WORKDIR /app
 COPY --from=build /out ./

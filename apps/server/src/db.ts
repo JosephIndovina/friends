@@ -23,6 +23,46 @@ const migrations: string[] = [
      expires_at  INTEGER NOT NULL
    );
    CREATE INDEX sessions_user ON sessions(user_id);`,
+
+  `CREATE TABLE roles (
+     id          TEXT PRIMARY KEY,
+     name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+     permissions TEXT NOT NULL,             -- JSON array of Permission
+     builtin     INTEGER NOT NULL DEFAULT 0,
+     position    INTEGER NOT NULL           -- lower = more senior; owner = 0
+   );
+   INSERT INTO roles (id, name, permissions, builtin, position) VALUES
+     ('owner', 'Owner', '[]', 1, 0),
+     ('admin', 'Admin', '["music.queue","music.control","media.queue","media.control","cast.watch","cast.stream","posts.create","posts.moderate","playback.moderate","admin.people","admin.roles","admin.audit","admin.settings"]', 1, 10),
+     ('moderator', 'Moderator', '["music.queue","music.control","media.queue","media.control","cast.watch","cast.stream","posts.create","posts.moderate","playback.moderate","admin.audit"]', 1, 20),
+     ('member', 'Member', '["music.queue","music.control","media.queue","media.control","cast.watch","cast.stream","posts.create"]', 1, 30);
+
+   ALTER TABLE users ADD COLUMN role_id TEXT REFERENCES roles(id) ON DELETE SET NULL;
+   ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
+   ALTER TABLE users ADD COLUMN status_reason TEXT;
+   ALTER TABLE users ADD COLUMN last_seen_at INTEGER;
+
+   ALTER TABLE sessions ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE sessions ADD COLUMN ip TEXT;
+   ALTER TABLE sessions ADD COLUMN user_agent TEXT;
+
+   CREATE TABLE audit_log (
+     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+     at          INTEGER NOT NULL,
+     actor_id    TEXT,                      -- null = the system
+     action      TEXT NOT NULL,
+     target_type TEXT,
+     target_id   TEXT,
+     target_name TEXT,
+     details     TEXT,                      -- JSON
+     ip          TEXT,
+     user_agent  TEXT
+   );
+   CREATE INDEX audit_at ON audit_log(at);
+   CREATE INDEX audit_actor ON audit_log(actor_id, at);
+   CREATE INDEX audit_action ON audit_log(action, at);
+
+   CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;

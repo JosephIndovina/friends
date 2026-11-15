@@ -1,8 +1,16 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags, SlashCommandBuilder } from "discord.js";
+import {
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, DiscordAPIError, EmbedBuilder, Events, GatewayIntentBits, MessageFlags, SlashCommandBuilder,
+} from "discord.js";
 import type { FastifyBaseLogger } from "fastify";
+import { audit } from "./audit.js";
+import { db } from "./db.js";
 import { env } from "./env.js";
+import { events } from "./events.js";
+import { deleteUserSessions, isOwner } from "./sessions.js";
+import { getSettings } from "./settings.js";
 
-const prodUrl = env.PUBLIC_URL;
+const MEMBERSHIP_CHECK_MS = 15 * 60 * 1000;
+const UNKNOWN_MEMBER = 10007;
 
 const commands = [new SlashCommandBuilder().setName("site").setDescription("Get the link to the friends site")];
 
@@ -25,8 +33,10 @@ export function linkButton(label: string, url: string) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(label).setURL(url));
 }
 
+const siteUrl = (path = "/") => new URL(path, env.PUBLIC_URL).toString();
+
 export async function startBot(log: FastifyBaseLogger) {
-  const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
   client.once(Events.ClientReady, async (c) => {
     log.info(`bot ready as ${c.user.tag}`);
@@ -37,22 +47,44 @@ export async function startBot(log: FastifyBaseLogger) {
     } catch (err) {
       log.warn({ err }, `bot is not in server ${env.DISCORD_GUILD_ID} yet; add it with ${installUrl()}`);
     }
+    void checkMembership();
+    setInterval(() => void checkMembership(), MEMBERSHIP_CHECK_MS).unref();
   });
   client.on(Events.Error, (err) => log.error({ err }, "discord client error"));
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand() || interaction.guildId !== env.DISCORD_GUILD_ID) return;
     if (interaction.commandName === "site") {
-      await interaction.reply({ content: "Come hang out.", components: [linkButton("Open friends", prodUrl)], flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: "Come hang out.", components: [linkButton("Open friends", siteUrl())], flags: MessageFlags.Ephemeral });
     }
   });
 
-  await client.login(env.DISCORD_BOT_TOKEN);
+  /** Anyone approved who has left the Discord server loses access (restored automatically if they rejoin and sign in). */
+  async function checkMembership() {
+    const guild = client.guilds.cache.get(env.DISCORD_GUILD_ID);
+    if (!guild) return;
+    const users = db.prepare("SELECT id, name FROM users WHERE status IN ('active', 'pending')").all() as Array<{ id: string; name: string }>;
+    for (const u of users) {
+      if (isOwner(u.id)) continue;
+      try {
+        await guild.members.fetch({ user: u.id, force: true });
+      } catch (err) {
+        if (err instanceof DiscordAPIError && err.code === UNKNOWN_MEMBER) {
+          db.prepare("UPDATE users SET status = 'left', status_reason = 'Left the Discord server' WHERE id = ?").run(u.id);
+          deleteUserSessions(u.id);
+          audit({ actorId: null, action: "user.left_server", target: { type: "user", id: u.id, name: u.name } });
+          events.emit("user:kick", u.id);
+        } else {
+          log.warn({ err, user: u.id }, "membership check failed");
+        }
+      }
+    }
+  }
 
-  /** Post an embed with a Join button to the notification channel. Later phases batch these. */
   async function notify(opts: { title: string; description?: string; url: string; buttonLabel?: string; thumbnail?: string }) {
-    if (!env.DISCORD_NOTIFY_CHANNEL_ID) return;
-    const channel = await client.channels.fetch(env.DISCORD_NOTIFY_CHANNEL_ID);
+    const channelId = getSettings().notify.channelId;
+    if (!channelId) return;
+    const channel = await client.channels.fetch(channelId);
     if (!channel?.isSendable()) return;
     const embed = new EmbedBuilder().setTitle(opts.title).setURL(opts.url).setColor(0x6f95d8);
     if (opts.description) embed.setDescription(opts.description);
@@ -60,5 +92,17 @@ export async function startBot(log: FastifyBaseLogger) {
     await channel.send({ embeds: [embed], components: [linkButton(opts.buttonLabel ?? "Join", opts.url)] });
   }
 
+  events.on("access:requested", (user) => {
+    if (!getSettings().notify.accessRequests) return;
+    notify({
+      title: `${user.name} asked to join friends`,
+      description: "An admin can approve or deny them in the admin panel.",
+      url: siteUrl("/admin"),
+      buttonLabel: "Review",
+      thumbnail: user.avatarUrl,
+    }).catch((err) => log.warn({ err }, "access request notification failed"));
+  });
+
+  await client.login(env.DISCORD_BOT_TOKEN);
   return { client, notify };
 }
