@@ -1,25 +1,25 @@
 # TrueNAS SCALE: Apps → Discover Apps → ⋮ → Install via YAML, then paste this file.
-# Replace /mnt/tank/apps/friends with your dataset path (it holds .env and data/).
+# Dataset NAS/friends holds .env (secrets); NAS/friends/data holds the database (owned by uid 1000).
 name: friends
 
 services:
   app:
     image: ghcr.io/josephindovina/friends:latest
     restart: unless-stopped
-    env_file: /mnt/tank/apps/friends/.env
+    env_file: /mnt/NAS/friends/.env
     environment:
       NODE_ENV: production
       PUBLIC_URL: https://friends.indovina.dev
       DATA_DIR: /data
     volumes:
-      - /mnt/tank/apps/friends/data:/data
+      - /mnt/NAS/friends/data:/data
     # No published ports: the Cloudflare tunnel reaches it on the internal network.
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     command: tunnel --no-autoupdate run
-    env_file: /mnt/tank/apps/friends/.env   # needs TUNNEL_TOKEN
+    env_file: /mnt/NAS/friends/.env   # needs TUNNEL_TOKEN
     depends_on: [app]
 
   # Keeps rtc.indovina.dev (DNS-only, grey cloud) pointed at your home IP for Cast/LiveKit.
@@ -30,7 +30,7 @@ services:
     cap_drop: [all]
     security_opt: [no-new-privileges:true]
     user: "1000:1000"
-    env_file: /mnt/tank/apps/friends/.env   # needs CLOUDFLARE_API_TOKEN
+    env_file: /mnt/NAS/friends/.env   # needs CLOUDFLARE_API_TOKEN
     environment:
       DOMAINS: rtc.indovina.dev
       PROXIED: "false"
