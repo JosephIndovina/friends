@@ -84,6 +84,21 @@ const migrations: Array<string | (() => void)> = [
       db.prepare("UPDATE roles SET permissions = ? WHERE id = ?").run(JSON.stringify([...new Set(perms)]), r.id);
     }
   },
+
+  `CREATE TABLE lyrics_cache (key TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at INTEGER NOT NULL);
+   CREATE TABLE playlists (
+     id          TEXT PRIMARY KEY,
+     name        TEXT NOT NULL,
+     owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     created_at  INTEGER NOT NULL,
+     updated_at  INTEGER NOT NULL
+   );
+   CREATE TABLE playlist_items (
+     playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+     pos         INTEGER NOT NULL,
+     data        TEXT NOT NULL,             -- JSON MediaItem (id, addedBy and startAt are reset when queued)
+     PRIMARY KEY (playlist_id, pos)
+   );`,
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;

@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Home, MonitorUp, Settings, Shield } from "lucide-react";
+import { Home, Settings, Shield } from "lucide-react";
 import { useEffect } from "react";
 import type { Activity, Section, Session } from "@friends/shared";
 import { isAdminish } from "../lib/api";
@@ -12,7 +12,6 @@ import { PresenceStack } from "./PresenceStack";
 
 function sectionFor(path: string): Section {
   if (path.startsWith("/admin")) return "admin";
-  if (path.startsWith("/cast")) return "cast";
   if (path.startsWith("/settings")) return "settings";
   return "home";
 }
@@ -33,7 +32,6 @@ export function Shell({ session }: { session: Session }) {
   useEffect(() => reportSection(sectionFor(path)), [path]);
   const nav = [
     { to: "/", label: "Home", Icon: Home },
-    { to: "/cast", label: "Cast", Icon: MonitorUp },
     { to: "/settings", label: "Settings", Icon: Settings },
     ...(isAdminish(session) ? [{ to: "/admin", label: "Admin", Icon: Shield }] : []),
   ] as const;

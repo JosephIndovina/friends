@@ -170,3 +170,27 @@ export interface ClientToServer {
   /** a client's player learned the duration of `itemId` */
   "media:duration": (input: { itemId: string; duration: number }) => void;
 }
+
+// ---------- music ----------
+
+export interface Lyrics {
+  /** null = no lyrics found */
+  lines: Array<{ t: number; text: string }> | null;
+  plain: string | null;
+  instrumental: boolean;
+  artist: string;
+  track: string;
+}
+
+export interface PlaylistSummary {
+  id: string;
+  name: string;
+  owner: { id: string; name: string };
+  count: number;
+  updatedAt: number;
+  cover: string | null;
+}
+
+export interface Playlist extends PlaylistSummary {
+  items: MediaItem[];
+}

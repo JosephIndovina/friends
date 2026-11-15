@@ -4,6 +4,7 @@ import type { MediaItem, Session } from "@friends/shared";
 import { can } from "../../lib/api";
 import { ago } from "../../lib/format";
 import { fmtTime, KIND_LABEL, mediaAction } from "../../lib/media";
+import { SaveToPlaylist } from "../music/Playlists";
 
 export function Seek({ position, duration, disabled, onSeek }: { position: number; duration: number | null; disabled: boolean; onSeek: (s: number) => void }) {
   const [drag, setDrag] = useState<number | null>(null);
@@ -43,7 +44,7 @@ export function Queue({ session, items, act }: { session: Session; items: MediaI
   return (
     <div className="block">
       <div className="block-head">
-        <h2>Up next {items.length > 0 && <span className="quiet">{items.length}</span>}</h2>
+        <span />
         {items.length > 0 && can(session, "playback.moderate") && (
           <button className="btn btn-quiet btn-s" onClick={() => window.confirm("Clear the whole queue?") && act(mediaAction("media:clear"))}>Clear</button>
         )}
@@ -70,6 +71,7 @@ export function Queue({ session, items, act }: { session: Session; items: MediaI
                 <span className="queue-meta">{[item.duration ? fmtTime(item.duration) : KIND_LABEL[item.kind], item.addedBy.name].join(" · ")}</span>
               </span>
               <span className="queue-actions">
+                {can(session, "player.queue") && <SaveToPlaylist itemId={item.id} label={item.title} />}
                 {control && <button className="icon-btn" aria-label={`Play ${item.title} now`} title="Play now" onClick={() => act(mediaAction("media:playNow", { id: item.id }))}><Play aria-hidden /></button>}
                 {canRemove(item) && <button className="icon-btn danger" aria-label={`Remove ${item.title}`} title="Remove" onClick={() => act(mediaAction("media:remove", { id: item.id }))}><Trash2 aria-hidden /></button>}
               </span>
@@ -82,19 +84,23 @@ export function Queue({ session, items, act }: { session: Session; items: MediaI
 }
 
 export function History({ items, canReplay, onReplay }: { items: Array<MediaItem & { playedAt: number }>; canReplay: boolean; onReplay: (id: string) => void }) {
-  if (!items.length) return null;
+  if (!items.length) return <p className="block-note">Nothing played yet.</p>;
   return (
     <div className="block">
-      <h2>Recently played</h2>
       <ol className="queue history">
-        {items.slice(0, 10).map((item) => (
+        {items.map((item) => (
           <li key={item.id} className="queue-item">
             <Thumb item={item} />
             <span className="queue-text">
               <span className="queue-title" title={item.title}>{item.title}</span>
               <span className="queue-meta">{ago(item.playedAt)}</span>
             </span>
-            {canReplay && <span className="queue-actions"><button className="icon-btn" aria-label={`Queue ${item.title} again`} title="Queue again" onClick={() => onReplay(item.id)}><RotateCcw aria-hidden /></button></span>}
+            {canReplay && (
+              <span className="queue-actions">
+                <SaveToPlaylist itemId={item.id} label={item.title} />
+                <button className="icon-btn" aria-label={`Queue ${item.title} again`} title="Queue again" onClick={() => onReplay(item.id)}><RotateCcw aria-hidden /></button>
+              </span>
+            )}
           </li>
         ))}
       </ol>

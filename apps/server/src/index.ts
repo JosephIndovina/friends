@@ -11,6 +11,7 @@ import { adminRoutes } from "./admin.js";
 import { pruneAudit } from "./audit.js";
 import { authRoutes } from "./auth.js";
 import { mediaRoutes } from "./mediaRoutes.js";
+import { playlistRoutes } from "./playlists.js";
 import { createRealtime } from "./realtime.js";
 import { ensureOwner, pruneSessions } from "./sessions.js";
 import { startBot } from "./bot.js";
@@ -30,6 +31,7 @@ app.get("/healthz", async () => ({ ok: true }));
 await app.register(authRoutes);
 await app.register(adminRoutes);
 await app.register(mediaRoutes);
+await app.register(playlistRoutes);
 
 // In production the server also serves the built web app (single container).
 const webDist = resolve(env.WEB_DIST ?? "../web/dist");

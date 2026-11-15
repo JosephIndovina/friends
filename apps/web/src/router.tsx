@@ -3,7 +3,6 @@ import type { Permission, Session } from "@friends/shared";
 import { Shell } from "./components/Shell";
 import { ADMIN_TABS, can } from "./lib/api";
 import { Home } from "./routes/Home";
-import { SectionSoon } from "./routes/SectionSoon";
 import { Settings } from "./routes/Settings";
 import { AdminLayout, NotAllowed } from "./routes/admin/AdminLayout";
 import { Audit } from "./routes/admin/Audit";
@@ -23,10 +22,8 @@ const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", comp
 // Old links from Discord posts.
 const musicRoute = createRoute({ getParentRoute: () => rootRoute, path: "/music", beforeLoad: () => { throw redirect({ to: "/" }); } });
 const mediaRoute = createRoute({ getParentRoute: () => rootRoute, path: "/media", beforeLoad: () => { throw redirect({ to: "/" }); } });
-const castRoute = createRoute({
-  getParentRoute: () => rootRoute, path: "/cast",
-  component: () => <SectionSoon title="Cast" body="Coming in Phase 4." />,
-});
+// Casting happens on Home's stage; old links land there.
+const castRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cast", beforeLoad: () => { throw redirect({ to: "/" }); } });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Settings session={useSession()} /> });
 
 const adminRoute = createRoute({ getParentRoute: () => rootRoute, path: "/admin", component: () => <AdminLayout session={useSession()} /> });

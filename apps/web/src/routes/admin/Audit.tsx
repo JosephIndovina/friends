@@ -13,6 +13,7 @@ const CATEGORIES = [
   { value: "site.", label: "Lockdown" },
   { value: "settings.", label: "Settings" },
   { value: "media.", label: "Player" },
+  { value: "playlist.", label: "Playlists" },
   ...["cast.", "posts."].map((v) => ({ value: v, label: v[0]!.toUpperCase() + v.slice(1, -1) })),
 ];
 

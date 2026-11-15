@@ -3,13 +3,38 @@ import { Maximize, Pause, Play, SkipForward, Volume2 } from "lucide-react";
 import { SEEKABLE, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { SourceStrip, SourcesMenu, type StageSource } from "../components/stage/Sources";
+import { LyricsView } from "../components/music/LyricsView";
+import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
+import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
 import { History, ModeToggle, Queue, Seek, Volume } from "../components/media/parts";
 import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
 import { expectedPosition, KIND_LABEL, mediaAction, mediaError, useMediaState } from "../lib/media";
 import { usePlayer } from "../lib/player";
 
+type MusicView = "art" | "viz" | "lyrics";
+function usePref<T extends string>(key: string, fallback: T): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(() => {
+    try {
+      return (localStorage.getItem(key) as T) || fallback;
+    } catch {
+      return fallback;
+    }
+  });
+  return [v, (next: T) => {
+    setV(next);
+    try {
+      localStorage.setItem(key, next);
+    } catch {
+      /* this visit only */
+    }
+  }];
+}
+
 export function Home({ session }: { session: Session }) {
+  const [musicView, setMusicView] = usePref<MusicView>("musicView", "art");
+  const [preset, setPreset] = usePref<Preset>("vizPreset", "bars");
+  const [tab, setTab] = usePref<"queue" | "recent" | "playlists">("sideTab", "queue");
   const state = useMediaState();
   const now = state?.now ?? null;
   const p = usePlayer();
@@ -78,12 +103,29 @@ export function Home({ session }: { session: Session }) {
               </div>
             )}
             {now && playerFocused && music && (
-              <div className="music-view">
+              <div className={`music-view mv-${musicView}`}>
                 {now.item.thumbnail && <img className="music-backdrop" src={now.item.thumbnail} alt="" />}
-                {now.item.thumbnail && <img className="music-art" src={now.item.thumbnail} alt="" />}
+                {musicView === "viz" && <Visualizer playback={now} preset={preset} />}
+                {musicView !== "viz" && now.item.thumbnail && <img className="music-art" src={now.item.thumbnail} alt="" />}
                 <div className="music-text">
                   <h1 className="music-title">{now.item.title}</h1>
                   {now.item.author && <p className="music-artist">{now.item.author.replace(/ - Topic$/, "")}</p>}
+                </div>
+                {musicView === "lyrics" && <div className="lyrics-col"><LyricsView playback={now} /></div>}
+                <div className="music-controls">
+                  {musicView === "viz" && (
+                    <select className="select select-s" aria-label="Visualizer preset" value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
+                      {PRESETS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                    </select>
+                  )}
+                  <div className="segmented segmented-s" role="radiogroup" aria-label="Music view">
+                    {([["art", "Artwork"], ["viz", "Visualizer"], ["lyrics", "Lyrics"]] as const).map(([v, label]) => (
+                      <label key={v}>
+                        <input type="radio" name="music-view" checked={musicView === v} onChange={() => setMusicView(v)} />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -121,6 +163,7 @@ export function Home({ session }: { session: Session }) {
                 </div>
                 <div className="info-actions">
                   {now.item.kind === "youtube" && <ModeToggle item={now.item} disabled={!control} />}
+                  {can(session, "player.queue") && <SaveToPlaylist itemId={now.item.id} label={now.item.title} />}
                   <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
                 </div>
               </div>
@@ -147,8 +190,14 @@ export function Home({ session }: { session: Session }) {
               }
             }} />
           )}
-          <Queue session={session} items={state?.queue ?? []} act={act} />
-          <History items={state?.history ?? []} canReplay={can(session, "player.queue")} onReplay={(id) => act(mediaAction("media:replay", { id }))} />
+          <div className="side-tabs" role="tablist" aria-label="Queue, recent and playlists">
+            {([["queue", `Up next${state?.queue.length ? ` ${state.queue.length}` : ""}`], ["recent", "Recent"], ["playlists", "Playlists"]] as const).map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={tab === id} className="side-tab" onClick={() => setTab(id)}>{label}</button>
+            ))}
+          </div>
+          {tab === "queue" && <Queue session={session} items={state?.queue ?? []} act={act} />}
+          {tab === "recent" && <History items={state?.history ?? []} canReplay={can(session, "player.queue")} onReplay={(id) => act(mediaAction("media:replay", { id }))} />}
+          {tab === "playlists" && <PlaylistsPanel session={session} queueCount={(state?.queue.length ?? 0) + (now ? 1 : 0)} />}
         </aside>
       </div>
 

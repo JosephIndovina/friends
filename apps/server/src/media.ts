@@ -311,6 +311,39 @@ export function createMediaRoom(io: IO) {
     });
   }
 
+  /** Queue items from outside a socket (saved playlists). Fresh ids; the first starts if the room is idle. */
+  function enqueue(items: MediaItem[], by: { id: string; name: string }, opts: { playNext?: boolean } = {}) {
+    const fresh = items
+      .slice(0, QUEUE_MAX - queue.length)
+      .map((i) => ({ ...withMode(i), id: randomUUID(), addedBy: by, addedAt: Date.now(), startAt: 0 }));
+    if (!fresh.length) throw new ActionError("queue_full");
+    const count = fresh.length;
+    if (!now) start(fresh.shift()!, by);
+    if (opts.playNext) queue.unshift(...fresh);
+    else queue.push(...fresh);
+    commit();
+    return count;
+  }
+
+  /** Find an item anywhere the room knows about it. */
+  function findItem(id: string): MediaItem | null {
+    if (now?.item.id === id) return now.item;
+    return queue.find((q) => q.id === id) ?? history.find((h) => h.id === id) ?? null;
+  }
+
   scheduleEnd();
-  return { attach, snapshot };
+  const room = { attach, snapshot, enqueue, findItem };
+  current = room;
+  return room;
 }
+
+export { ActionError as MediaActionError };
+let current: {
+  enqueue: (items: MediaItem[], by: { id: string; name: string }, opts?: { playNext?: boolean }) => number;
+  findItem: (id: string) => MediaItem | null;
+  snapshot: () => MediaState;
+} | null = null;
+export const mediaRoom = () => {
+  if (!current) throw new Error("media room not started");
+  return current;
+};
