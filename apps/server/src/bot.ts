@@ -54,7 +54,7 @@ export async function startBot(log: FastifyBaseLogger) {
     if (!env.DISCORD_NOTIFY_CHANNEL_ID) return;
     const channel = await client.channels.fetch(env.DISCORD_NOTIFY_CHANNEL_ID);
     if (!channel?.isSendable()) return;
-    const embed = new EmbedBuilder().setTitle(opts.title).setURL(opts.url).setColor(0xc9a27a);
+    const embed = new EmbedBuilder().setTitle(opts.title).setURL(opts.url).setColor(0x6f95d8);
     if (opts.description) embed.setDescription(opts.description);
     if (opts.thumbnail) embed.setThumbnail(opts.thumbnail);
     await channel.send({ embeds: [embed], components: [linkButton(opts.buttonLabel ?? "Join", opts.url)] });

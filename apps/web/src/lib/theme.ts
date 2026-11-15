@@ -24,7 +24,7 @@ export function useTheme() {
       /* storage unavailable: the choice lasts for this visit */
     }
     const meta = document.querySelector('meta[name="theme-color"]');
-    meta?.setAttribute("content", getComputedStyle(root).getPropertyValue("--ground").trim() || "#0e0c0d");
+    meta?.setAttribute("content", getComputedStyle(root).getPropertyValue("--ground").trim() || "#0a0c11");
   }, [theme]);
   return [theme, setTheme] as const;
 }
