@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Maximize, Pause, Play, Square, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { Maximize, Minimize, Pause, Play, Square, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { SEEKABLE, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
@@ -45,10 +45,23 @@ export function Home({ session }: { session: Session }) {
   useArtworkGlow(now?.item.thumbnail);
   const [error, setError] = useState<string | null>(null);
   const [screen, setScreen] = useState<HTMLDivElement | null>(null);
+  const [full, setFull] = useState(false);
   const control = can(session, "player.control");
   const music = now ? viewModeOf(now.item, p.viewOverrides) === "music" : false;
   const site = useSite();
   const hideVideo = music && Boolean(site?.hideVideoInMusic);
+
+  // The shared player lives in the shell (so it never reloads), not inside the stage. Full screen
+  // therefore takes the whole shell and pins the stage over it; the player follows its slot there.
+  useEffect(() => {
+    const sync = () => setFull(Boolean(document.fullscreenElement) && document.fullscreenElement === screen?.closest(".shell"));
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, [screen]);
+  const toggleFull = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void (screen?.closest(".shell") as HTMLElement | null)?.requestFullscreen?.().catch(() => {});
+  };
 
   const act = useCallback(async (pr: Promise<void>) => {
     setError(null);
@@ -104,7 +117,7 @@ export function Home({ session }: { session: Session }) {
             <GoLive />
             <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
           </div>
-          <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}`}>
+          <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}${full ? " is-full" : ""}`}>
             {sources.length === 0 && (
               <div className="stage-idle">
                 <h1>Nothing playing</h1>
@@ -148,6 +161,8 @@ export function Home({ session }: { session: Session }) {
             {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
           </div>
 
+          {/* Outside the stage so it stacks above the shared player. */}
+          {full && <button className="icon-btn exit-full" aria-label="Exit full screen" title="Exit full screen" onClick={toggleFull}><Minimize aria-hidden /></button>}
           {now && playerFocused && (
             <>
               <div className="transport">
@@ -167,7 +182,7 @@ export function Home({ session }: { session: Session }) {
                 {p.blocked && p.audible
                   ? <button className="btn btn-primary btn-s sound-on" onClick={() => p.setBlocked(false)}><Volume2 aria-hidden /><span className="sound-label">Click anywhere for sound</span></button>
                   : <Volume volume={p.volume} muted={!p.audible} onChange={(v) => { p.setVolume(v); p.setAudible(v > 0); }} onToggle={() => p.setAudible(!p.audible)} />}
-                <button className="icon-btn" aria-label="Full screen" title="Full screen" onClick={() => screen?.requestFullscreen?.()}><Maximize aria-hidden /></button>
+                <button className="icon-btn" aria-label="Full screen" title="Full screen" onClick={toggleFull}><Maximize aria-hidden /></button>
               </div>
               <div className="stage-info">
                 <div className="now-meta">
@@ -201,7 +216,7 @@ export function Home({ session }: { session: Session }) {
                       onChange={(e) => cast.setVolume(focusedStream.id, Number(e.target.value))} />
                   </>
                 )}
-                <button className="icon-btn" aria-label="Full screen" title="Full screen" onClick={() => screen?.requestFullscreen?.()}><Maximize aria-hidden /></button>
+                <button className="icon-btn" aria-label="Full screen" title="Full screen" onClick={toggleFull}><Maximize aria-hidden /></button>
                 {(focusedStream.local || canStopOthers) && (
                   <button className="btn btn-quiet btn-s" onClick={() => { if (focusedStream.local || window.confirm(`End ${focusedStream.label}'s stream?`)) void cast.stop(focusedStream.id); }}>
                     <Square aria-hidden />{focusedStream.local ? "Stop" : "End stream"}
