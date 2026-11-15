@@ -24,6 +24,7 @@ FIRST VIEWPORT:
   - Under the stage: a transport row (play/pause, skip, seek, sound, full screen), then an info row with the view toggle.
 - **Right column (380px):** search-or-paste box, Up next queue (drag or keyboard reorder), Recently played.
 - **Posts** sit below.
+- **Stage layouts (2026-11-15):** a toolbar above the stage card (live count left; Show all · Sources · Full screen · Theatre · Go live right). Two or more visible sources form a centred grid of 16:9 tiles sized to fill the stage (name chip bottom-left, sound and hide top-right on hover); clicking a tile shows it large with a 356×200 strip of the rest below. Theatre drops the side column and fits the stage to the window. Full screen pins the stage over the shell so the persistent player comes along.
 - **Phone:** the stage goes full-bleed and a bottom tab bar replaces the top nav.
 - **Off Home:** the same player instance docks as a 356px mini player.
 - **Signature interaction:** the glow crossfades with each new item's artwork.

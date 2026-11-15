@@ -30,10 +30,11 @@ export function PlayerDock({ session }: { session: Session }) {
       const a = slot.getBoundingClientRect();
       const b = shell.getBoundingClientRect();
       const next = { top: a.top - b.top, left: a.left - b.left, width: a.width, height: a.height };
-      const key = `${next.top}|${next.left}|${next.width}|${next.height}`;
+      // The slot's classes (inset, hidden, passive) change without moving it; re-render on those too.
+      const key = `${next.top}|${next.left}|${next.width}|${next.height}|${slot.className}`;
       if (key !== last) {
         last = key;
-        setRect(next);
+        setRect({ ...next });
       }
       raf = requestAnimationFrame(measure);
     };
@@ -45,10 +46,12 @@ export function PlayerDock({ session }: { session: Session }) {
   const docked = !p.slot;
   const mini = p.slot?.classList.contains("player-slot-mini");
   const hidden = p.slot?.classList.contains("player-slot-hidden");
+  // In a stage tile, clicks belong to the tile (show large), not the embedded player.
+  const passive = p.slot?.classList.contains("player-slot-passive");
   if (docked && p.dismissedFor === now.item.id) return null;
 
   return (
-    <div ref={box} className={docked ? "dock dock-mini" : hidden ? "dock dock-hidden" : mini ? "dock dock-inset" : "dock"}
+    <div ref={box} className={`${docked ? "dock dock-mini" : hidden ? "dock dock-hidden" : mini ? "dock dock-inset" : "dock"}${passive ? " dock-passive" : ""}`}
       aria-hidden={hidden || undefined} style={rect && !docked ? rect : undefined}>
       <div className="dock-video">
         <SyncedPlayer playback={now} audible={p.audible && !p.blocked} volume={p.volume} onDrift={p.setSyncing} onBlocked={() => p.setBlocked(true)} />

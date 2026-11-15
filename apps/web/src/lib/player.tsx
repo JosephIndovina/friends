@@ -22,7 +22,7 @@ interface PlayerCtx {
   /** stage sources this viewer has hidden (not loaded, not heard); saved on this device */
   hidden: ReadonlySet<string>;
   setHidden: (id: string, hide: boolean) => void;
-  /** stage source this viewer is focusing; null = the default (the player) */
+  /** source this viewer picked to show large; null = the grid (or the only source) */
   focused: string | null;
   setFocused: (id: string | null) => void;
   /** this viewer's music/video view choice per track (keyed by source ref); overrides the room's default */
@@ -66,7 +66,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
   const [hidden, setHiddenSet] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>("stage.hidden", [])));
-  const [focused, setFocused] = useState<string | null>(() => readJson<string | null>("stage.focus", null));
+  // The source shown large. Not saved: each visit starts on the grid when there's more than one.
+  const [focused, setFocused] = useState<string | null>(null);
   const [viewOverrides, setViewOverrides] = useState<Record<string, MediaMode>>(() => readJson<Record<string, MediaMode>>("viewModes", {}));
   const setViewOverride = useCallback((item: MediaItem, mode: MediaMode) => {
     setViewOverrides((prev) => {
@@ -96,11 +97,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       localStorage.setItem("stage.hidden", JSON.stringify([...hidden]));
-      localStorage.setItem("stage.focus", JSON.stringify(focused));
     } catch {
       /* this visit only */
     }
-  }, [hidden, focused]);
+  }, [hidden]);
   useEffect(() => {
     try {
       localStorage.setItem("volume", String(volume));

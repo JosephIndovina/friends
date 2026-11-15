@@ -38,7 +38,10 @@ export interface Stream {
   name: string;
   avatarUrl: string | null;
   label: string;
+  /** published from this tab */
   local: boolean;
+  /** published by you, from this tab or another of your tabs or devices */
+  mine: boolean;
   /** the publisher's chosen mode, e.g. "1080p · 60 fps" */
   mode: string | null;
   video: TrackPublication;
@@ -72,7 +75,7 @@ function avatarOf(p: Participant): string | null {
 }
 
 /** Pair screen-share videos with their audio by track name ("screen-2" ↔ "screen-2-audio"). */
-function streamsOf(p: Participant, local: boolean): Stream[] {
+function streamsOf(p: Participant, local: boolean, selfId: string): Stream[] {
   const pubs = [...p.trackPublications.values()];
   const videos = pubs.filter((t) => t.source === Track.Source.ScreenShare);
   return videos.map((v, i) => {
@@ -84,6 +87,7 @@ function streamsOf(p: Participant, local: boolean): Stream[] {
       avatarUrl: avatarOf(p),
       label: videos.length > 1 ? `${p.name} (${i + 1})` : p.name || p.identity,
       local,
+      mine: local || p.identity.split("#")[0] === selfId,
       mode: /~(.+)$/.exec(v.trackName)?.[1]?.replace(/_/g, " ") ?? null,
       video: v,
       audio,
@@ -115,8 +119,8 @@ export function CastProvider({ session, children }: { session: Session; children
         const r = new Room({ adaptiveStream: true, dynacast: true });
         current = r;
         const refresh = () => {
-          const all = [...r.remoteParticipants.values()].flatMap((p) => streamsOf(p, false));
-          setStreams([...streamsOf(r.localParticipant, true), ...all]);
+          const all = [...r.remoteParticipants.values()].flatMap((p) => streamsOf(p, false, session.user.id));
+          setStreams([...streamsOf(r.localParticipant, true, session.user.id), ...all]);
         };
         r.on(RoomEvent.TrackPublished, refresh)
           .on(RoomEvent.TrackUnpublished, refresh)
@@ -149,7 +153,7 @@ export function CastProvider({ session, children }: { session: Session; children
       setRoom(null);
       setStreams([]);
     };
-  }, [allowed]);
+  }, [allowed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Receive only what this viewer shows on their stage: hidden streams use no bandwidth.
   useEffect(() => {
@@ -157,7 +161,8 @@ export function CastProvider({ session, children }: { session: Session; children
       if (s.local) continue;
       const show = !player.hidden.has(s.id);
       (s.video as RemoteTrackPublication).setSubscribed(show);
-      (s.audio as RemoteTrackPublication | null)?.setSubscribed(show);
+      // Your own stream from another tab is never played back, so don't fetch its sound.
+      (s.audio as RemoteTrackPublication | null)?.setSubscribed(show && !s.mine);
     }
   }, [streams, player.hidden]);
 
@@ -261,7 +266,7 @@ export function StreamAudio({ stream }: { stream: Stream }) {
   const cast = useCast();
   const player = usePlayer();
   const el = useRef<HTMLAudioElement>(null);
-  const track = stream.local ? null : stream.audio?.track; // never play your own stream back to yourself
+  const track = stream.mine ? null : stream.audio?.track; // never play your own stream back to yourself
   useEffect(() => {
     if (!track || !el.current) return;
     track.attach(el.current);

@@ -366,7 +366,7 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
 .player-screen.is-full { position: fixed; inset: 0; z-index: 60; width: 100vw; height: 100dvh; aspect-ratio: auto !important; border-radius: 0 !important; }
 .shell:fullscreen .dock:not(.dock-mini) { z-index: 61; border-radius: 0; }
 .shell:fullscreen .dock-inset { border-radius: var(--radius-s); }
-.exit-full { position: fixed; top: var(--space-3); right: var(--space-3); z-index: 62; color: #fff; background: rgb(0 0 0 / 0.45); opacity: 0.35; transition: opacity 0.2s; }
+.exit-full { position: fixed; top: var(--space-3); right: var(--space-3); z-index: 62; color: #fff; background: rgb(0 0 0 / 0.45); opacity: 0.6; transition: opacity 0.2s; }
 .exit-full:hover, .exit-full:focus-visible { opacity: 1; }
 .player-host, .player-host > div, .player-host iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 @media (max-width: 860px) {
@@ -528,12 +528,6 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
 .sources-panel .who > span:first-child { font-weight: 600; }
 .sources-panel .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-strip { list-style: none; display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); overflow-x: auto; border-top: 1px solid var(--line); }
-.source-tile { flex: none; display: grid; gap: var(--space-1); }
-/* YouTube requires its player to be at least 200px tall wherever it's shown. */
-.source-media { position: relative; width: 356px; height: 200px; border-radius: var(--radius-s); overflow: hidden; background: #000; }
-.source-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.source-name { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; }
-.source-name:hover { text-decoration: underline; text-underline-offset: 0.2em; }
 /* Let popovers escape the stage; round the screen itself instead. */
 .stage { overflow: visible; }
 .stage-screen { border-radius: var(--radius-l) var(--radius-l) 0 0; overflow: hidden; }
@@ -669,9 +663,71 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
 .viz-note { font-size: var(--step--1); color: rgb(255 255 255 / 0.7); padding: 6px 10px; border-radius: var(--radius-pill); background: rgb(0 0 0 / 0.45); }
 
 /* ---------- stage tools and streams ---------- */
-.stage-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); padding: 0 0 var(--space-3); }
-.stage-tools .sources-panel, .stage-tools .golive-panel { top: calc(100% + 8px); bottom: auto; right: 0; }
-.live-count { margin-right: auto; display: inline-flex; align-items: center; gap: 6px; font-size: var(--step--1); font-weight: 650; }
+/* Stage toolbar: sits above the stage card, aligned to its edges. */
+.stage-col { min-width: 0; display: grid; gap: var(--space-3); align-content: start; }
+.stage-tools { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; }
+.stage-tools-end { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+.stage-tools .sources-panel, .stage-tools .golive-panel { top: calc(100% + 8px); bottom: auto; right: 0; z-index: 70; }
+.live-count {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 0 var(--space-3);
+  border-radius: var(--radius-pill); background: var(--surface); border: 1px solid var(--line);
+  font-size: var(--step--1); font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.btn-icon { padding: 0; width: 36px; justify-content: center; }
+.stage-tools .btn { white-space: nowrap; }
+@media (max-width: 420px) { .stage-tools .sources > .btn { padding-inline: var(--space-3); } .stage-tools .sources-word { display: none; } }
+.theatre-btn[aria-pressed="true"] { background: var(--surface-strong); border-color: color-mix(in oklab, var(--ink) 30%, transparent); }
+@media (max-width: 860px) { .theatre-btn { display: none; } }
+
+/* Stage grid: every visible source as an equal tile, sized in Home to fill the stage. */
+.player-screen.is-grid {
+  aspect-ratio: auto !important; display: grid; place-items: center; padding: 12px !important;
+  background:
+    radial-gradient(60% 70% at 50% 55%, color-mix(in oklab, var(--glow) 34%, transparent), transparent 70%),
+    color-mix(in oklab, var(--ground) 55%, transparent) !important;
+}
+/* Wrapping rows, so a short last row sits centred. */
+.player-screen.is-grid.is-full {
+  background:
+    radial-gradient(60% 70% at 50% 55%, color-mix(in oklab, var(--glow) 34%, transparent), transparent 70%),
+    var(--ground) !important;
+}
+.stage-grid { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-content: center; max-width: 100%; }
+.stage-grid .tile { flex: none; }
+.tile { position: relative; border-radius: var(--radius-m); overflow: hidden; background: #000; }
+.tile-media { position: absolute; inset: 0; }
+.tile-media .player-slot { position: absolute; inset: 0; }
+.stream-tile { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.tile-art { position: absolute; inset: -30px; width: calc(100% + 60px); height: calc(100% + 60px); object-fit: cover; filter: blur(28px) saturate(1.3); opacity: 0.6; }
+.tile-music { position: absolute; inset: auto var(--space-4) 52px; display: grid; gap: 2px; color: #fff; text-align: left; }
+.tile-music strong { font-size: var(--step-1); font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tile-music span { color: rgb(255 255 255 / 0.75); font-size: var(--step--1); }
+/* Above the shared player (z 10), which follows the tile's slot. */
+.tile-hit { position: absolute; inset: 0; z-index: 11; border: 0; padding: 0; background: none; cursor: zoom-in; border-radius: inherit; }
+.tile-hit:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.tile::after { content: ""; position: absolute; inset: 0; z-index: 11; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08); transition: box-shadow 0.2s var(--ease-out); }
+.tile:hover::after { box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.5); }
+.tile-name {
+  position: absolute; left: var(--space-2); bottom: var(--space-2); z-index: 12; max-width: calc(100% - 16px); pointer-events: none;
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-pill);
+  background: rgb(0 0 0 / 0.6); color: #fff; font-size: var(--step--1); font-weight: 650;
+}
+.tile-name .live-dot { margin-right: 0; }
+.tile-name svg { width: 14px; height: 14px; flex: none; opacity: 0.85; }
+.tile-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-actions { position: absolute; top: var(--space-2); right: var(--space-2); z-index: 12; display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s var(--ease-out); }
+.tile:hover .tile-actions, .tile:focus-within .tile-actions { opacity: 1; }
+@media (hover: none) { .tile-actions { opacity: 1; } }
+.tile-btn { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: var(--radius-s); background: rgb(0 0 0 / 0.6); color: #fff; cursor: pointer; }
+.tile-btn:hover { background: rgb(0 0 0 / 0.8); }
+.tile-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.tile-btn svg { width: 16px; height: 16px; }
+.dock-passive { pointer-events: none; border-radius: var(--radius-m); }
+.source-strip .tile { flex: none; width: 356px; height: 200px; } /* YouTube's player must be at least 200px tall */
+
+/* Theatre: the stage spans the page and fits the window; the queue and posts follow below. */
+.media-room.is-theatre { grid-template-columns: minmax(0, 1fr); }
+.is-theatre .player-screen:not(.is-grid) { max-height: calc(100dvh - 250px); min-height: 320px; }
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff4d5e; box-shadow: 0 0 0 3px color-mix(in oklab, #ff4d5e 25%, transparent); margin-right: 6px; vertical-align: 1px; }
 .go-live-note { font-size: var(--step--1); }
 .golive-panel { width: min(26rem, calc(100vw - 32px)); display: grid; gap: var(--space-3); }
@@ -689,4 +745,3 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
 .stream-waiting { display: grid; place-items: center; color: rgb(255 255 255 / 0.7); font-size: var(--step--1); background: #000; }
 .stream-volume { width: 96px; flex: none; }
 .player-screen:has(.stream-main) { background: #000; }
-@media (max-width: 860px) { .stage-tools { padding-inline: 0; } }

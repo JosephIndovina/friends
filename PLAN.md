@@ -62,7 +62,7 @@ ddns         keeps rtc.indovina.dev (DNS-only) on the home IP for LiveKit media
   - Synced YouTube player with its own queue. Twitch items can be queued alongside YouTube.
   - Reactions and timestamped comments.
   - Watch history.
-- **Cast lives on Home's stage (revised 2026-11-14):** the shared player and every cast stream are *sources* on one stage. Each viewer focuses one source large, keeps the others as thumbnails, and can hide any source (hidden = not loaded and not heard). Audio: every visible source is audible, each with its own per-viewer mute. The stage framework, Sources menu and thumbnail strip are built now; streams join as sources in Phase 4. The YouTube player's thumbnail stays at least 356×200 (YouTube's minimum player size).
+- **Cast lives on Home's stage (revised 2026-11-14):** the shared player and every cast stream are *sources* on one stage. With two or more visible sources the stage is a grid of equal tiles fitted to the space (Discord-style); clicking a tile shows it large with the others in a strip below, and "Show all" returns to the grid (revised 2026-11-15). One source shows on its own. A per-viewer **Theatre** toggle spans the stage across the page and fits it to the window; full screen works for the grid and every source. Each viewer can hide any source (hidden = not loaded and not heard). Audio: every visible source is audible, each with its own per-viewer mute. The stage framework, Sources menu and thumbnail strip are built now; streams join as sources in Phase 4. The YouTube player's thumbnail stays at least 356×200 (YouTube's minimum player size).
 - **Cast:**
   - **Per-viewer stream toggles:** each viewer turns individual people's streams on or off. Off means not subscribed at all, so no bandwidth is used. Pinning and resizing tiles are client-side only, saved per device.
   - Multiple streams at once is a core requirement. Several people can go live at the same time, and one person can share more than one source (for example a game plus a second monitor).
@@ -110,7 +110,7 @@ ddns         keeps rtc.indovina.dev (DNS-only) on the home IP for LiveKit media
 4. **Cast** (built 2026-11-15):
    - Self-hosted LiveKit with host networking on the NAS. Signaling is proxied through the app at /livekit/rtc, so it rides the tunnel.
    - Go live from the Home stage with streaming modes: game smooth/light, balanced, sharp, text and code, low bandwidth, or custom resolution/fps/bitrate. Simulcast layers serve thumbnails and slow connections.
-   - Streams are stage sources. Each viewer focuses, hides (which unsubscribes) or mutes streams and sets per-stream volume. Several screens per person.
+   - Streams are stage sources. Each viewer focuses, hides (which unsubscribes) or mutes streams and sets per-stream volume. Several screens per person, and the site can be open on several tabs or devices at once (each connection has its own LiveKit identity, `<user id>#<random>`).
    - Permissions: cast.watch and cast.stream are enforced in the LiveKit token. Moderators can end streams. Suspensions, lockdown and the section switch remove people from the room.
    - Audited start and end; the "went live" Discord post is limited to one per person per 10 minutes.
 5. **Extras (pick later):**

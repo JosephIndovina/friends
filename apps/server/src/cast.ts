@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { AccessToken, RoomServiceClient, TrackSource, type ParticipantInfo } from "livekit-server-sdk";
 import { audit } from "./audit.js";
@@ -22,13 +23,20 @@ const rooms = () => new RoomServiceClient(env.LIVEKIT_URL!, env.LIVEKIT_API_KEY!
 
 const screens = (p: ParticipantInfo) => p.tracks.filter((t) => t.source === TrackSource.SCREEN_SHARE);
 
-async function remove(identity: string, reason: string) {
+/** Each tab or device joins as "<user id>#<random>", so one person can have the site open in several places. */
+const userOf = (identity: string) => identity.split("#")[0]!;
+
+/** Take every connection of one user out of the room. */
+async function remove(userId: string, reason: string) {
+  let participants: ParticipantInfo[];
   try {
-    await rooms().removeParticipant(ROOM, identity);
-    audit({ actorId: null, action: "cast.removed", target: { type: "user", id: identity, name: getUser(identity)?.name ?? null }, details: { reason } });
+    participants = await rooms().listParticipants(ROOM);
   } catch {
-    /* not in the room */
+    return;
   }
+  const mine = participants.filter((p) => userOf(p.identity) === userId);
+  for (const p of mine) await rooms().removeParticipant(ROOM, p.identity).catch(() => {});
+  if (mine.length) audit({ actorId: null, action: "cast.removed", target: { type: "user", id: userId, name: getUser(userId)?.name ?? null }, details: { reason } });
 }
 
 export async function castRoutes(app: FastifyInstance) {
@@ -50,7 +58,7 @@ export async function castRoutes(app: FastifyInstance) {
     const s = req.session!;
     const canStream = s.permissions.includes("cast.stream");
     const at = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
-      identity: s.user.id,
+      identity: `${s.user.id}#${randomBytes(4).toString("hex")}`,
       name: s.user.name,
       metadata: JSON.stringify({ avatarUrl: s.user.avatarUrl }),
       ttl: "6h",
@@ -67,11 +75,23 @@ export async function castRoutes(app: FastifyInstance) {
     return { token: await at.toJwt(), canStream };
   });
 
-  // Moderators can end someone's stream (they're removed from the room and can rejoin without it).
-  app.post<{ Params: { id: string } }>("/api/cast/:id/stop", { config: { permission: "playback.moderate" } }, async (req) => {
-    const target = getUser(req.params.id);
-    await rooms().removeParticipant(ROOM, req.params.id).catch(() => {});
-    audit({ actorId: req.session!.user.id, action: "cast.stopped", target: { type: "user", id: req.params.id, name: target?.name ?? null }, req });
+  // Moderators can end someone's stream: that connection leaves the room and can rejoin without it.
+  // Anyone can also end their own stream from another of their tabs or devices.
+  app.post<{ Params: { id: string } }>("/api/cast/:id/stop", { config: { permission: "cast.watch" } }, async (req, reply) => {
+    const userId = userOf(req.params.id);
+    const own = userId === req.session!.user.id;
+    if (!own && !req.session!.permissions.includes("playback.moderate")) {
+      audit({ actorId: req.session!.user.id, action: "access.forbidden", details: { method: req.method, url: req.url, reason: "missing_permission" }, req });
+      return reply.code(403).send({ error: "missing_permission" });
+    }
+    const target = getUser(userId);
+    // A bare user id ends every connection of theirs; "<user id>#<conn>" ends just that one.
+    if (req.params.id.includes("#")) await rooms().removeParticipant(ROOM, req.params.id).catch(() => {});
+    else {
+      const all = await rooms().listParticipants(ROOM).catch(() => [] as ParticipantInfo[]);
+      for (const p of all.filter((x) => userOf(x.identity) === userId)) await rooms().removeParticipant(ROOM, p.identity).catch(() => {});
+    }
+    audit({ actorId: req.session!.user.id, action: "cast.stopped", target: { type: "user", id: userId, name: target?.name ?? null }, req });
     return { ok: true };
   });
 
@@ -85,13 +105,18 @@ export async function castRoutes(app: FastifyInstance) {
       return;
     }
     const castOn = getSettings().sections.cast;
+    const out = async (p: ParticipantInfo, reason: string) => {
+      await rooms().removeParticipant(ROOM, p.identity).catch(() => {});
+      audit({ actorId: null, action: "cast.removed", target: { type: "user", id: userOf(p.identity), name: p.name }, details: { reason } });
+    };
     for (const p of participants) {
-      if (only && p.identity !== only) continue;
-      const row = getUser(p.identity);
+      const userId = userOf(p.identity);
+      if (only && userId !== only) continue;
+      const row = getUser(userId);
       const s = row ? sessionFor(row) : null;
-      if (!castOn) await remove(p.identity, "section_disabled");
-      else if (gate(s) || !s!.permissions.includes("cast.watch")) await remove(p.identity, "access_revoked");
-      else if (screens(p).length && !s!.permissions.includes("cast.stream")) await remove(p.identity, "stream_permission_revoked");
+      if (!castOn) await out(p, "section_disabled");
+      else if (gate(s) || !s!.permissions.includes("cast.watch")) await out(p, "access_revoked");
+      else if (screens(p).length && !s!.permissions.includes("cast.stream")) await out(p, "stream_permission_revoked");
     }
   };
   events.on("session:changed", (id) => void recheck(id));
@@ -113,11 +138,12 @@ export async function castRoutes(app: FastifyInstance) {
         const key = `${p.identity}:${t.sid}`;
         seen.add(key);
         if (live.has(key)) continue;
-        live.set(key, { identity: p.identity, name: p.name, since: Date.now() });
-        audit({ actorId: p.identity, action: "cast.started", details: { track: t.name, width: t.width, height: t.height } });
-        const last = lastNotified.get(p.identity) ?? 0;
+        const userId = userOf(p.identity);
+        live.set(key, { identity: userId, name: p.name, since: Date.now() });
+        audit({ actorId: userId, action: "cast.started", details: { track: t.name, width: t.width, height: t.height } });
+        const last = lastNotified.get(userId) ?? 0;
         if (getSettings().notify.goLive && Date.now() - last > GO_LIVE_NOTIFY_GAP_MS) {
-          lastNotified.set(p.identity, Date.now());
+          lastNotified.set(userId, Date.now());
           events.emit("notify", { title: `${p.name} is live`, description: "Watch on the stage.", url: "/", buttonLabel: "Watch" });
         }
       }
