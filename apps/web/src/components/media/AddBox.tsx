@@ -4,7 +4,8 @@ import type { YouTubeResult } from "@friends/shared";
 import { api, ApiError } from "../../lib/api";
 import { fmtTime, MEDIA_ERRORS } from "../../lib/media";
 
-const looksLikeUrl = (s: string) => /^https?:\/\//i.test(s) || /^(www\.|m\.)?(youtube\.com|youtu\.be|twitch\.tv|clips\.twitch\.tv)\//i.test(s);
+const looksLikeUrl = (s: string) =>
+  /^https?:\/\//i.test(s) || /^spotify:/i.test(s) || /^(www\.|m\.)?(youtube\.com|youtu\.be|twitch\.tv|clips\.twitch\.tv|open\.spotify\.com)\//i.test(s);
 function playlistChoice(s: string) {
   try {
     const u = new URL(/^https?:/i.test(s) ? s : `https://${s}`);
@@ -60,7 +61,7 @@ export function AddBox({ onAdd, canPlayNext }: {
         <label className="visually-hidden" htmlFor="add-input">Search YouTube or paste a link</label>
         <div className="search-field">
           <Search aria-hidden />
-          <input id="add-input" className="input" placeholder="Search YouTube or paste a link" value={text} autoComplete="off"
+          <input id="add-input" className="input" placeholder="Search YouTube, or paste a YouTube, Spotify or Twitch link" value={text} autoComplete="off"
             onChange={(e) => { setText(e.target.value); setChoose(null); }} />
           {(text || results) && (
             <button type="button" className="icon-btn" aria-label="Clear" onClick={() => { setText(""); setResults(null); setChoose(null); setError(null); }}><X aria-hidden /></button>

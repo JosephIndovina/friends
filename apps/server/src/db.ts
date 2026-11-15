@@ -99,6 +99,12 @@ const migrations: Array<string | (() => void)> = [
      data        TEXT NOT NULL,             -- JSON MediaItem (id, addedBy and startAt are reset when queued)
      PRIMARY KEY (playlist_id, pos)
    );`,
+
+  `CREATE TABLE spotify_map (
+     spotify_id  TEXT PRIMARY KEY,
+     youtube_id  TEXT,                      -- null = no acceptable match found
+     resolved_at INTEGER NOT NULL
+   );`,
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;

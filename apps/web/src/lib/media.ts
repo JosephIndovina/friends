@@ -60,6 +60,10 @@ export const MEDIA_ERRORS: Record<string, string> = {
   youtube_error: "YouTube search failed. Try again.",
   youtube_mix: "YouTube mixes can’t be queued. Use a regular playlist.",
   playlist_unavailable: "That playlist is private, empty, or doesn’t exist.",
+  spotify_not_configured: "Spotify links aren’t set up. An admin needs to add Spotify app credentials.",
+  spotify_unavailable: "Spotify doesn’t let apps read its own playlists (like Today’s Top Hits). Playlists made by people, albums and tracks work.",
+  spotify_error: "Spotify didn’t respond. Try again.",
+  no_match: "Couldn’t find that track on YouTube.",
 };
 export const mediaError = (e: unknown) => MEDIA_ERRORS[(e as Error)?.message] ?? "Something went wrong. Try again.";
 
@@ -72,4 +76,4 @@ export function fmtTime(sec: number | null | undefined): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
-export const KIND_LABEL = { youtube: "YouTube", "twitch-vod": "Twitch video", "twitch-clip": "Twitch clip", "twitch-live": "Twitch live" } as const;
+export const KIND_LABEL = { youtube: "YouTube", "twitch-vod": "Twitch video", "twitch-clip": "Twitch clip", "twitch-live": "Twitch live", spotify: "Spotify" } as const;

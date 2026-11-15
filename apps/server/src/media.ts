@@ -6,6 +6,7 @@ import { db } from "./db.js";
 import { events } from "./events.js";
 import { fetchMeta, parseLink } from "./links.js";
 import { playlist, youtubeEnabled, YouTubeError, youtubeListId } from "./youtube.js";
+import { matchYouTube, parseSpotify, SpotifyError, spotifyEnabled, spotifyTracks } from "./spotify.js";
 import { getSettings } from "./settings.js";
 
 type Data = { session: Session; token: string };
@@ -73,6 +74,48 @@ export function createMediaRoom(io: IO) {
     saveQueue(queue);
     io.emit("media:state", snapshot());
     scheduleEnd();
+    prefetch();
+  }
+
+  /** A playable version of an item: Spotify tracks become their matched YouTube video. Null = no match. */
+  async function playable(item: MediaItem): Promise<MediaItem | null> {
+    if (item.kind !== "spotify") return item;
+    try {
+      const yt = await matchYouTube(item);
+      return yt ? { ...item, kind: "youtube", ref: yt } : null;
+    } catch (err) {
+      if (err instanceof SpotifyError) return null;
+      throw err;
+    }
+  }
+
+  /** Match the next Spotify track ahead of time so the switch is instant. */
+  const prefetching = new Set<string>();
+  function prefetch() {
+    const next = queue[0];
+    if (next?.kind !== "spotify" || prefetching.has(next.id)) return;
+    prefetching.add(next.id);
+    void playable(next)
+      .then((p) => {
+        const i = queue.findIndex((q) => q.id === next.id);
+        if (p && i >= 0) {
+          queue[i] = p;
+          commit();
+        }
+      })
+      .catch(() => {})
+      .finally(() => prefetching.delete(next.id));
+  }
+
+  /** Start an item, matching it first if needed. False when it can't be played (logged and skipped). */
+  async function begin(item: MediaItem, by: { id: string; name: string }): Promise<boolean> {
+    const p = await playable(item);
+    if (!p) {
+      audit({ actorId: null, action: "media.unmatched", target: { type: "media", id: item.ref, name: item.title }, details: { author: item.author } });
+      return false;
+    }
+    start(p, by);
+    return true;
   }
 
   /** Server-side auto-advance, so the room keeps moving even when nobody has the page open. */
@@ -83,7 +126,7 @@ export function createMediaRoom(io: IO) {
     const remaining = now.item.duration - position(now) + 3;
     const id = now.item.id;
     endTimer = setTimeout(() => {
-      if (now?.item.id === id) advance(null);
+      if (now?.item.id === id) void advance(null);
     }, Math.max(0, remaining * 1000));
     endTimer.unref();
   }
@@ -109,13 +152,25 @@ export function createMediaRoom(io: IO) {
     }
   }
 
-  /** Move to the next queued item. `by` is null when the room advances on its own. */
-  function advance(by: Session["user"] | null) {
-    if (now) toHistory(now.item);
-    const next = queue.shift();
-    if (next) start(next, by ? { id: by.id, name: by.name } : next.addedBy);
-    else now = null;
-    commit();
+  /**
+   * Move to the next playable queued item. `by` is null when the room advances on its own.
+   * Serialised: two clients reporting "ended" at once must not skip two items.
+   */
+  let advancing: Promise<void> = Promise.resolve();
+  function advance(by: Session["user"] | null): Promise<void> {
+    const from = now?.item.id ?? null;
+    const run = async () => {
+      if ((now?.item.id ?? null) !== from) return; // someone else already moved on
+      if (now) toHistory(now.item);
+      now = null;
+      while (queue.length) {
+        const next = queue.shift()!;
+        if (await begin(next, by ? { id: by.id, name: by.name } : next.addedBy)) break;
+      }
+      commit();
+    };
+    advancing = advancing.then(run, run);
+    return advancing;
   }
 
   events.on("settings:changed", () => {
@@ -162,6 +217,32 @@ export function createMediaRoom(io: IO) {
     socket.on("media:add", handle("player.queue", async (s, input: { url: string; playNext?: boolean; whole?: boolean }) => {
       if (typeof input?.url !== "string" || input.url.length > 500) fail("invalid");
       if (queue.length >= QUEUE_MAX) fail("queue_full");
+      const sp = parseSpotify(input.url);
+      if (sp) {
+        if (!spotifyEnabled()) fail("spotify_not_configured");
+        let res: Awaited<ReturnType<typeof spotifyTracks>>;
+        try {
+          res = await spotifyTracks(sp, QUEUE_MAX - queue.length);
+        } catch (err) {
+          throw err instanceof SpotifyError ? new ActionError(err.message) : err;
+        }
+        if (!res.items.length) fail("playlist_unavailable");
+        const items: MediaItem[] = res.items.map((d) => ({ ...d, id: randomUUID(), addedBy: who(s), addedAt: Date.now() }));
+        audit({
+          actorId: s.user.id,
+          action: sp.type === "track" ? "media.added" : "media.added_playlist",
+          target: { type: `spotify-${sp.type}`, id: sp.id, name: res.title },
+          details: { source: "spotify", ...(sp.type === "track" ? {} : { tracks: items.length }) },
+        });
+        if (input.playNext) queue.unshift(...items);
+        else queue.push(...items);
+        if (!now) {
+          await advance(s.user);
+          if (!now) fail("no_match");
+        } else commit();
+        return;
+      }
+
       const link = parseLink(input.url);
       const list = youtubeListId(input.url);
 
@@ -198,10 +279,10 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
-    socket.on("media:play", handle("player.control", (s) => {
+    socket.on("media:play", handle("player.control", async (s) => {
       if (!now) {
         if (!queue.length) fail("nothing_queued");
-        advance(s.user);
+        await advance(s.user);
       } else if (!now.playing) {
         now = { ...now, playing: true, updatedAt: Date.now() };
         lastActiveAt = Date.now();
@@ -229,18 +310,22 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
-    socket.on("media:skip", handle("player.control", (s) => {
+    socket.on("media:skip", handle("player.control", async (s) => {
       if (!now) fail("nothing_playing");
       audit({ actorId: s.user.id, action: "media.skipped", target: ref(now!.item) });
-      advance(s.user);
+      await advance(s.user);
     }));
 
-    socket.on("media:playNow", handle("player.control", (s, input: { id: string }) => {
+    socket.on("media:playNow", handle("player.control", async (s, input: { id: string }) => {
       const i = queue.findIndex((q) => q.id === input?.id);
       if (i < 0) fail("not_found");
-      const [item] = queue.splice(i, 1);
+      const p = await playable(queue[i]!);
+      if (!p) fail("no_match");
+      const j = queue.findIndex((q) => q.id === input.id);
+      if (j < 0) fail("not_found");
+      const [item] = queue.splice(j, 1);
       if (now) toHistory(now.item);
-      start(item!, who(s));
+      start({ ...p!, id: item!.id }, who(s));
       audit({ actorId: s.user.id, action: "media.play_now", target: ref(item!) });
       commit();
     }));
@@ -299,7 +384,7 @@ export function createMediaRoom(io: IO) {
       if (!now || now.item.id !== input?.itemId) return;
       // Ignore a client that finished early because it drifted or skipped locally.
       if (now.item.duration && position(now) < now.item.duration - END_SLACK_S) return;
-      advance(null);
+      void advance(null);
     });
 
     socket.on("media:duration", (input) => {
@@ -312,16 +397,16 @@ export function createMediaRoom(io: IO) {
   }
 
   /** Queue items from outside a socket (saved playlists). Fresh ids; the first starts if the room is idle. */
-  function enqueue(items: MediaItem[], by: { id: string; name: string }, opts: { playNext?: boolean } = {}) {
+  async function enqueue(items: MediaItem[], by: { id: string; name: string }, opts: { playNext?: boolean } = {}) {
     const fresh = items
       .slice(0, QUEUE_MAX - queue.length)
       .map((i) => ({ ...withMode(i), id: randomUUID(), addedBy: by, addedAt: Date.now(), startAt: 0 }));
     if (!fresh.length) throw new ActionError("queue_full");
     const count = fresh.length;
-    if (!now) start(fresh.shift()!, by);
     if (opts.playNext) queue.unshift(...fresh);
     else queue.push(...fresh);
-    commit();
+    if (!now) await advance(by as Session["user"]);
+    else commit();
     return count;
   }
 
@@ -339,7 +424,7 @@ export function createMediaRoom(io: IO) {
 
 export { ActionError as MediaActionError };
 let current: {
-  enqueue: (items: MediaItem[], by: { id: string; name: string }, opts?: { playNext?: boolean }) => number;
+  enqueue: (items: MediaItem[], by: { id: string; name: string }, opts?: { playNext?: boolean }) => Promise<number>;
   findItem: (id: string) => MediaItem | null;
   snapshot: () => MediaState;
 } | null = null;

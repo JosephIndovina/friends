@@ -93,7 +93,7 @@ export function Home({ session }: { session: Session }) {
             {!now && (
               <div className="stage-idle">
                 <h1>Nothing playing</h1>
-                <p>Search YouTube or paste a YouTube or Twitch link.</p>
+                <p>Search YouTube, or paste a YouTube, Spotify or Twitch link.</p>
               </div>
             )}
             {now && !focusId && (

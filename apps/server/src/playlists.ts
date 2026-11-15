@@ -143,7 +143,7 @@ export async function playlistRoutes(app: FastifyInstance) {
       const j = Math.floor(Math.random() * (i + 1));
       [items[i], items[j]] = [items[j]!, items[i]!];
     }
-    const n = mediaRoom().enqueue(items, { id: me(req).user.id, name: me(req).user.name }, { playNext });
+    const n = await mediaRoom().enqueue(items, { id: me(req).user.id, name: me(req).user.name }, { playNext });
     audit({ actorId: me(req).user.id, action: "playlist.queued", target: { type: "playlist", id: p.id, name: p.name }, details: { items: n, shuffle, playNext } });
     return { ok: true, queued: n };
   });

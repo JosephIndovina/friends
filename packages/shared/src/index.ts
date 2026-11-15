@@ -85,7 +85,8 @@ export interface PresenceEntry extends Me {
 
 // ---------- media (synced YouTube / Twitch) ----------
 
-export type MediaKind = "youtube" | "twitch-vod" | "twitch-clip" | "twitch-live";
+/** "spotify" items wait in the queue until just before they play, then become a matched YouTube video. */
+export type MediaKind = "youtube" | "twitch-vod" | "twitch-clip" | "twitch-live" | "spotify";
 
 /** How the player presents an item: full video, or artwork + visualizer for music. */
 export type MediaMode = "video" | "music";
@@ -106,6 +107,8 @@ export interface MediaItem {
   startAt: number;
   addedBy: { id: string; name: string };
   addedAt: number;
+  /** the Spotify track this item was matched from */
+  spotifyId?: string;
 }
 
 export interface Playback {
@@ -136,7 +139,7 @@ export interface YouTubeResult {
 }
 
 /** Kinds whose position can be synced (live channels and clips can't be seeked by the embed). */
-export const SEEKABLE: Record<MediaKind, boolean> = { youtube: true, "twitch-vod": true, "twitch-clip": false, "twitch-live": false };
+export const SEEKABLE: Record<MediaKind, boolean> = { youtube: true, "twitch-vod": true, "twitch-clip": false, "twitch-live": false, spotify: true };
 
 export type Ack = (res: { ok: true } | { ok: false; error: string }) => void;
 
