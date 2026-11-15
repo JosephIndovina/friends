@@ -112,17 +112,29 @@ export function CastProvider({ session, children }: { session: Session; children
     let cancelled = false;
     let current: Room | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    // One pending retry at most, backing off to 30s: a failed connect also fires Disconnected.
+    const schedule = () => {
+      if (cancelled || retry) return;
+      const delay = Math.min(30_000, 2_000 * 2 ** attempt++);
+      retry = setTimeout(() => {
+        retry = null;
+        void connect();
+      }, delay);
+    };
     const connect = async () => {
+      let r: Room | null = null;
       try {
         const { token, canStream } = await api<{ token: string; canStream: boolean }>("POST", "/api/cast/token");
         if (cancelled) return;
-        const r = new Room({ adaptiveStream: true, dynacast: true });
-        current = r;
+        r = new Room({ adaptiveStream: true, dynacast: true });
+        const room = r;
+        current = room;
         const refresh = () => {
-          const all = [...r.remoteParticipants.values()].flatMap((p) => streamsOf(p, false, session.user.id));
-          setStreams([...streamsOf(r.localParticipant, true, session.user.id), ...all]);
+          const all = [...room.remoteParticipants.values()].flatMap((p) => streamsOf(p, false, session.user.id));
+          setStreams([...streamsOf(room.localParticipant, true, session.user.id), ...all]);
         };
-        r.on(RoomEvent.TrackPublished, refresh)
+        room.on(RoomEvent.TrackPublished, refresh)
           .on(RoomEvent.TrackUnpublished, refresh)
           .on(RoomEvent.LocalTrackPublished, refresh)
           .on(RoomEvent.LocalTrackUnpublished, refresh)
@@ -131,18 +143,23 @@ export function CastProvider({ session, children }: { session: Session; children
           .on(RoomEvent.TrackSubscribed, refresh)
           .on(RoomEvent.TrackUnsubscribed, refresh)
           .on(RoomEvent.Disconnected, () => {
+            if (current !== room) return;
+            current = null;
             setStreams([]);
             setRoom(null);
-            if (!cancelled) retry = setTimeout(connect, 3000);
+            schedule();
           });
-        await r.connect(`${location.origin.replace(/^http/, "ws")}/livekit`, token, { autoSubscribe: false });
-        if (cancelled) return void r.disconnect();
+        await room.connect(`${location.origin.replace(/^http/, "ws")}/livekit`, token, { autoSubscribe: false });
+        if (cancelled) return void room.disconnect();
+        attempt = 0;
         setCanStream(canStream);
-        setRoom(r);
-        if (import.meta.env.DEV) (window as unknown as { __castRoom: Room }).__castRoom = r;
+        setRoom(room);
+        if (import.meta.env.DEV) (window as unknown as { __castRoom: Room }).__castRoom = room;
         refresh();
       } catch (e) {
-        if (!cancelled && !(e instanceof ApiError && e.status === 403)) retry = setTimeout(connect, 5000);
+        if (current === r) current = null;
+        void r?.disconnect();
+        if (!(e instanceof ApiError && e.status === 403)) schedule();
       }
     };
     void connect();

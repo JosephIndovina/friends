@@ -17,8 +17,10 @@ export interface StageSource {
 }
 
 /** Per-viewer list of stage sources: show or hide each one, and turn its sound on or off. */
-export function SourcesMenu({ sources, hidden, setHidden }: {
+export function SourcesMenu({ sources, hidden, setHidden, icon }: {
   sources: StageSource[];
+  /** icon-only button with a tooltip (the stage bar) */
+  icon?: boolean;
   hidden: ReadonlySet<string>;
   setHidden: (id: string, hide: boolean) => void;
 }) {
@@ -40,9 +42,15 @@ export function SourcesMenu({ sources, hidden, setHidden }: {
   const shown = sources.filter((s) => !hidden.has(s.id)).length;
   return (
     <div className="sources" ref={root}>
-      <button className="btn btn-quiet btn-s" aria-expanded={open} aria-label={`Sources, ${shown} of ${sources.length} shown`} onClick={() => setOpen(!open)}>
-        <Layers aria-hidden /><span className="sources-word">Sources </span><span className="quiet">{shown}/{sources.length}</span>
-      </button>
+      {icon ? (
+        <button className="icon-btn" aria-expanded={open} aria-label={`Sources, ${shown} of ${sources.length} shown`} data-tip={`Sources · ${shown}/${sources.length}`} onClick={() => setOpen(!open)}>
+          <Layers aria-hidden />
+        </button>
+      ) : (
+        <button className="btn btn-quiet btn-s" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Layers aria-hidden />Sources <span className="quiet">{shown}/{sources.length}</span>
+        </button>
+      )}
       {open && (
         <div className="stack-panel sources-panel" role="dialog" aria-label="Sources">
           <h2>Sources</h2>

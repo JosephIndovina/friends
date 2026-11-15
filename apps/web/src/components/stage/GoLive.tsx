@@ -19,7 +19,7 @@ const RES = [
 ] as const;
 
 /** Go live with a chosen quality mode. Each extra click adds another screen. */
-export function GoLive() {
+export function GoLive({ icon }: { icon?: boolean } = {}) {
   const cast = useCast();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<StreamMode>(readMode);
@@ -43,7 +43,7 @@ export function GoLive() {
   }, [open]);
 
   if (!cast.canStream) return null;
-  if (!cast.supported) return <span className="quiet go-live-note">Going live works from a desktop browser.</span>;
+  if (!cast.supported) return icon ? null : <span className="quiet go-live-note">Going live works from a desktop browser.</span>;
 
   const customMode = (): StreamMode => {
     const r = RES[custom.res]!;
@@ -67,10 +67,17 @@ export function GoLive() {
 
   return (
     <div className="sources go-live" ref={root}>
-      <button className={`btn btn-s ${mine ? "btn-quiet" : "btn-primary"}`} aria-expanded={open} disabled={!cast.available} onClick={() => setOpen(!open)}
-        title={cast.available ? undefined : "Connecting to the stage…"}>
-        <Radio aria-hidden />{mine ? "Share another screen" : "Go live"}
-      </button>
+      {icon ? (
+        <button className={`icon-btn${mine ? " is-live" : ""}`} aria-expanded={open} disabled={!cast.available} onClick={() => setOpen(!open)}
+          aria-label={mine ? "Share another screen" : "Go live"} data-tip={cast.available ? (mine ? "Share another screen" : "Go live") : "Connecting to the stage…"}>
+          <Radio aria-hidden />
+        </button>
+      ) : (
+        <button className={`btn btn-s ${mine ? "btn-quiet" : "btn-primary"}`} aria-expanded={open} disabled={!cast.available} onClick={() => setOpen(!open)}
+          title={cast.available ? undefined : "Connecting to the stage…"}>
+          <Radio aria-hidden />{mine ? "Share another screen" : "Go live"}
+        </button>
+      )}
       {open && (
         <div className="stack-panel golive-panel" role="dialog" aria-label="Go live">
           <h2>Streaming mode</h2>
