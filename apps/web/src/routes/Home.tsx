@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { LayoutGrid, Maximize, Minimize, RectangleHorizontal, Pause, Play, Square, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { Maximize, Minimize, RectangleHorizontal, Pause, Play, Square, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { SEEKABLE, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
-import { fitGrid, SourcesMenu, StageTile, type StageSource } from "../components/stage/Sources";
-import { GoLive } from "../components/stage/GoLive";
+import { fitGrid, StageRail, StageTile, type StageSource } from "../components/stage/Sources";
 import { StreamVideo, useCast } from "../lib/cast";
 import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
@@ -40,7 +39,8 @@ function usePref<T extends string>(key: string, fallback: T): [T, (v: T) => void
 export function Home({ session }: { session: Session }) {
   const [musicView, setMusicView] = usePref<MusicView>("musicView", "viz");
   const [preset, setPreset] = usePref<Preset>("vizPreset2", "alchemy");
-  const [theatre, setTheatre] = usePref<"on" | "off">("theatre", "off");
+  const [theatrePref, setTheatrePref] = usePref<"on" | "off">("theatre", "off");
+  const [railOpen, setRailOpen] = usePref<"on" | "off">("railOpen", "off");
   const [tab, setTab] = usePref<"queue" | "recent" | "playlists">("sideTab", "queue");
   const state = useMediaState();
   const now = state?.now ?? null;
@@ -121,6 +121,22 @@ export function Home({ session }: { session: Session }) {
     if (p.focused === id) p.setFocused(null);
   };
 
+  // Theatre turns itself on while someone else is streaming to your stage, and back off when they stop.
+  // Toggling it during a stream only lasts until the streams end; otherwise it's your saved setting.
+  const othersLive = cast.streams.some((st) => !st.mine && !p.hidden.has(st.id));
+  const [theatreOverride, setTheatreOverride] = useState<"on" | "off" | null>(null);
+  useEffect(() => {
+    if (!othersLive) setTheatreOverride(null);
+  }, [othersLive]);
+  const theatre = othersLive ? theatreOverride ?? "on" : theatrePref;
+  const toggleTheatre = () => {
+    const next = theatre === "on" ? "off" : "on";
+    if (othersLive) setTheatreOverride(next);
+    else setTheatrePref(next);
+  };
+  const own = cast.streams.filter((st) => st.mine).map((st) => ({ id: st.id, label: st.label, detail: st.mode ?? "Live" }));
+  const showRail = sources.length > 0 || (cast.canStream && cast.supported);
+
   // Grid sizing: tiles as large as the stage allows (the window height in theatre and full screen).
   const [box, setBox] = useState({ w: 0, h: typeof window === "undefined" ? 800 : window.innerHeight });
   useEffect(() => {
@@ -162,6 +178,13 @@ export function Home({ session }: { session: Session }) {
     <>
       <div className={`room media-room${theatre === "on" ? " is-theatre" : ""}`}>
           <section className="stage" aria-label="Stage">
+            <div className="stage-body">
+            {showRail && (
+              <StageRail sources={sources} hidden={p.hidden} setHidden={(id, h) => (h ? hide(id) : p.setHidden(id, false))}
+                current={layout === "grid" ? "all" : focusId} onShow={p.setFocused}
+                open={railOpen === "on"} setOpen={(o) => setRailOpen(o ? "on" : "off")}
+                own={own} onStop={(id) => void cast.stop(id)} floating={full} />
+            )}
             <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}${layout === "grid" ? " is-grid" : ""}${full ? " is-full" : ""}`}>
               {layout === "idle" && sources.length === 0 && (
                 <div className="stage-idle">
@@ -172,12 +195,12 @@ export function Home({ session }: { session: Session }) {
               {layout === "idle" && sources.length > 0 && (
                 <div className="stage-idle">
                   <h1>All sources hidden</h1>
-                  <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
+                  <p>Pick one from Sources to show it again.</p>
                 </div>
               )}
               {layout === "grid" && (
                 <ul className="stage-grid" aria-label="Sources" style={{ width: grid.cols * grid.w + (grid.cols - 1) * GRID_GAP }}>
-                  {visible.map((x) => <StageTile key={x.id} source={x} onFocus={p.setFocused} onHide={hide} style={{ width: grid.w, height: grid.h }}>{tileMedia(x)}</StageTile>)}
+                  {visible.map((x) => <StageTile key={x.id} source={x} onFocus={p.setFocused} style={{ width: grid.w, height: grid.h }}>{tileMedia(x)}</StageTile>)}
                 </ul>
               )}
               {now && playerFocused && music && (
@@ -209,6 +232,7 @@ export function Home({ session }: { session: Session }) {
               )}
               {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" />}
               {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
+            </div>
             </div>
 
             {/* Outside the stage screen so it stacks above the shared player. */}
@@ -265,9 +289,9 @@ export function Home({ session }: { session: Session }) {
                           onChange={(e) => cast.setVolume(focusedStream.id, Number(e.target.value))} />
                       </>
                     )}
-                    {(focusedStream.mine || canStopOthers) && (
-                      <button className="btn btn-quiet btn-s" onClick={() => { if (focusedStream.mine || window.confirm(`End ${focusedStream.label}'s stream?`)) void cast.stop(focusedStream.id); }}>
-                        <Square aria-hidden />{focusedStream.mine ? "Stop" : "End stream"}
+                    {!focusedStream.mine && canStopOthers && (
+                      <button className="btn btn-quiet btn-s" onClick={() => { if (window.confirm(`End ${focusedStream.label}'s stream?`)) void cast.stop(focusedStream.id); }}>
+                        <Square aria-hidden />End stream
                       </button>
                     )}
                   </>
@@ -278,13 +302,9 @@ export function Home({ session }: { session: Session }) {
                   </>
                 ) : null}
                 <div className="stage-buttons">
-                  {cast.streams.length > 0 && <span className="live-count"><span className="live-dot" aria-hidden />{cast.streams.length} live</span>}
-                  {layout === "focus" && <button className="icon-btn" aria-label="Show all sources" data-tip="Show all" onClick={() => p.setFocused(null)}><LayoutGrid aria-hidden /></button>}
-                  {sources.length > 0 && <SourcesMenu icon sources={sources} hidden={p.hidden} setHidden={(id, h) => (h ? hide(id) : p.setHidden(id, false))} />}
-                  {sources.length > 0 && <button className="icon-btn" aria-label="Full screen" data-tip="Full screen" onClick={toggleFull}><Maximize aria-hidden /></button>}
                   <button className="icon-btn theatre-btn" aria-label="Theatre mode" aria-pressed={theatre === "on"} data-tip={theatre === "on" ? "Exit theatre mode" : "Theatre mode"}
-                    onClick={() => setTheatre(theatre === "on" ? "off" : "on")}><RectangleHorizontal aria-hidden /></button>
-                  <GoLive icon />
+                    onClick={toggleTheatre}><RectangleHorizontal aria-hidden /></button>
+                  {sources.length > 0 && <button className="icon-btn" aria-label="Full screen" data-tip="Full screen" onClick={toggleFull}><Maximize aria-hidden /></button>}
                 </div>
               </div>
             </div>
@@ -292,7 +312,7 @@ export function Home({ session }: { session: Session }) {
             {layout === "focus" && (
               <ul className="source-strip" aria-label="Other sources">
                 {visible.filter((x) => x.id !== focusId).map((x) => (
-                  <StageTile key={x.id} source={x} onFocus={p.setFocused} onHide={hide}>{tileMedia(x)}</StageTile>
+                  <StageTile key={x.id} source={x} onFocus={p.setFocused}>{tileMedia(x)}</StageTile>
                 ))}
               </ul>
             )}
