@@ -32,8 +32,8 @@ function usePref<T extends string>(key: string, fallback: T): [T, (v: T) => void
 }
 
 export function Home({ session }: { session: Session }) {
-  const [musicView, setMusicView] = usePref<MusicView>("musicView", "art");
-  const [preset, setPreset] = usePref<Preset>("vizPreset", "bars");
+  const [musicView, setMusicView] = usePref<MusicView>("musicView", "viz");
+  const [preset, setPreset] = usePref<Preset>("vizPreset2", "alchemy");
   const [tab, setTab] = usePref<"queue" | "recent" | "playlists">("sideTab", "queue");
   const state = useMediaState();
   const now = state?.now ?? null;
@@ -119,7 +119,7 @@ export function Home({ session }: { session: Session }) {
                     </select>
                   )}
                   <div className="segmented segmented-s" role="radiogroup" aria-label="Music view">
-                    {([["art", "Artwork"], ["viz", "Visualizer"], ["lyrics", "Lyrics"]] as const).map(([v, label]) => (
+                    {([["viz", "Visualizer"], ["lyrics", "Lyrics"], ["art", "Artwork"]] as const).map(([v, label]) => (
                       <label key={v}>
                         <input type="radio" name="music-view" checked={musicView === v} onChange={() => setMusicView(v)} />
                         <span>{label}</span>

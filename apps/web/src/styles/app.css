@@ -595,3 +595,10 @@ code { font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: var(
   .mv-lyrics .lyrics-col { grid-column: 1 / -1; grid-row: 2; }
   .mv-lyrics .lyrics { max-height: 260px; padding: var(--space-4) 0; }
 }
+/* Visualizer owns the stage in music view: black ground, full bleed, title and a small cover over it. */
+.mv-viz { background: #000; }
+.mv-viz .music-backdrop { display: none; }
+.viz-canvas { image-rendering: auto; }
+.mv-viz .music-text { position: relative; z-index: 1; }
+.mv-viz .music-title { color: #fff; }
+.mv-viz .music-artist { color: rgb(255 255 255 / 0.75); }

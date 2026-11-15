@@ -4,12 +4,17 @@ import type { Playback } from "@friends/shared";
 import { expectedPosition } from "../../lib/media";
 
 export const PRESETS = [
-  { id: "bars", label: "Bars" },
-  { id: "scope", label: "Scope" },
-  { id: "ambience", label: "Ambience" },
+  { id: "alchemy", label: "Alchemy" },
   { id: "battery", label: "Battery" },
+  { id: "bars", label: "Bars and Waves" },
+  { id: "ambience", label: "Ambience" },
+  { id: "tunnel", label: "Tunnel" },
+  { id: "shuffle", label: "Shuffle" },
 ] as const;
 export type Preset = (typeof PRESETS)[number]["id"];
+type Drawn = Exclude<Preset, "shuffle">;
+const CYCLE: Drawn[] = ["alchemy", "battery", "ambience", "tunnel", "bars"];
+const SHUFFLE_MS = 30_000;
 
 const BINS = 64;
 
@@ -101,10 +106,22 @@ class Source {
   }
 }
 
-function readColors() {
-  const cs = getComputedStyle(document.documentElement);
-  return { glow: cs.getPropertyValue("--glow").trim() || "#2a4f8f", ink: cs.getPropertyValue("--ink").trim() || "#e6ecf5" };
+/** Hue of the room's glow (taken from the artwork), so each track gets its own colour family. */
+function glowHue(): number {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--glow").trim();
+  const probe = document.createElement("canvas").getContext("2d")!;
+  probe.fillStyle = raw || "#2a4f8f";
+  const hex = probe.fillStyle;
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return 220;
+  const [r, g, b] = [m[1], m[2], m[3]].map((x) => parseInt(x!, 16) / 255) as [number, number, number];
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (!d) return 220;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
 }
+
+const MAX_W = 1100; // render resolution cap: feedback effects redraw the whole frame every tick
 
 export function Visualizer({ playback, preset }: { playback: Playback | null; preset: Preset }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -119,124 +136,194 @@ export function Visualizer({ playback, preset }: { playback: Playback | null; pr
   useEffect(() => {
     const el = canvas.current!;
     const ctx = el.getContext("2d")!;
+    const back = document.createElement("canvas"); // previous frame, for feedback trails
+    const bctx = back.getContext("2d")!;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let raf = 0;
-    let colors = readColors();
-    let colorAt = 0;
     const peaks = new Float32Array(BINS);
+    let raf = 0;
+    let hue = glowHue();
+    let hueAt = 0;
+    let lastKick = 0;
     const t0 = performance.now();
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      if (el.width !== Math.round(w * dpr) || el.height !== Math.round(h * dpr)) {
-        el.width = Math.round(w * dpr);
-        el.height = Math.round(h * dpr);
+      const scale = Math.min(1, MAX_W / Math.max(1, el.clientWidth));
+      const w = Math.max(1, Math.round(el.clientWidth * scale));
+      const h = Math.max(1, Math.round(el.clientHeight * scale));
+      // Size both canvases independently: a fresh trail buffer (after a preset switch) starts at 300x150.
+      if (el.width !== w || el.height !== h) {
+        el.width = w;
+        el.height = h;
       }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (now - colorAt > 1000) (colors = readColors()), (colorAt = now);
-      const t = (now - t0) / 1000 * (reduce ? 0.25 : 1);
+      if (back.width !== w || back.height !== h) {
+        back.width = w;
+        back.height = h;
+      }
+      if (now - hueAt > 2000) (hue = glowHue()), (hueAt = now);
+      const t = ((now - t0) / 1000) * (reduce ? 0.3 : 1);
       const src = source.current;
       src.update(latest.current, t);
       const s = src.spectrum;
+      const wave = src.wave;
+      const bass = (s[0]! + s[1]! + s[2]! + s[3]!) / 4;
+      const mid = (s[10]! + s[14]! + s[18]! + s[22]!) / 4;
+      const level = s.reduce((a, b) => a + b, 0) / BINS;
+      const kick = bass > 0.55 && now - lastKick > 220;
+      if (kick) lastKick = now;
+      const H = (o = 0) => (hue + o + t * 18) % 360;
+      const mode: Drawn = preset === "shuffle" ? CYCLE[Math.floor((now - t0) / SHUFFLE_MS) % CYCLE.length]! : preset;
+      const cx = w / 2;
+      const cy = h / 2;
+      const R = Math.min(w, h);
 
-      if (preset === "bars") {
+      // Feedback: redraw the last frame transformed and faded, so everything leaves trails.
+      const feedback = (zoom: number, rot: number, fade: number, dx = 0, dy = 0) => {
+        bctx.clearRect(0, 0, w, h);
+        bctx.drawImage(el, 0, 0);
+        ctx.fillStyle = `rgb(0 0 0 / ${1 - fade})`;
+        ctx.globalCompositeOperation = "source-over";
+        ctx.save();
         ctx.clearRect(0, 0, w, h);
-        const n = 48;
-        const gap = 3;
-        const bw = (w - gap * (n - 1)) / n;
-        const base = h * 0.78;
-        for (let i = 0; i < n; i++) {
-          const v = s[Math.floor((i / n) * BINS)]!;
-          const bh = v * base * 0.9;
-          peaks[i] = Math.max(v, (peaks[i] ?? 0) - 0.008);
-          const x = i * (bw + gap);
-          const g = ctx.createLinearGradient(0, base - bh, 0, base);
-          g.addColorStop(0, colors.ink);
-          g.addColorStop(1, colors.glow);
-          ctx.fillStyle = g;
-          ctx.fillRect(x, base - bh, bw, bh);
-          ctx.globalAlpha = 0.22;
-          ctx.fillRect(x, base + 2, bw, bh * 0.35);
-          ctx.globalAlpha = 1;
-          ctx.fillStyle = colors.ink;
-          ctx.fillRect(x, base - peaks[i]! * base * 0.9 - 4, bw, 2);
-        }
-      } else if (preset === "scope") {
-        ctx.fillStyle = "rgb(0 0 0 / 0.18)";
+        ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, w, h);
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = colors.ink;
-        ctx.shadowColor = colors.glow;
-        ctx.shadowBlur = 14;
-        ctx.beginPath();
-        for (let i = 0; i < 128; i++) {
-          const x = (i / 127) * w;
-          const y = h / 2 + src.wave[i]! * h * 0.38;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      } else if (preset === "ambience") {
-        ctx.fillStyle = "rgb(0 0 0 / 0.08)";
-        ctx.fillRect(0, 0, w, h);
-        const cx = w / 2;
-        const cy = h / 2;
-        const bass = (s[1]! + s[2]! + s[3]!) / 3;
-        for (let ring = 0; ring < 3; ring++) {
+        ctx.globalAlpha = fade;
+        ctx.translate(cx + dx, cy + dy);
+        ctx.rotate(rot);
+        ctx.scale(zoom, zoom);
+        ctx.drawImage(back, -cx, -cy);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      };
+
+      if (mode === "alchemy") {
+        feedback(1.012 + bass * 0.03, 0.004 + mid * 0.01, 0.94);
+        ctx.globalCompositeOperation = "lighter";
+        for (let k = 0; k < 3; k++) {
           ctx.beginPath();
-          for (let a = 0; a <= 120; a++) {
-            const ang = (a / 120) * Math.PI * 2;
-            const v = s[(a * 3 + ring * 11) % BINS]!;
-            const r = Math.min(w, h) * (0.16 + ring * 0.09) * (1 + bass * 0.6) + v * 40 + Math.sin(ang * (3 + ring) + t * (0.6 + ring * 0.3)) * 14;
-            const x = cx + Math.cos(ang + t * 0.15 * (ring + 1)) * r;
-            const y = cy + Math.sin(ang + t * 0.15 * (ring + 1)) * r;
-            if (a === 0) ctx.moveTo(x, y);
+          for (let i = 0; i <= 128; i++) {
+            const a = (i / 128) * Math.PI * 2 + t * (0.3 + k * 0.15) * (k % 2 ? -1 : 1);
+            const r = R * (0.12 + k * 0.07) * (1 + bass * 0.5) + wave[i % 128]! * R * 0.12;
+            const x = cx + Math.cos(a) * r;
+            const y = cy + Math.sin(a) * r;
+            if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
           }
-          ctx.strokeStyle = ring === 1 ? colors.ink : colors.glow;
-          ctx.globalAlpha = 0.55 - ring * 0.12;
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = `hsl(${H(k * 70)} 95% ${55 + level * 25}%)`;
+          ctx.lineWidth = 2 + bass * 4;
           ctx.stroke();
         }
-        ctx.globalAlpha = 1;
-      } else {
-        // battery: kaleidoscope of rotating shapes, six-fold symmetry
-        ctx.fillStyle = "rgb(0 0 0 / 0.12)";
-        ctx.fillRect(0, 0, w, h);
+        if (kick) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, R * 0.05, 0, Math.PI * 2);
+          ctx.fillStyle = `hsl(${H(180)} 100% 70%)`;
+          ctx.fill();
+        }
+      } else if (mode === "battery") {
+        feedback(0.985 - bass * 0.02, -0.012 - level * 0.02, 0.935);
+        ctx.globalCompositeOperation = "lighter";
         ctx.save();
-        ctx.translate(w / 2, h / 2);
-        const level = s.reduce((a, b) => a + b, 0) / BINS;
-        for (let k = 0; k < 6; k++) {
-          ctx.rotate(Math.PI / 3);
-          for (let j = 0; j < 5; j++) {
-            const v = s[j * 9]!;
-            const d = 30 + j * Math.min(w, h) * 0.07 + v * 50;
+        ctx.translate(cx, cy);
+        const arms = 8;
+        for (let k = 0; k < arms; k++) {
+          ctx.rotate((Math.PI * 2) / arms);
+          for (let j = 0; j < 6; j++) {
+            const v = s[j * 8 + 2]!;
+            const d = R * (0.06 + j * 0.065) + v * R * 0.08;
+            const size = R * (0.015 + v * 0.06);
             ctx.save();
-            ctx.rotate(t * (0.2 + j * 0.07) * (j % 2 ? -1 : 1));
+            ctx.translate(d, 0);
+            ctx.rotate(t * (1 + j * 0.3) * (j % 2 ? -1 : 1));
             ctx.beginPath();
-            const size = 8 + v * 38 + level * 20;
             for (let q = 0; q < 3; q++) {
               const ang = (q / 3) * Math.PI * 2;
-              const x = d + Math.cos(ang) * size;
-              const y = Math.sin(ang) * size;
-              if (q === 0) ctx.moveTo(x, y);
-              else ctx.lineTo(x, y);
+              ctx.lineTo(Math.cos(ang) * size, Math.sin(ang) * size);
             }
             ctx.closePath();
-            ctx.strokeStyle = j % 2 ? colors.ink : colors.glow;
-            ctx.globalAlpha = 0.35 + v * 0.6;
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
+            ctx.fillStyle = `hsl(${H(j * 40 + k * 8)} 95% ${45 + v * 30}% / ${0.25 + v * 0.6})`;
+            ctx.fill();
             ctx.restore();
           }
         }
         ctx.restore();
-        ctx.globalAlpha = 1;
+      } else if (mode === "ambience") {
+        feedback(1.004, 0.0015, 0.93, 0, -0.6);
+        ctx.globalCompositeOperation = "lighter";
+        for (let k = 0; k < 4; k++) {
+          ctx.beginPath();
+          for (let i = 0; i <= 160; i++) {
+            const p = i / 160;
+            const a = p * Math.PI * 2;
+            const x = cx + Math.sin(a * (2 + k) + t * (0.7 + k * 0.2)) * w * (0.28 + s[k * 6]! * 0.15);
+            const y = cy + Math.sin(a * (3 + k) + t * (0.5 + k * 0.13) + k) * h * (0.26 + s[k * 6 + 3]! * 0.15);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = `hsl(${H(k * 50)} 90% 55% / 0.3)`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      } else if (mode === "tunnel") {
+        feedback(1.028 + bass * 0.03, 0.006 + mid * 0.012, 0.9);
+        ctx.globalCompositeOperation = "lighter";
+        const sides = 6;
+        ctx.beginPath();
+        for (let i = 0; i <= sides; i++) {
+          const a = (i / sides) * Math.PI * 2 + t * 0.4;
+          const r = R * (0.06 + level * 0.14);
+          ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+        }
+        ctx.strokeStyle = `hsl(${H()} 100% ${45 + bass * 20}% / 0.85)`;
+        ctx.lineWidth = 4 + bass * 8;
+        ctx.stroke();
+        // spectrum star at the mouth of the tunnel
+        for (let i = 0; i < 32; i++) {
+          const v = s[i * 2]!;
+          const a = (i / 32) * Math.PI * 2 - t * 0.6;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * R * 0.02, cy + Math.sin(a) * R * 0.02);
+          ctx.lineTo(cx + Math.cos(a) * R * (0.03 + v * 0.1), cy + Math.sin(a) * R * (0.03 + v * 0.1));
+          ctx.strokeStyle = `hsl(${H(120 + i * 4)} 95% 65% / ${0.4 + v * 0.6})`;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      } else {
+        // Bars and Waves: spectrum bars with falling peak caps, a reflection, and the waveform across the top.
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "rgb(0 0 0 / 0.35)";
+        ctx.fillRect(0, 0, w, h);
+        const n = 40;
+        const gap = Math.max(2, w * 0.004);
+        const bw = (w - gap * (n - 1)) / n;
+        const base = h * 0.72;
+        for (let i = 0; i < n; i++) {
+          const v = s[Math.floor((i / n) * BINS)]!;
+          const bh = v * base * 0.92;
+          peaks[i] = Math.max(v, (peaks[i] ?? 0) - 0.006);
+          const x = i * (bw + gap);
+          const g = ctx.createLinearGradient(0, base - bh, 0, base);
+          g.addColorStop(0, `hsl(${H(i * 4)} 95% 65%)`);
+          g.addColorStop(1, `hsl(${H(i * 4 + 40)} 90% 35%)`);
+          ctx.fillStyle = g;
+          ctx.fillRect(x, base - bh, bw, bh);
+          ctx.globalAlpha = 0.2;
+          ctx.fillRect(x, base + 3, bw, bh * 0.4);
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(x, base - peaks[i]! * base * 0.92 - 4, bw, 2);
+        }
+        ctx.beginPath();
+        for (let i = 0; i < 128; i++) {
+          const x = (i / 127) * w;
+          const y = h * 0.18 + wave[i]! * h * 0.12;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = `hsl(${H(160)} 95% 70%)`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
+      ctx.globalCompositeOperation = "source-over";
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
@@ -247,9 +334,9 @@ export function Visualizer({ playback, preset }: { playback: Playback | null; pr
       <canvas ref={canvas} className="viz-canvas" aria-hidden />
       <div className="viz-audio">
         {live ? (
-          <button className="btn btn-quiet btn-s" onClick={() => { source.current.release(); setLive(false); }}><X aria-hidden />Stop reacting to audio</button>
+          <button className="btn btn-quiet btn-s" onClick={() => { source.current.release(); setLive(false); }}><X aria-hidden />Stop using tab audio</button>
         ) : (
-          <button className="btn btn-quiet btn-s" title="Captures this tab’s sound (Chrome or Edge)"
+          <button className="btn btn-primary btn-s" title="Captures this tab’s sound so the visuals follow the actual music (Chrome or Edge)"
             onClick={async () => { setError(await source.current.capture()); setLive(source.current.live); }}>
             <AudioLines aria-hidden />React to real audio
           </button>
