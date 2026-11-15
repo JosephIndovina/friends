@@ -1,0 +1,100 @@
+/* Couch Glow tokens. The room takes the colour of whatever is on.
+   --glow is set at runtime from the current artwork (clamped), and cools to an ember when idle. */
+
+@property --glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #6b3a22;
+}
+
+:root {
+  --font: "Hanken Grotesk Variable", "Hanken Grotesk", system-ui, sans-serif;
+
+  /* scale: one face, hierarchy by size and weight */
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.0625rem;
+  --step-2: 1.375rem;
+  --step-3: 1.75rem;
+  --step-4: 2.375rem;
+  --step-5: 3.5rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 72px;
+
+  --radius-s: 8px;
+  --radius-m: 14px;
+  --radius-l: 18px;
+  --radius-pill: 999px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --glow-fade: 1.2s;
+
+  --gutter: clamp(16px, 4vw, 48px);
+  --topbar-h: 64px;
+  --tabbar-h: 64px;
+
+  /* dark: the room after midnight */
+  --ground: #0e0c0d;
+  --upholstery: #1b1719;
+  --surface: color-mix(in oklab, #1b1719 62%, transparent);
+  --surface-strong: color-mix(in oklab, #1b1719 86%, transparent);
+  --line: color-mix(in oklab, #f1e9e1 10%, transparent);
+  --ink: #f1e9e1;
+  --mute: #a99d94;
+  --on-ink: #1a1410;
+  --hint-media: #e8968f;
+  --hint-cast: #8fd0c6;
+  --hint-music: #e3b98a;
+  --danger: #ff8f80;
+  --glow-strength: 46%;
+  --glow-idle: #6b3a22;
+  --stage-shadow: 0 30px 120px -24px color-mix(in oklab, var(--glow) 55%, transparent);
+  color-scheme: dark;
+}
+
+/* light: lights on */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #f4eee7;
+    --upholstery: #fffaf4;
+    --surface: color-mix(in oklab, #fffaf4 70%, transparent);
+    --surface-strong: color-mix(in oklab, #fffaf4 92%, transparent);
+    --line: color-mix(in oklab, #1d1815 12%, transparent);
+    --ink: #1d1815;
+    --mute: #6e625a;
+    --on-ink: #f8f2ec;
+    --hint-media: #a8433a;
+    --hint-cast: #2b7a6f;
+    --hint-music: #8a5a24;
+    --danger: #b3261e;
+    --glow-strength: 30%;
+    --glow-idle: #d9a27c;
+    --stage-shadow: 0 24px 70px -28px color-mix(in oklab, var(--glow) 70%, #1d1815);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ground: #f4eee7;
+  --upholstery: #fffaf4;
+  --surface: color-mix(in oklab, #fffaf4 70%, transparent);
+  --surface-strong: color-mix(in oklab, #fffaf4 92%, transparent);
+  --line: color-mix(in oklab, #1d1815 12%, transparent);
+  --ink: #1d1815;
+  --mute: #6e625a;
+  --on-ink: #f8f2ec;
+  --hint-media: #a8433a;
+  --hint-cast: #2b7a6f;
+  --hint-music: #8a5a24;
+  --danger: #b3261e;
+  --glow-strength: 30%;
+  --glow-idle: #d9a27c;
+  --stage-shadow: 0 24px 70px -28px color-mix(in oklab, var(--glow) 70%, #1d1815);
+  color-scheme: light;
+}
