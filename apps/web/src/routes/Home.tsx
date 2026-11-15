@@ -11,7 +11,7 @@ import { History, ModeToggle, Queue, Seek, Volume } from "../components/media/pa
 import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
 import { expectedPosition, KIND_LABEL, mediaAction, mediaError, useMediaState } from "../lib/media";
-import { usePlayer } from "../lib/player";
+import { usePlayer, viewModeOf } from "../lib/player";
 import { useSite } from "../lib/site";
 
 type MusicView = "art" | "viz" | "lyrics";
@@ -44,7 +44,7 @@ export function Home({ session }: { session: Session }) {
   const [error, setError] = useState<string | null>(null);
   const [screen, setScreen] = useState<HTMLDivElement | null>(null);
   const control = can(session, "player.control");
-  const music = now?.item.mode === "music";
+  const music = now ? viewModeOf(now.item, p.viewOverrides) === "music" : false;
   const site = useSite();
   const hideVideo = music && Boolean(site?.hideVideoInMusic);
 
@@ -166,7 +166,7 @@ export function Home({ session }: { session: Session }) {
                   </span>
                 </div>
                 <div className="info-actions">
-                  {now.item.kind === "youtube" && <ModeToggle item={now.item} disabled={!control} />}
+                  {now.item.kind === "youtube" && <ModeToggle item={now.item} mode={music ? "music" : "video"} onChange={p.setViewOverride} />}
                   {can(session, "player.queue") && <SaveToPlaylist itemId={now.item.id} label={now.item.title} />}
                   <SourcesMenu sources={sources} hidden={p.hidden} setHidden={p.setHidden} />
                 </div>

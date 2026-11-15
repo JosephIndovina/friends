@@ -173,7 +173,6 @@ export interface ClientToServer {
   "media:remove": (input: { id: string }, ack: Ack) => void;
   "media:move": (input: { id: string; to: number }, ack: Ack) => void;
   "media:clear": (ack: Ack) => void;
-  "media:setMode": (input: { id: string; mode: MediaMode }, ack: Ack) => void;
   /** a client's player reached the end of `itemId` */
   "media:ended": (input: { itemId: string }) => void;
   /** a client's player learned the duration of `itemId` */

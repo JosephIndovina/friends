@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Server, Socket } from "socket.io";
-import { SEEKABLE, type Ack, type ClientToServer, type MediaItem, type MediaMode, type MediaState, type Permission, type Playback, type ServerToClient, type Session } from "@friends/shared";
+import { SEEKABLE, type Ack, type ClientToServer, type MediaItem, type MediaState, type Permission, type Playback, type ServerToClient, type Session } from "@friends/shared";
 import { audit } from "./audit.js";
 import { db } from "./db.js";
 import { events } from "./events.js";
@@ -362,18 +362,6 @@ export function createMediaRoom(io: IO) {
       const [item] = queue.splice(from, 1);
       queue.splice(to, 0, item!);
       audit({ actorId: s.user.id, action: "media.moved", target: ref(item!), details: { from: from + 1, to: to + 1 } });
-      commit();
-    }));
-
-    socket.on("media:setMode", handle("player.control", (s, input: { id: string; mode: MediaMode }) => {
-      if (input?.mode !== "video" && input?.mode !== "music") fail("invalid");
-      if (now?.item.id === input.id) now = { ...now, item: { ...now.item, mode: input.mode } };
-      else {
-        const i = queue.findIndex((q) => q.id === input.id);
-        if (i < 0) fail("not_found");
-        queue[i] = { ...queue[i]!, mode: input.mode };
-      }
-      audit({ actorId: s.user.id, action: "media.mode_changed", details: { id: input.id, mode: input.mode } });
       commit();
     }));
 

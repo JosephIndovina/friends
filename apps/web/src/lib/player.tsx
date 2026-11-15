@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { MediaItem, MediaMode } from "@friends/shared";
 
 /** Viewer-local player preferences shared by the dock, Home and the transport. */
 interface PlayerCtx {
@@ -24,6 +25,9 @@ interface PlayerCtx {
   /** stage source this viewer is focusing; null = the default (the player) */
   focused: string | null;
   setFocused: (id: string | null) => void;
+  /** this viewer's music/video view choice per track (keyed by source ref); overrides the room's default */
+  viewOverrides: Readonly<Record<string, MediaMode>>;
+  setViewOverride: (item: MediaItem, mode: MediaMode) => void;
 }
 
 const Ctx = createContext<PlayerCtx | null>(null);
@@ -63,6 +67,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
   const [hidden, setHiddenSet] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>("stage.hidden", [])));
   const [focused, setFocused] = useState<string | null>(() => readJson<string | null>("stage.focus", null));
+  const [viewOverrides, setViewOverrides] = useState<Record<string, MediaMode>>(() => readJson<Record<string, MediaMode>>("viewModes", {}));
+  const setViewOverride = useCallback((item: MediaItem, mode: MediaMode) => {
+    setViewOverrides((prev) => {
+      const key = `${item.kind}:${item.ref}`;
+      const next = { ...prev };
+      if (mode === item.mode) delete next[key];
+      else next[key] = mode;
+      // Keep the most recent 300 choices.
+      const keys = Object.keys(next);
+      for (const k of keys.slice(0, Math.max(0, keys.length - 300))) delete next[k];
+      try {
+        localStorage.setItem("viewModes", JSON.stringify(next));
+      } catch {
+        /* this visit only */
+      }
+      return next;
+    });
+  }, []);
   const setHidden = useCallback((id: string, hide: boolean) => {
     setHiddenSet((prev) => {
       const next = new Set(prev);
@@ -100,8 +122,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [blocked]);
   const value = useMemo(
-    () => ({ audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, dismissedFor, setDismissedFor, hidden, setHidden, focused, setFocused }),
-    [audible, blocked, volume, syncing, slot, dismissedFor, hidden, setHidden, focused],
+    () => ({ audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, dismissedFor, setDismissedFor, hidden, setHidden, focused, setFocused, viewOverrides, setViewOverride }),
+    [audible, blocked, volume, syncing, slot, dismissedFor, hidden, setHidden, focused, viewOverrides, setViewOverride],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -110,4 +132,9 @@ export function usePlayer() {
   const c = useContext(Ctx);
   if (!c) throw new Error("usePlayer outside PlayerProvider");
   return c;
+}
+
+/** The view this viewer sees for an item: their own choice if they made one, else the room's default. */
+export function viewModeOf(item: MediaItem, overrides: Readonly<Record<string, MediaMode>>): MediaMode {
+  return overrides[`${item.kind}:${item.ref}`] ?? item.mode;
 }

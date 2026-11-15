@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { GripVertical, Music2, Play, RotateCcw, Trash2, Tv, Volume2, VolumeX } from "lucide-react";
-import type { MediaItem, Session } from "@friends/shared";
+import type { MediaItem, MediaMode, Session } from "@friends/shared";
 import { can } from "../../lib/api";
 import { ago } from "../../lib/format";
 import { fmtTime, KIND_LABEL, mediaAction } from "../../lib/media";
@@ -112,12 +112,12 @@ export function Thumb({ item }: { item: MediaItem }) {
   return item.thumbnail ? <img className="thumb" src={item.thumbnail} alt="" loading="lazy" /> : <span className="thumb thumb-empty" aria-hidden>{KIND_LABEL[item.kind].slice(0, 2)}</span>;
 }
 
-/** Toggle how the current item is shown. */
-export function ModeToggle({ item, disabled }: { item: MediaItem; disabled: boolean }) {
-  const music = item.mode === "music";
+/** Switch between music and video view for this viewer only. */
+export function ModeToggle({ item, mode, onChange }: { item: MediaItem; mode: MediaMode; onChange: (item: MediaItem, mode: MediaMode) => void }) {
+  const music = mode === "music";
   return (
-    <button className="btn btn-quiet btn-s" disabled={disabled} title={music ? "Show the video" : "Show as music (artwork view)"}
-      onClick={() => void mediaAction("media:setMode", { id: item.id, mode: music ? "video" : "music" }).catch(() => {})}>
+    <button className="btn btn-quiet btn-s" title={music ? "Show the video (just for you)" : "Show the music view (just for you)"}
+      onClick={() => onChange(item, music ? "video" : "music")}>
       {music ? <Tv aria-hidden /> : <Music2 aria-hidden />}{music ? "Video view" : "Music view"}
     </button>
   );

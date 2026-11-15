@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import type { Activity, Section, Session } from "@friends/shared";
 import { isAdminish } from "../lib/api";
 import { useMediaState } from "../lib/media";
-import { PlayerProvider, usePlayer } from "../lib/player";
+import { PlayerProvider, usePlayer, viewModeOf } from "../lib/player";
 import { reportActivity, reportSection } from "../lib/presence";
 import { Avatar } from "./Avatar";
 import { PlayerDock } from "./media/PlayerDock";
@@ -21,7 +21,7 @@ function ActivityReporter() {
   const now = useMediaState()?.now ?? null;
   const p = usePlayer();
   const visible = !p.hidden.has("player") && (Boolean(p.slot) || p.dismissedFor !== now?.item.id);
-  const activity: Activity = now?.playing && p.audible && visible ? (now.item.mode === "music" ? "listening" : "watching") : "idle";
+  const activity: Activity = now?.playing && p.audible && visible ? (viewModeOf(now.item, p.viewOverrides) === "music" ? "listening" : "watching") : "idle";
   useEffect(() => reportActivity(activity), [activity]);
   return null;
 }
