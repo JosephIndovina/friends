@@ -617,7 +617,9 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .media-room { grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 861px) { .media-room .player-screen:not(.is-grid):not(.is-full) { max-height: calc(100dvh - 250px); min-height: 320px; } }
 
-.player-screen { position: relative; padding: 0; aspect-ratio: 16 / 9; background: #000; }
+.player-screen { position: relative; width: 100%; padding: 0; aspect-ratio: 16 / 9; background: #000; }
+.player-screen .stage-idle h1 { color: #e6ecf5; }
+.player-screen .stage-idle p { color: #95a0b2; }
 /* Full screen: the shell goes full screen and the stage is pinned over it (see Home). */
 .shell:fullscreen { overflow: hidden; }
 .player-screen.is-full { position: fixed; inset: 0; z-index: 60; width: 100vw; height: 100dvh; aspect-ratio: auto !important; border-radius: 0 !important; }
@@ -1070,7 +1072,8 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 }
 /* Home gets a wider page so the stage keeps its size beside the rail. */
 main.page:has(.media-room) { max-width: 1920px; }
-@media (min-width: 1081px) { .media-room { grid-template-columns: minmax(0, 1fr) 360px; } }
+/* The queue sits beside the stage; in theatre it drops below so the stage gets the full width. */
+@media (min-width: 1081px) { .media-room:not(.is-theatre) { grid-template-columns: minmax(0, 1fr) 360px; } }
 /* Phones: a row of chips above the stage. */
 @media (max-width: 860px) {
   .stage.has-rail, .stage.has-rail:has(> .rail.is-open) { flex-direction: column; --rail-w: 0px; }
