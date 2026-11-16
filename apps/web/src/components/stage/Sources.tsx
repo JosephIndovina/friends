@@ -1,5 +1,6 @@
 import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { VolumeHover } from "../media/parts";
 import { GoLive } from "./GoLive";
 
@@ -51,7 +52,7 @@ function useMedia(query: string) {
   return match;
 }
 
-export function StageRail({ sources, focused, all, onToggle, onAll, open: railOpen, setOpen, full }: {
+export function StageRail({ sources, focused, all, onToggle, onAll, open: railOpen, setOpen, full, theatre }: {
   sources: StageSource[];
   /** the focused sources */
   focused: ReadonlySet<string>;
@@ -65,6 +66,8 @@ export function StageRail({ sources, focused, all, onToggle, onAll, open: railOp
   setOpen: (open: boolean) => void;
   /** full screen: the rail is pinned down the left of the window, beside the stage */
   full?: boolean;
+  /** theatre mode hides the top bar, so the open rail's header carries the wordmark instead of "Sources" */
+  theatre?: boolean;
 }) {
   const shown = sources.filter((s) => s.on).length;
   // Phones show the sources as a row of chips. Edit turns the row into a list with each source's
@@ -75,10 +78,13 @@ export function StageRail({ sources, focused, all, onToggle, onAll, open: railOp
   return (
     <nav className={`rail${open ? " is-open" : ""}${phone && managing ? " is-managing" : ""}${full ? " is-full" : ""}`} aria-label="Sources">
       <div className="rail-panel">
+        {/* Open, the title comes first and the collapse button sits at the right; collapsed, the button is all there is. */}
         <div className="rail-head">
+          {open && (theatre
+            ? <Link to="/" className="wordmark rail-wordmark">friends</Link>
+            : <span className="rail-title">Sources <span className="quiet">{shown}/{sources.length}</span></span>)}
           <button className="icon-btn rail-toggle" aria-expanded={open} aria-label={open ? "Collapse sources" : "Expand sources"} data-tip={open ? undefined : "Expand"}
             onClick={() => setOpen(!open)}>{open ? <PanelLeftClose aria-hidden /> : <PanelLeftOpen aria-hidden />}</button>
-          {open && <span className="rail-title">Sources <span className="quiet">{shown}/{sources.length}</span></span>}
         </div>
 
         <ul className="rail-list">

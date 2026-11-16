@@ -353,7 +353,7 @@ export function Home({ session }: { session: Session }) {
           <section className={`stage${showRail ? " has-rail" : ""}`} aria-label="Stage">
             {showRail && (
               <StageRail sources={sources} focused={new Set(picked.map((x) => x.id))} all={layout === "grid"} onToggle={toggleFocus} onAll={clearFocus}
-                open={railOpen === "on"} setOpen={(o) => setRailOpen(o ? "on" : "off")} full={full} />
+                open={railOpen === "on"} setOpen={(o) => setRailOpen(o ? "on" : "off")} full={full} theatre={theatre === "on"} />
             )}
             <div className="stage-main">
             <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}${tiled ? " is-grid" : ""}${full ? " is-full" : ""}`}>
