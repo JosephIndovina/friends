@@ -54,6 +54,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/live
+          # webrtc-sys only looks for cuda.h when it's compiled; a cached build from without it would keep NVENC out.
+          key: cuda-12.9
       - run: cargo test
       - run: npx --yes @tauri-apps/cli@2 build --bundles deb
       - run: mkdir -p out && cp "target/release/bundle/deb/"*.deb out/friends-live_amd64.deb
