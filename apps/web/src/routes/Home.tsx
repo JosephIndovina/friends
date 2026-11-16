@@ -6,7 +6,7 @@ import { Feed } from "../components/posts/Feed";
 import { PresenceStack } from "../components/PresenceStack";
 import { MeLink } from "../components/Shell";
 import { fitGrid, StageRail, StageTile, type StageSource } from "../components/stage/Sources";
-import { StreamVideo, useCast } from "../lib/cast";
+import { STREAM_QUALITIES, StreamVideo, useCast, type StreamQuality } from "../lib/cast";
 import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
 import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
@@ -421,6 +421,12 @@ export function Home({ session }: { session: Session }) {
                           style={{ "--fill": `${cast.volume[focusedStream.id] ?? 100}%` } as React.CSSProperties}
                           onChange={(e) => cast.setVolume(focusedStream.id, Number(e.target.value))} />
                       </>
+                    )}
+                    {!focusedStream.local && (
+                      <select className="select stream-quality" aria-label="Stream quality" value={cast.quality[focusedStream.id] ?? "high"}
+                        onChange={(e) => cast.setQuality(focusedStream.id, e.target.value as StreamQuality)}>
+                        {STREAM_QUALITIES.map((q) => <option key={q.id} value={q.id}>{q.label}</option>)}
+                      </select>
                     )}
                     {!focusedStream.mine && canStopOthers && <span className="bar-sep" aria-hidden />}
                     {!focusedStream.mine && canStopOthers && (
