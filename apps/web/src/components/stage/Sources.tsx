@@ -1,4 +1,4 @@
-import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Square, Volume2, VolumeX, X } from "lucide-react";
+import { LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, PowerOff, RotateCcw, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { GoLive } from "./GoLive";
 
@@ -14,8 +14,13 @@ export interface StageSource {
   local?: boolean;
   audible: boolean;
   setAudible: (v: boolean) => void;
-  /** a screen you may close: closes it for everyone */
-  onClose?: () => void;
+  /** on for this viewer: loaded, received and heard. Off uses no bandwidth. Only affects you. */
+  on: boolean;
+  setOn: (on: boolean) => void;
+  /** a cast stream from someone else: while off it shows on the stage as a card to watch */
+  stream?: boolean;
+  /** take it out of this viewer's list (and turn it off) */
+  onRemove: () => void;
 }
 
 /** One of your own streams, listed with its Stop button at the foot of the rail. */
@@ -33,14 +38,15 @@ export interface OwnStream {
  * Expanded it has names, sound and hide; collapsed it is thumbnails. Clicking a source shows it large,
  * and "All" shows every visible source as a grid. Going live and stopping sit at the foot.
  */
-export function StageRail({ sources, hidden, setHidden, current, onShow, open, setOpen, own, onStop, full }: {
+export function StageRail({ sources, current, onShow, removedCount, onRestore, open, setOpen, own, onStop, full }: {
   sources: StageSource[];
-  hidden: ReadonlySet<string>;
-  setHidden: (id: string, hide: boolean) => void;
   /** the source shown large, or "all" for the grid */
   current: string | "all" | null;
-  /** show one source large, or null for the grid */
+  /** show one source large (turning it on), or null for the grid */
   onShow: (id: string | null) => void;
+  /** sources removed from this list that are still around */
+  removedCount: number;
+  onRestore: () => void;
   open: boolean;
   setOpen: (open: boolean) => void;
   own: OwnStream[];
@@ -48,7 +54,7 @@ export function StageRail({ sources, hidden, setHidden, current, onShow, open, s
   /** full screen: the rail is pinned down the left of the window, beside the stage */
   full?: boolean;
 }) {
-  const shown = sources.filter((s) => !hidden.has(s.id)).length;
+  const shown = sources.filter((s) => s.on).length;
   return (
     <nav className={`rail${open ? " is-open" : ""}${full ? " is-full" : ""}`} aria-label="Sources">
       <div className="rail-panel">
@@ -59,50 +65,49 @@ export function StageRail({ sources, hidden, setHidden, current, onShow, open, s
         </div>
 
         <ul className="rail-list">
-          {shown > 1 && (
+          {sources.length > 1 && (
             <li className="rail-row">
               <button className="rail-item" aria-current={current === "all" || undefined} data-tip={open ? undefined : "All sources"} onClick={() => onShow(null)}>
                 <span className="rail-thumb rail-thumb-icon"><LayoutGrid aria-hidden /></span>
-                <span className="rail-text"><span className="rail-label">All</span><span className="rail-detail">{shown} sources</span></span>
+                <span className="rail-text"><span className="rail-label">All</span><span className="rail-detail">{shown} on</span></span>
               </button>
             </li>
           )}
-          {sources.map((s) => {
-            const isHidden = hidden.has(s.id);
-            return (
-              <li key={s.id} className={`rail-row${isHidden ? " is-hidden" : ""}`}>
-                <button className="rail-item" aria-current={current === s.id || undefined} data-tip={open ? undefined : isHidden ? `${s.label} (hidden)` : s.label}
-                  aria-label={isHidden ? `Show ${s.label}` : `Show ${s.label} large`}
-                  onClick={() => {
-                    if (isHidden) setHidden(s.id, false);
-                    onShow(s.id);
-                  }}>
-                  <span className={`rail-thumb${s.live ? " is-live" : ""}`}>
-                    {s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="rail-initial">{s.label.slice(0, 1)}</span>}
-                    {isHidden ? <span className="rail-badge"><EyeOff aria-hidden /></span> : !s.audible && !s.local && <span className="rail-badge"><VolumeX aria-hidden /></span>}
-                  </span>
-                  <span className="rail-text">
-                    <span className="rail-label">{s.label}</span>
-                    <span className="rail-detail">{s.live && <span className="live-dot" aria-hidden />}{isHidden ? "Hidden" : s.detail}</span>
-                  </span>
-                </button>
-                {open && (
-                  <span className="rail-actions">
-                    {!s.local && (
-                      <button className="icon-btn" disabled={isHidden} aria-label={s.audible ? `Mute ${s.label}` : `Unmute ${s.label}`} title={s.audible ? "Mute" : "Unmute"}
-                        onClick={() => s.setAudible(!s.audible)}>{s.audible ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}</button>
-                    )}
-                    <button className="icon-btn" aria-label={isHidden ? `Show ${s.label}` : `Hide ${s.label}`} title={isHidden ? "Show" : "Hide"}
-                      onClick={() => setHidden(s.id, !isHidden)}>{isHidden ? <EyeOff aria-hidden /> : <Eye aria-hidden />}</button>
-                    {s.onClose && (
-                      <button className="icon-btn" aria-label={`Close ${s.label} for everyone`} title="Close for everyone" onClick={s.onClose}><X aria-hidden /></button>
-                    )}
-                  </span>
-                )}
-              </li>
-            );
-          })}
+          {sources.map((s) => (
+            <li key={s.id} className={`rail-row${s.on ? "" : " is-off"}`}>
+              <button className="rail-item" aria-current={current === s.id || undefined} data-tip={open ? undefined : s.on ? s.label : `${s.label} (off)`}
+                aria-label={s.on ? `Show ${s.label} large` : `Turn on ${s.label}`}
+                onClick={() => onShow(s.id)}>
+                <span className={`rail-thumb${s.live ? " is-live" : ""}`}>
+                  {s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="rail-initial">{s.label.slice(0, 1)}</span>}
+                  {!s.on ? <span className="rail-badge"><PowerOff aria-hidden /></span> : !s.audible && !s.local && <span className="rail-badge"><VolumeX aria-hidden /></span>}
+                </span>
+                <span className="rail-text">
+                  <span className="rail-label">{s.label}</span>
+                  <span className="rail-detail">{s.live && <span className="live-dot" aria-hidden />}{s.on ? s.detail : "Off"}</span>
+                </span>
+              </button>
+              {open && (
+                <span className="rail-actions">
+                  {!s.local && s.on && (
+                    <button className="icon-btn" aria-label={s.audible ? `Mute ${s.label}` : `Unmute ${s.label}`} title={s.audible ? "Mute" : "Unmute"}
+                      onClick={() => s.setAudible(!s.audible)}>{s.audible ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}</button>
+                  )}
+                  {!s.local && s.on && <span className="rail-sep" aria-hidden />}
+                  <label className="rail-switch" title={s.on ? "Turn off for you" : "Turn on"}>
+                    <input type="checkbox" role="switch" checked={s.on} aria-label={`${s.label} on`} onChange={(e) => s.setOn(e.target.checked)} />
+                    <span className="switch" aria-hidden />
+                  </label>
+                  <span className="rail-sep" aria-hidden />
+                  <button className="icon-btn" aria-label={`Remove ${s.label} from your list`} title="Remove from your list" onClick={s.onRemove}><X aria-hidden /></button>
+                </span>
+              )}
+            </li>
+          ))}
         </ul>
+        {open && removedCount > 0 && (
+          <button className="btn btn-quiet btn-s rail-restore" onClick={onRestore}><RotateCcw aria-hidden />Bring back {removedCount} removed</button>
+        )}
 
         <div className="rail-foot">
           {open && own.length > 0 && <span className="rail-foot-title"><span className="live-dot" aria-hidden />You're live</span>}
@@ -139,8 +144,28 @@ export function StageTile({ source, onFocus, style, children }: {
   source: StageSource;
   onFocus: (id: string) => void;
   style?: CSSProperties;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
+  // An off stream: a card with the streamer's picture, to start watching.
+  if (!source.on) {
+    return (
+      <li className="tile tile-offer" style={style}>
+        <div className="tile-media">
+          {source.thumbnail ? <img className="tile-art" src={source.thumbnail} alt="" /> : null}
+          <span className="tile-offer-body">
+            {source.thumbnail ? <img className="tile-offer-avatar" src={source.thumbnail} alt="" /> : <span className="tile-offer-avatar rail-initial">{source.label.slice(0, 1)}</span>}
+            <span className="btn btn-primary btn-s" aria-hidden><Play aria-hidden />Watch</span>
+          </span>
+        </div>
+        <button className="tile-hit" aria-label={`Watch ${source.label}`} onClick={() => onFocus(source.id)} />
+        <span className="tile-name">
+          <span className="live-dot" aria-hidden />
+          <span className="tile-label">{source.label}</span>
+        </span>
+        <button className="icon-btn tile-remove" aria-label={`Remove ${source.label} from your list`} title="Remove from your list" onClick={source.onRemove}><X aria-hidden /></button>
+      </li>
+    );
+  }
   return (
     <li className="tile" style={style}>
       <div className="tile-media">{children}</div>

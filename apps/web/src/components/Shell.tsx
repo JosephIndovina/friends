@@ -23,9 +23,9 @@ function ActivityReporter() {
   const now = state?.now ?? null;
   const p = usePlayer();
   const cast = useCast();
-  const visible = !p.hidden.has("player") && (Boolean(p.slot) || p.dismissedFor !== now?.item.id);
-  const watchingStream = cast.streams.some((st) => !st.local && !p.hidden.has(st.id))
-    || (p.stageOpen && (state?.screens ?? []).some((sc) => sc.playing && p.screenSound.has(sc.item.id) && !p.hidden.has(sc.item.id)));
+  const visible = !p.hidden.has("player") && !p.removed.has(`player:${now?.item.id}`) && (Boolean(p.slot) || p.dismissedFor !== now?.item.id);
+  const watchingStream = cast.streams.some((st) => !st.local && cast.watching.has(st.id))
+    || (p.stageOpen && (state?.screens ?? []).some((sc) => sc.playing && p.screenSound.has(sc.item.id) && !p.hidden.has(sc.item.id) && !p.removed.has(sc.item.id)));
   const activity: Activity = cast.streams.some((st) => st.local)
     ? "casting"
     : now?.playing && p.audible && visible
@@ -35,11 +35,10 @@ function ActivityReporter() {
   return null;
 }
 
-/** Sound for every visible stream, on every page (each with this viewer's own volume and mute). */
+/** Sound for every watched stream, on every page (each with this viewer's own volume and mute). */
 function StreamSound() {
   const cast = useCast();
-  const p = usePlayer();
-  return <>{cast.streams.filter((st) => !st.local && !p.hidden.has(st.id)).map((st) => <StreamAudio key={st.id} stream={st} />)}</>;
+  return <>{cast.streams.filter((st) => !st.local && cast.watching.has(st.id)).map((st) => <StreamAudio key={st.id} stream={st} />)}</>;
 }
 
 /** Your avatar: opens settings, with a badge for access requests waiting on you. */

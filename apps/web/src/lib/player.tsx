@@ -28,9 +28,13 @@ interface PlayerCtx {
   /** viewer closed the docked mini player for this item */
   dismissedFor: string | null;
   setDismissedFor: (id: string | null) => void;
-  /** stage sources this viewer has hidden (not loaded, not heard); saved on this device */
+  /** shared media this viewer turned off (not loaded, not heard): "player" or a screen id; saved on this device. Streams use the cast's watching set. */
   hidden: ReadonlySet<string>;
   setHidden: (id: string, hide: boolean) => void;
+  /** sources this viewer removed from their list (also off): a screen or stream id, or "player:<item id>" for one track; saved on this device */
+  removed: ReadonlySet<string>;
+  setRemoved: (id: string, removed: boolean) => void;
+  clearRemoved: () => void;
   /** source this viewer picked to show large; null = the grid (or the only source) */
   focused: string | null;
   setFocused: (id: string | null) => void;
@@ -132,6 +136,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+  const [removed, setRemovedSet] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>("stage.removed", [])));
+  const setRemoved = useCallback((id: string, r: boolean) => {
+    setRemovedSet((prev) => {
+      if (prev.has(id) === r) return prev;
+      // Keep the most recent 200: ids are per item or per stream, so old ones never come back.
+      const next = [...prev].filter((x) => x !== id);
+      if (r) next.push(id);
+      return new Set(next.slice(-200));
+    });
+  }, []);
+  const clearRemoved = useCallback(() => setRemovedSet(new Set()), []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("stage.removed", JSON.stringify([...removed]));
+    } catch {
+      /* this visit only */
+    }
+  }, [removed]);
   useEffect(() => {
     try {
       localStorage.setItem("stage.hidden", JSON.stringify([...hidden]));
@@ -162,9 +184,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, stageOpen, setStageOpen, screenSlots, setScreenSlot,
-      screenSound, setScreenSound, dismissedFor, setDismissedFor, hidden, setHidden, focused, setFocused, viewOverrides, setViewOverride, clearViewOverrides,
+      screenSound, setScreenSound, dismissedFor, setDismissedFor, hidden, setHidden, removed, setRemoved, clearRemoved, focused, setFocused, viewOverrides, setViewOverride, clearViewOverrides,
     }),
-    [audible, blocked, volume, syncing, slot, stageOpen, screenSlots, setScreenSlot, screenSound, setScreenSound, dismissedFor, hidden, setHidden, focused, viewOverrides, setViewOverride, clearViewOverrides],
+    [audible, blocked, volume, syncing, slot, stageOpen, screenSlots, setScreenSlot, screenSound, setScreenSound, dismissedFor, hidden, setHidden, removed, setRemoved, clearRemoved, focused, viewOverrides, setViewOverride, clearViewOverrides],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

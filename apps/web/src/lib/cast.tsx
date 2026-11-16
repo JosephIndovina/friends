@@ -56,6 +56,9 @@ interface CastCtx {
   supported: boolean;
   goLive: (mode: StreamMode) => Promise<string | null>;
   stop: (streamId: string) => Promise<void>;
+  /** streams this viewer is watching: only these are received. Others' streams start unwatched; your own from this tab start watched. */
+  watching: ReadonlySet<string>;
+  setWatching: (id: string, on: boolean) => void;
   /** per-viewer stream sound */
   muted: ReadonlySet<string>;
   setMuted: (id: string, m: boolean) => void;
@@ -97,13 +100,13 @@ function streamsOf(p: Participant, local: boolean, selfId: string): Stream[] {
 
 export function CastProvider({ session, children }: { session: Session; children: React.ReactNode }) {
   const site = useSite();
-  const player = usePlayer();
   const allowed = can(session, "cast.watch") && site?.sections.cast !== false;
   const [room, setRoom] = useState<Room | null>(null);
   const [streams, setStreams] = useState<Stream[]>([]);
   const [canStream, setCanStream] = useState(false);
   const [muted, setMutedSet] = useState<ReadonlySet<string>>(new Set());
   const [volume, setVolumes] = useState<Record<string, number>>({});
+  const [watching, setWatchingSet] = useState<ReadonlySet<string>>(new Set());
   const counter = useRef(0);
 
   // Connect while allowed; reconnect if the server drops us (e.g. after a role change).
@@ -172,16 +175,31 @@ export function CastProvider({ session, children }: { session: Session; children
     };
   }, [allowed]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Receive only what this viewer shows on their stage: hidden streams use no bandwidth.
+  // Your own stream from this tab starts watched (it costs nothing). Ended streams drop out of the set.
+  const seen = useRef(new Set<string>());
+  useEffect(() => {
+    const ids = new Set(streams.map((s) => s.id));
+    const fresh = streams.filter((s) => s.local && !seen.current.has(s.id)).map((s) => s.id);
+    for (const s of streams) seen.current.add(s.id);
+    for (const id of seen.current) if (!ids.has(id)) seen.current.delete(id);
+    setWatchingSet((prev) => {
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      for (const id of fresh) next.add(id);
+      return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
+    });
+  }, [streams]);
+
+  // Receive only the streams this viewer is watching: the rest use no bandwidth. Watched streams stay
+  // received while they're off screen, so switching what's shown large doesn't reconnect.
   useEffect(() => {
     for (const s of streams) {
       if (s.local) continue;
-      const show = !player.hidden.has(s.id);
-      (s.video as RemoteTrackPublication).setSubscribed(show);
+      const on = watching.has(s.id);
+      (s.video as RemoteTrackPublication).setSubscribed(on);
       // Your own stream from another tab is never played back, so don't fetch its sound.
-      (s.audio as RemoteTrackPublication | null)?.setSubscribed(show && !s.mine);
+      (s.audio as RemoteTrackPublication | null)?.setSubscribed(on && !s.mine);
     }
-  }, [streams, player.hidden]);
+  }, [streams, watching]);
 
   const goLive = useCallback(async (mode: StreamMode): Promise<string | null> => {
     if (!room) return "Not connected to the stage yet. Try again in a moment.";
@@ -251,10 +269,17 @@ export function CastProvider({ session, children }: { session: Session; children
     return next;
   }), []);
   const setVolume = useCallback((id: string, v: number) => setVolumes((prev) => ({ ...prev, [id]: v })), []);
+  const setWatching = useCallback((id: string, on: boolean) => setWatchingSet((prev) => {
+    if (prev.has(id) === on) return prev;
+    const next = new Set(prev);
+    if (on) next.add(id);
+    else next.delete(id);
+    return next;
+  }), []);
 
   const value = useMemo<CastCtx>(
-    () => ({ available: room?.state === ConnectionState.Connected, streams, canStream, supported: SUPPORTED, goLive, stop, muted, setMuted, volume, setVolume }),
-    [room, streams, canStream, goLive, stop, muted, setMuted, volume, setVolume],
+    () => ({ available: room?.state === ConnectionState.Connected, streams, canStream, supported: SUPPORTED, goLive, stop, watching, setWatching, muted, setMuted, volume, setVolume }),
+    [room, streams, canStream, goLive, stop, watching, setWatching, muted, setMuted, volume, setVolume],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

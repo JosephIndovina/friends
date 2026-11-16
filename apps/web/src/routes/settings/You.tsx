@@ -117,8 +117,11 @@ export function Playback() {
 
       <section className="panel" aria-labelledby="stage-title">
         <h2 id="stage-title">Stage</h2>
-        <Row label="Hidden sources" hint={hiddenCount ? `${hiddenCount} hidden on this device.` : "Nothing hidden."}>
-          <button className="btn btn-quiet btn-s" disabled={!hiddenCount} onClick={() => { for (const id of p.hidden) p.setHidden(id, false); toast("Showing all sources."); }}>Show all</button>
+        <Row label="Sources turned off" hint={hiddenCount ? `${hiddenCount} off on this device.` : "Nothing off."}>
+          <button className="btn btn-quiet btn-s" disabled={!hiddenCount} onClick={() => { for (const id of p.hidden) p.setHidden(id, false); toast("Turned all sources on."); }}>Turn all on</button>
+        </Row>
+        <Row label="Removed sources" hint={p.removed.size ? `${p.removed.size} removed on this device.` : "Nothing removed."}>
+          <button className="btn btn-quiet btn-s" disabled={!p.removed.size} onClick={() => { p.clearRemoved(); toast("Brought back removed sources."); }}>Bring back</button>
         </Row>
       </section>
 
