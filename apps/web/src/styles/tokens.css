@@ -120,3 +120,9 @@
     color-scheme: dark;
   }
 }
+/* Theatre's room is a soft near-black; full screen stays true black. */
+:root { --theatre-bg: #111419; }
+@media (min-width: 861px) {
+  :root:has(.media-room.is-theatre) { --ground: var(--theatre-bg); }
+  :root:has(.rail.is-full) { --ground: #000; }
+}

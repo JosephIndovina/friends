@@ -1012,10 +1012,10 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 
 /* Theatre: the page goes black and the stage runs edge to edge (dark tokens are forced in tokens.css). */
 @media (min-width: 861px) {
-  body:has(.media-room.is-theatre) { background: #000; }
+  body:has(.media-room.is-theatre) { background: var(--theatre-bg); }
   main.page:has(.media-room.is-theatre) { max-width: none; }
-  .is-theatre .stage { margin-inline: calc(var(--gutter) * -1); border: 0; box-shadow: none; background: #000; }
-  .is-theatre .player-screen.is-grid:not(.is-full) { background: #000 !important; }
+  .is-theatre .stage { margin-inline: calc(var(--gutter) * -1); border: 0; box-shadow: none; background: var(--theatre-bg); }
+  .is-theatre .player-screen.is-grid:not(.is-full) { background: var(--theatre-bg) !important; }
   /* No top bar: the stage starts at the top of the window and, with its bars, fills it (--stage-bars is measured in Home). */
   .shell:has(.media-room.is-theatre) > .topbar { display: none; }
   main.page:has(.media-room.is-theatre) { padding-top: 0; }
@@ -1118,6 +1118,11 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .rail-foot { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-2) 12px 12px; border-top: 1px solid var(--line); }
 .rail.is-open .rail-foot { justify-items: stretch; }
 .rail-foot:empty { display: none; }
+/* Beside the stage, the foot is as tall as the stage bar so their top edges meet, and Go live
+   sits level with the bar's title row (row is 48px over 12px of padding: centre 36px up). */
+@media (min-width: 861px) {
+  .stage.has-rail .rail-foot { min-height: var(--stage-bar-h, 0px); align-content: end; padding-top: var(--space-2); padding-bottom: 18px; }
+}
 .rail-thumb.has-preview { overflow: hidden; background: #000; }
 .rail-preview-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; font-size: 0; border-radius: inherit; }
 .rail-stop { flex: none; padding: 0 var(--space-3); }
@@ -1134,7 +1139,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .rail.is-full { position: fixed; inset: 0 auto 0 0; z-index: 63; border-radius: 0; }
 .stage.has-rail .player-screen.is-full { left: var(--rail-w); width: calc(100vw - var(--rail-w)); }
 /* Theatre and full screen: the rail goes black with the stage; its edge line stays. */
-@media (min-width: 861px) { .is-theatre .rail, .rail.is-full { --rail-bg: #000; } }
+@media (min-width: 861px) { .is-theatre .rail { --rail-bg: var(--theatre-bg); } .rail.is-full { --rail-bg: #000; } }
 @media (hover: hover) {
   .rail [data-tip]::after { bottom: auto; top: 50%; left: calc(100% + 10px); translate: 4px -50%; }
   .rail [data-tip]:hover::after, .rail [data-tip]:focus-visible::after { translate: 0 -50%; }

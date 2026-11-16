@@ -215,6 +215,8 @@ export function Home({ session }: { session: Session }) {
   }, [screen]);
   // Theatre fits the stage and every bar under it (transport, info, source strip) into the window, so measure the bars rather than guess.
   const [bars, setBars] = useState(THEATRE_CHROME);
+  // The rail's foot matches the stage bar's height so their top edges line up.
+  const [barH, setBarH] = useState(0);
   useEffect(() => {
     const main = screen?.parentElement;
     if (!main) return;
@@ -224,6 +226,7 @@ export function Home({ session }: { session: Session }) {
         if (el !== screen && !["fixed", "absolute"].includes(getComputedStyle(el).position)) h += el.offsetHeight;
       }
       setBars(h);
+      setBarH((main.querySelector(":scope > .stage-bar") as HTMLElement | null)?.offsetHeight ?? 0);
     };
     const ro = new ResizeObserver(measure);
     const watch = () => {
@@ -288,7 +291,7 @@ export function Home({ session }: { session: Session }) {
 
   return (
     <>
-      <div className={`room media-room${theatre === "on" ? " is-theatre" : ""}`} style={{ "--stage-bars": `${bars}px` } as React.CSSProperties}>
+      <div className={`room media-room${theatre === "on" ? " is-theatre" : ""}`} style={{ "--stage-bars": `${bars}px`, "--stage-bar-h": `${barH}px` } as React.CSSProperties}>
           <section className={`stage${showRail ? " has-rail" : ""}`} aria-label="Stage">
             {showRail && (
               <StageRail sources={sources} current={layout === "grid" ? "all" : focusId} onShow={show}
