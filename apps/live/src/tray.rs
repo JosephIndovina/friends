@@ -25,6 +25,8 @@ pub struct TrayState {
     pub codec: String,
     pub encoder: String,
     pub auto_start: bool,
+    /// Windows: the windows to choose from.
+    pub windows: Vec<gui::WindowChoice>,
 }
 
 /// What the tray shows now. Rebuilding a menu makes the desktop redraw the tray, so it's only done on a change.
@@ -50,7 +52,21 @@ fn menu(app: &AppHandle, t: &TrayState) -> tauri::Result<Menu<Wry>> {
         MenuItem::with_id(app, "golive", if t.starting { "Starting…" } else { "Go live" }, t.connected && !t.starting, None::<&str>)?
     };
     menu.append(&primary)?;
-    menu.append(&MenuItem::with_id(app, "change", "Change window", !t.starting && (t.live || t.has_window), None::<&str>)?)?;
+    if cfg!(windows) {
+        // No system picker on Windows: choose from the open windows. Picking one goes live with it (or switches).
+        let windows = Submenu::with_id(app, "windows", "Window", !t.starting)?;
+        if t.windows.is_empty() {
+            windows.append(&MenuItem::with_id(app, "w:none", "No windows to stream", false, None::<&str>)?)?;
+        }
+        for w in t.windows.iter().take(25) {
+            let label = if w.title.contains(&w.app) { w.title.clone() } else { format!("{} · {}", w.title, w.app) };
+            let label: String = if label.chars().count() > 60 { label.chars().take(58).chain("…".chars()).collect() } else { label };
+            windows.append(&CheckMenuItem::with_id(app, format!("w:{}", w.id), label, true, w.current, None::<&str>)?)?;
+        }
+        menu.append(&windows)?;
+    } else {
+        menu.append(&MenuItem::with_id(app, "change", "Change window", !t.starting && (t.live || t.has_window), None::<&str>)?)?;
+    }
 
     // Quality applies from the next Go live, so it's locked while live.
     let quality = Submenu::with_id(app, "quality", "Quality", true)?;
@@ -144,6 +160,11 @@ fn on_menu(app: &AppHandle, event: MenuEvent) {
                         gui::set_settings(app, shared, None, Some(on)).await;
                     }
                     q if q.starts_with("q:") => gui::set_settings(app, shared, Some(q[2..].to_string()), None).await,
+                    w if w.starts_with("w:") => {
+                        if let Ok(h) = w[2..].parse() {
+                            gui::choose_window_now(app, shared, h).await
+                        }
+                    }
                     c if c.starts_with("c:") => gui::set_video(app, shared, Some(c[2..].to_string()), None).await,
                     e if e.starts_with("e:") => gui::set_video(app, shared, None, Some(e[2..].to_string())).await,
                     _ => {}

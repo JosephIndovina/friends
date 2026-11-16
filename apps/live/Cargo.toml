@@ -27,3 +27,15 @@ url = "2"
 [target.'cfg(target_os = "linux")'.dependencies]
 pipewire = { version = "0.10", features = ["v0_3_45"] }
 ashpd = { version = "0.14", default-features = false, features = ["tokio", "screencast"] }
+
+[target.'cfg(windows)'.dependencies]
+# Windows Graphics Capture: windows and games, without the GDI capturer's black frames.
+windows-capture = "2"
+# WASAPI, including process loopback (one app's sound and its children's).
+wasapi = "0.27"
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Graphics_Dwm",
+  "Win32_System_Threading",
+] }

@@ -10,6 +10,10 @@ mod portal;
 mod session;
 mod tray;
 mod video;
+#[cfg(windows)]
+mod wgc;
+#[cfg(windows)]
+mod winwin;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -27,8 +31,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Apps that are playing audio right now.
+    /// Apps that are playing audio right now (Linux).
+    #[cfg(target_os = "linux")]
     Apps,
+    /// Windows that can be streamed (Windows).
+    #[cfg(windows)]
+    Windows,
     /// Screens or windows that can be shared (not on Wayland; the OS picker is used there).
     Sources {
         #[arg(long, value_enum, default_value_t = KindArg::Window)]
@@ -37,6 +45,7 @@ enum Cmd {
     /// Go live without the app window.
     Stream(StreamArgs),
     /// Open the screen picker and show what was picked (Linux).
+    #[cfg(target_os = "linux")]
     Pick {
         #[arg(long)]
         restore: Option<String>,
@@ -50,7 +59,8 @@ enum Cmd {
         #[arg(long, default_value_t = 15)]
         seconds: u64,
     },
-    /// Record an app's audio to a WAV file (for checking capture without a server).
+    /// Record an app's audio to a WAV file (for checking capture without a server) (Linux).
+    #[cfg(target_os = "linux")]
     Record {
         #[arg(long)]
         app: String,
@@ -127,7 +137,7 @@ enum HintArg {
     Detail,
 }
 
-const COMMANDS: &[&str] = &["apps", "listen", "pick", "sources", "stream", "record", "help", "--help", "-h", "--version", "-V"];
+const COMMANDS: &[&str] = &["apps", "windows", "listen", "pick", "sources", "stream", "record", "help", "--help", "-h", "--version", "-V"];
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,libwebrtc=warn")).init();
@@ -141,6 +151,9 @@ fn main() -> Result<()> {
 
 async fn cli(c: Cli) -> Result<()> {
     match c.cmd {
+        #[cfg(windows)]
+        Cmd::Windows => println!("{}", serde_json::to_string_pretty(&winwin::list())?),
+        #[cfg(target_os = "linux")]
         Cmd::Apps => {
             let apps = tokio::task::spawn_blocking(audio::list_apps).await??;
             println!("{}", serde_json::to_string_pretty(&apps)?);
@@ -159,8 +172,7 @@ async fn cli(c: Cli) -> Result<()> {
             let p = portal::pick(restore.as_deref()).await?;
             println!("node {} size {:?} window {} token {:?} title {:?}", p.node_id, p.size, p.is_window, p.restore_token, p.title);
         }
-        #[cfg(not(target_os = "linux"))]
-        Cmd::Pick { .. } => bail!("Linux only"),
+        #[cfg(target_os = "linux")]
         Cmd::Record { app, seconds, out } => {
             let app = find_app(&app).await?;
             let mixer = Arc::new(audio::Mixer::default());
@@ -183,6 +195,7 @@ async fn cli(c: Cli) -> Result<()> {
 async fn stream(a: StreamArgs) -> Result<()> {
     let opts = session::Options {
         restore: a.restore,
+        pick: None,
         fps: a.fps,
         height: a.height,
         kbps: a.kbps,
@@ -273,6 +286,7 @@ async fn listen(url: &str, token: &str, seconds: u64) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 pub async fn find_app(id: &str) -> Result<audio::AudioApp> {
     let apps = tokio::task::spawn_blocking(audio::list_apps).await??;
     apps.into_iter()
@@ -280,6 +294,7 @@ pub async fn find_app(id: &str) -> Result<audio::AudioApp> {
         .with_context(|| format!("no app playing audio matches {id:?}; see `friends-live apps`"))
 }
 
+#[cfg(target_os = "linux")]
 fn wav(pcm: &[i16]) -> Vec<u8> {
     let data_len = (pcm.len() * 2) as u32;
     let rate = audio::SAMPLE_RATE;

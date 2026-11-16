@@ -5,11 +5,16 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::{capture_process, Capture};
 #[cfg(target_os = "linux")]
 pub use linux::{capture, init as pipewire_init, list_apps, Capture};
 
 /// The app whose sound belongs with a window, judged by its title ("RuneLite", "Video — Mozilla Firefox").
 /// The longest app name found as a whole word in the title wins.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn app_for_title(title: &str, apps: &[AudioApp]) -> Option<AudioApp> {
     let words = |s: &str| -> Vec<String> {
         s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect()

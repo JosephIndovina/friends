@@ -36,9 +36,26 @@ function render() {
   primary.classList.toggle("is-stop", Boolean(s.live));
   primary.disabled = s.starting || (!s.live && !s.name);
 
-  $("window").textContent = s.settings.window ?? (s.settings.restoreToken ? "Whole screen" : "You'll choose one when you go live");
-  $("change").hidden = !s.settings.restoreToken && !s.live;
-  $("change").disabled = s.starting;
+  if (s.windows) {
+    // Windows: choose from the open windows; choosing one goes live with it (or switches to it).
+    $("window").hidden = true;
+    $("change").hidden = true;
+    const sel = $("window-list");
+    sel.hidden = false;
+    sel.disabled = s.starting;
+    const current = s.windows.find((w) => w.current);
+    const opts = [new Option("Choose a window…", ""), ...s.windows.map((w) => new Option(w.title.includes(w.app) ? w.title : `${w.title} · ${w.app}`, w.id))];
+    const sig = s.windows.map((w) => w.id + w.title).join("|");
+    if (sel.dataset.sig !== sig) {
+      sel.replaceChildren(...opts);
+      sel.dataset.sig = sig;
+    }
+    sel.value = current?.id ?? "";
+  } else {
+    $("window").textContent = s.settings.window ?? (s.settings.restoreToken ? "Whole screen" : "You'll choose one when you go live");
+    $("change").hidden = !s.settings.restoreToken && !s.live;
+    $("change").disabled = s.starting;
+  }
 
   const q = $("quality");
   if (!q.options.length) {
@@ -61,6 +78,7 @@ const save = () => invoke("save_settings", { quality: $("quality").value, autoSt
 $("primary").addEventListener("click", () => invoke(state?.live ? "stop" : "go_live"));
 $("site").addEventListener("click", () => invoke("open_site"));
 $("change").addEventListener("click", () => invoke("change_window"));
+$("window-list").addEventListener("change", (e) => e.target.value && invoke("choose_window", { id: e.target.value }));
 $("quality").addEventListener("change", save);
 $("auto").addEventListener("change", save);
 const saveVideo = () => invoke("save_video", { codec: $("codec").value, encoder: $("encoder").value });

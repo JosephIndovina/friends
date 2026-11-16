@@ -68,8 +68,10 @@ pub fn encoder(id: &str) -> VideoEncoderBackend {
 }
 
 pub struct Options {
-    /// The last window choice, to reuse without asking (Wayland restore token).
+    /// The last window choice, to reuse without asking (a Wayland restore token; on Windows, program and title).
     pub restore: Option<String>,
+    /// Windows: a window just chosen from the list (its handle), which wins over `restore`.
+    pub pick: Option<isize>,
     pub fps: u32,
     pub height: u32,
     pub kbps: u64,
@@ -82,6 +84,7 @@ impl Options {
     pub fn from_quality(q: &Quality, restore: Option<String>) -> Self {
         Options {
             restore,
+            pick: None,
             fps: q.fps,
             height: q.height,
             kbps: q.kbps,
@@ -94,8 +97,8 @@ impl Options {
 
 #[cfg(target_os = "linux")]
 type VideoCapture = crate::portal::Capture;
-#[cfg(not(target_os = "linux"))]
-type VideoCapture = crate::video::Capture;
+#[cfg(windows)]
+type VideoCapture = crate::wgc::Capture;
 
 pub struct Session {
     pub name: String,
@@ -135,12 +138,15 @@ impl Session {
         #[cfg(target_os = "linux")]
         let (window, restore_token, is_window) = (picked.title.clone(), picked.restore_token.clone(), picked.is_window);
 
-        #[cfg(not(target_os = "linux"))]
-        let (video, width, height, window, restore_token, is_window) = {
+        // Windows: the app lists windows itself, so the choice is a window handle (just picked) or the remembered
+        // program and title; the sound is that window's process.
+        #[cfg(windows)]
+        let (video, width, height, window, restore_token, is_window, target) = {
+            let target = crate::winwin::find(o.pick, o.restore.as_deref())?;
             let slot = video_slot.clone();
-            let (fps, max_h) = (o.fps, o.height);
-            let s = tokio::task::spawn_blocking(move || crate::video::start(crate::video::default_kind(), None, fps, max_h, slot)).await??;
-            (s.capture, s.width, s.height, None::<String>, None::<String>, false)
+            let (fps, max_h, hwnd) = (o.fps, o.height, target.hwnd());
+            let (c, w, h) = tokio::task::spawn_blocking(move || crate::wgc::start(hwnd, fps, max_h, slot)).await??;
+            (c, w, h, Some(target.title.clone()), Some(target.remember()), true, target)
         };
 
         let video_src = NativeVideoSource::new(VideoResolution { width, height }, true);
@@ -175,9 +181,18 @@ impl Session {
             .context("couldn't publish the picture")?;
 
         let sound_from = Arc::new(Mutex::new(None));
+        #[cfg(target_os = "linux")]
         let sound = window.clone().map(|title| {
             tokio::spawn(follow_sound(room.local_participant(), format!("{name}-audio"), title, sound_from.clone()))
         });
+        #[cfg(windows)]
+        let sound = Some(tokio::spawn(process_sound(
+            room.local_participant(),
+            format!("{name}-audio"),
+            target.pid,
+            target.app_name(),
+            sound_from.clone(),
+        )));
 
         Ok((
             Session {
@@ -205,10 +220,7 @@ impl Session {
 
     /// The shared window was closed, or the OS ended the share.
     pub fn capture_ended(&self) -> bool {
-        #[cfg(target_os = "linux")]
-        return self.video.ended();
-        #[cfg(not(target_os = "linux"))]
-        return false;
+        self.video.ended()
     }
 
     pub async fn stop(self) {
@@ -221,8 +233,69 @@ impl Session {
     }
 }
 
+/// Publishes the sound track and feeds it from `mixer` every 10 ms; the returned task does the feeding.
+async fn publish_sound(me: &LocalParticipant, track_name: &str, mixer: Arc<audio::Mixer>) -> Option<tokio::task::JoinHandle<()>> {
+    let src = NativeAudioSource::new(AudioSourceOptions::default(), audio::SAMPLE_RATE, audio::CHANNELS, 100);
+    let track = LocalAudioTrack::create_audio_track(track_name, RtcAudioSource::Native(src.clone()));
+    let opts = TrackPublishOptions { source: TrackSource::ScreenshareAudio, dtx: false, red: false, ..Default::default() };
+    if let Err(e) = me.publish_track(LocalTrack::Audio(track), opts).await {
+        log::warn!("couldn't publish the sound: {e}");
+        return None;
+    }
+    Some(tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_millis(10));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+        let (mut n, mut peak) = (0u32, 0u16);
+        loop {
+            tick.tick().await;
+            let data = mixer.next_frame();
+            peak = peak.max(data.iter().map(|x| x.unsigned_abs()).max().unwrap_or(0));
+            n += 1;
+            if n % 500 == 0 {
+                log::debug!("sound: peak {:.1}% over 5 s, {}", peak as f64 / i16::MAX as f64 * 100.0, mixer.describe());
+                peak = 0;
+            }
+            let frame = AudioFrame {
+                data: data.into(),
+                sample_rate: audio::SAMPLE_RATE,
+                num_channels: audio::CHANNELS,
+                samples_per_channel: audio::SAMPLE_RATE / 100,
+            };
+            if src.capture_frame(&frame).await.is_err() {
+                break;
+            }
+        }
+    }))
+}
+
+/// Windows: streams exactly what the window's process (and its children) plays.
+#[cfg(windows)]
+async fn process_sound(me: LocalParticipant, track_name: String, pid: u32, app: String, sound_from: Arc<Mutex<Option<String>>>) {
+    let mixer = Arc::new(audio::Mixer::default());
+    let capture = match audio::capture_process(pid, mixer.clone()) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("couldn't capture {app}'s sound: {e:#}");
+            return;
+        }
+    };
+    let Some(pump) = publish_sound(&me, &track_name, mixer).await else { return };
+    *sound_from.lock().unwrap() = Some(app);
+    // Keep the capture alive until the stream stops (this task is aborted then); stop the pump with it.
+    struct Guard(tokio::task::JoinHandle<()>, Option<audio::Capture>);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            self.0.abort();
+            drop(self.1.take());
+        }
+    }
+    let _guard = Guard(pump, Some(capture));
+    std::future::pending::<()>().await;
+}
+
 /// Streams the sound of the app that owns the shared window, matched by the window's title. Checks again every
 /// few seconds, so the sound starts when the app starts playing and follows it as its streams come and go.
+#[cfg(target_os = "linux")]
 async fn follow_sound(me: LocalParticipant, track_name: String, title: String, sound_from: Arc<Mutex<Option<String>>>) {
     let mixer = Arc::new(audio::Mixer::default());
     let mut capture: Option<audio::Capture> = None;
@@ -259,40 +332,9 @@ async fn follow_sound(me: LocalParticipant, track_name: String, title: String, s
 
             // Publish the track the first time there's sound; keep it (silent) if the app goes quiet.
             if capture.is_some() && !published {
-                let src = NativeAudioSource::new(AudioSourceOptions::default(), audio::SAMPLE_RATE, audio::CHANNELS, 100);
-                let track = LocalAudioTrack::create_audio_track(&track_name, RtcAudioSource::Native(src.clone()));
-                let opts = TrackPublishOptions { source: TrackSource::ScreenshareAudio, dtx: false, red: false, ..Default::default() };
-                match me.publish_track(LocalTrack::Audio(track), opts).await {
-                    Ok(_) => {
-                        let m = mixer.clone();
-                        let pump = tokio::spawn(async move {
-                            let mut tick = tokio::time::interval(Duration::from_millis(10));
-                            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
-                            let (mut n, mut peak) = (0u32, 0u16);
-                            loop {
-                                tick.tick().await;
-                                let data = m.next_frame();
-                                peak = peak.max(data.iter().map(|x| x.unsigned_abs()).max().unwrap_or(0));
-                                n += 1;
-                                if n % 500 == 0 {
-                                    log::debug!("sound: peak {:.1}% over 5 s, {}", peak as f64 / i16::MAX as f64 * 100.0, m.describe());
-                                    peak = 0;
-                                }
-                                let frame = AudioFrame {
-                                    data: data.into(),
-                                    sample_rate: audio::SAMPLE_RATE,
-                                    num_channels: audio::CHANNELS,
-                                    samples_per_channel: audio::SAMPLE_RATE / 100,
-                                };
-                                if src.capture_frame(&frame).await.is_err() {
-                                    break;
-                                }
-                            }
-                        });
-                        cleanup.0 = Some(pump);
-                        published = true;
-                    }
-                    Err(e) => log::warn!("couldn't publish the sound: {e}"),
+                if let Some(pump) = publish_sound(&me, &track_name, mixer.clone()).await {
+                    cleanup.0 = Some(pump);
+                    published = true;
                 }
             }
         }
