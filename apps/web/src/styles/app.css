@@ -67,7 +67,7 @@ html { scrollbar-color: color-mix(in oklab, var(--ink) 22%, transparent) transpa
 
 .topbar {
   position: relative; z-index: 20;
-  height: var(--topbar-h); padding: 0 var(--gutter);
+  height: var(--topbar-h); padding: 0 max(var(--gutter), env(safe-area-inset-right)) 0 max(var(--gutter), env(safe-area-inset-left));
   display: flex; align-items: center; gap: var(--space-6);
 }
 .wordmark { font-weight: 800; font-size: var(--step-2); letter-spacing: -0.03em; text-decoration: none; }
@@ -86,7 +86,7 @@ html { scrollbar-color: color-mix(in oklab, var(--ink) 22%, transparent) transpa
 
 .tabbar { display: none; }
 
-main.page { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: var(--space-4) var(--gutter) var(--space-8); }
+main.page { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: var(--space-4) max(var(--gutter), env(safe-area-inset-right)) var(--space-8) max(var(--gutter), env(safe-area-inset-left)); }
 
 @media (max-width: 760px) {
   .topnav { display: none; }
@@ -649,7 +649,15 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 }
 .sound-notice svg { width: 16px; height: 16px; }
 .sound-notice.is-full { position: fixed; z-index: 64; }
-@media (max-width: 520px) { .volume .range { display: none; } .stage-bar { padding-inline: var(--space-3); } .stage-bar-row { gap: var(--space-2); } }
+.seek .range { width: auto; max-width: none; }
+/* Phones: the title takes its own line, then play on the left and the controls on the right. */
+@media (max-width: 640px) {
+  .stage-bar { padding-inline: var(--gutter); }
+  .stage-bar-row { gap: var(--space-2) var(--space-3); }
+  .stage-bar .now-meta { order: -1; flex-basis: 100%; }
+  .stage-bar .now-title { font-size: var(--step-1); }
+}
+@media (max-width: 520px) { .volume .range { display: none; } }
 
 .range { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 20px; background: transparent; cursor: pointer; }
 .range:disabled { cursor: default; }
@@ -792,7 +800,6 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .act-watching { color: var(--hint-media) !important; }
 .act-listening { color: var(--hint-music) !important; }
 .act-casting { color: var(--hint-cast) !important; }
-@media (max-width: 520px) { .seek .time:last-child { display: none; } }
 
 /* ---------- stage sources ---------- */
 .info-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
@@ -1095,15 +1102,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 /* Sound | on/off | remove */
 .rail-sep { flex: none; width: 1px; height: 18px; margin: 0 3px; background: var(--line); }
 .rail-actions .icon-btn svg { width: 16px; height: 16px; }
-/* On/off for you: a small switch between sound and remove. */
-.rail-switch { position: relative; display: grid; place-items: center; width: 36px; height: 28px; cursor: pointer; }
-.rail-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.rail-switch .switch { width: 30px; height: 18px; }
-.rail-switch .switch::after { top: 2px; left: 2px; width: 14px; height: 14px; }
-.rail-switch input:checked + .switch { background: color-mix(in oklab, var(--hint-cast) 75%, transparent); }
-.rail-switch input:checked + .switch::after { transform: translateX(12px); }
-.rail-switch input:focus-visible + .switch { outline: 2px solid var(--ink); outline-offset: 3px; }
-/* Remove for me / for everyone. Fixed to the window so the rail's scrolling list can't clip it. */
+/* Confirm ending a source for everyone. Fixed to the window so the rail's scrolling list can't clip it. */
 .remove-menu {
   position: fixed; z-index: 80; width: 224px; padding: 4px; display: grid; gap: 2px;
   border-radius: var(--radius-s); background: var(--upholstery); border: 1px solid var(--line);
@@ -1158,6 +1157,21 @@ main.page:has(.media-room) { max-width: 1920px; }
   .rail .rail-text { display: grid; }
   .rail-detail { display: none; }
   .rail-foot { display: flex; border: 0; padding: var(--space-2) var(--gutter) var(--space-2) 0; }
-  .rail.is-open .rail-stop-mini { display: grid; }
   .rail-stop-mini { left: 22px; }
+  /* A strip of its own, part of the stage rather than the top bar above it. */
+  .rail, .rail.is-full { background: var(--upholstery); border-top: 1px solid var(--line); }
+  .rail-list { padding-inline: max(var(--gutter), env(safe-area-inset-left)) var(--space-2); }
+  .rail-edit { flex: none; margin-right: max(var(--gutter), env(safe-area-inset-right)); padding: 0 var(--space-3); }
+  .rail-edit svg { width: 15px; height: 15px; }
+  /* Edit: the chips become a list with each source's controls, sized for touch. */
+  .rail.is-managing .rail-panel { flex-direction: column; align-items: stretch; overflow: visible; }
+  .rail.is-managing .rail-edit { order: -1; align-self: flex-end; margin-top: var(--space-2); }
+  .rail.is-managing .rail-list { display: grid; padding-block: var(--space-1) var(--space-2); }
+  .rail.is-managing .rail-item { flex: 1; border-radius: var(--radius-s); padding: 6px; box-shadow: none; }
+  .rail.is-managing .rail-item[aria-current] { background: var(--surface-strong); }
+  .rail.is-managing .rail-thumb { width: 36px; height: 36px; }
+  .rail.is-managing .rail-detail { display: block; }
+  .rail.is-managing .rail-actions { display: flex; }
+  .rail.is-managing .rail-actions .icon-btn { width: 40px; height: 40px; }
+  .rail.is-managing .rail-foot { display: none; }
 }

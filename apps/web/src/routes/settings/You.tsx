@@ -43,7 +43,6 @@ export function Preferences() {
   const [theme, setTheme] = useTheme();
   const p = usePlayer();
   const toast = useToast();
-  const hiddenCount = p.hidden.size;
   const viewCount = Object.keys(p.viewOverrides).length;
 
   return (
@@ -61,12 +60,6 @@ export function Preferences() {
         <h2 id="stage-title">Stage</h2>
         <Row label="Music or video per track" hint={viewCount ? `You’ve picked a view for ${viewCount} ${viewCount === 1 ? "track" : "tracks"}.` : "None saved."}>
           <button className="btn btn-quiet btn-s" disabled={!viewCount} onClick={() => { p.clearViewOverrides(); toast("Cleared per-track views."); }}>Clear</button>
-        </Row>
-        <Row label="Sources turned off" hint={hiddenCount ? `${hiddenCount} off on this device.` : "Nothing off."}>
-          <button className="btn btn-quiet btn-s" disabled={!hiddenCount} onClick={() => { for (const id of p.hidden) p.setHidden(id, false); toast("Turned all sources on."); }}>Turn all on</button>
-        </Row>
-        <Row label="Removed sources" hint={p.removed.size ? `${p.removed.size} removed on this device.` : "Nothing removed."}>
-          <button className="btn btn-quiet btn-s" disabled={!p.removed.size} onClick={() => { p.clearRemoved(); toast("Brought back removed sources."); }}>Bring back</button>
         </Row>
       </section>
     </div>

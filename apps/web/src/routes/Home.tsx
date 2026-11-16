@@ -123,17 +123,12 @@ export function Home({ session }: { session: Session }) {
   const canClose = (sc: Playback) => sc.startedBy.id === session.user.id || control;
   const closeScreen = (sc: Playback) => void act(mediaAction("media:screen:close", { id: sc.item.id }));
   const setMediaOn = (id: string) => (on: boolean) => p.setHidden(id, !on);
-  const removeKey = (id: string) => (id === "player" && now ? `player:${now.item.id}` : id);
-  const remove = (id: string) => {
-    p.setRemoved(removeKey(id), true);
-    if (cast.streams.some((st) => st.id === id)) cast.setWatching(id, false);
-    if (p.focused === id) p.setFocused(null);
-  };
   const canStopOthers = can(session, "playback.moderate");
-  // Everything that removes a source for everyone lives in its X menu, and asks first. Skip stays in the transport.
-  const allSources: StageSource[] = [
+  // Every source is listed for everyone. The eye hides one just for you; the X ends it for everyone,
+  // and only shows when you're allowed to. Ending someone else's asks first. The player has no X: Skip is in the transport.
+  const sources: StageSource[] = [
     ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible,
-      on: !p.hidden.has("player"), setOn: setMediaOn("player"), onRemove: () => remove("player") }] : []),
+      on: !p.hidden.has("player"), setOn: setMediaOn("player") }] : []),
     ...screens.map((sc) => ({
       id: sc.item.id,
       live: sc.item.kind === "twitch-live",
@@ -144,8 +139,8 @@ export function Home({ session }: { session: Session }) {
       setAudible: (v: boolean) => p.setScreenSound(sc.item.id, v),
       on: !p.hidden.has(sc.item.id),
       setOn: setMediaOn(sc.item.id),
-      onRemove: () => remove(sc.item.id),
-      removeAll: canClose(sc) ? { label: "Close for everyone", run: () => closeScreen(sc), confirm: `Close ${sc.item.title} for everyone?` } : undefined,
+      end: canClose(sc) ? { label: "Close for everyone", run: () => closeScreen(sc),
+        confirm: sc.startedBy.id === session.user.id ? undefined : `Close ${sc.item.title} for everyone?` } : undefined,
     })),
     ...cast.streams.map((st) => ({
       id: st.id,
@@ -162,15 +157,9 @@ export function Home({ session }: { session: Session }) {
       on: cast.watching.has(st.id),
       setOn: (on: boolean) => cast.setWatching(st.id, on),
       stream: !st.local,
-      onRemove: () => remove(st.id),
-      removeAll: !st.mine && canStopOthers ? { label: "End for everyone", run: () => void cast.stop(st.id), confirm: `End ${st.label}'s stream for everyone?` } : undefined,
+      end: !st.mine && canStopOthers ? { label: "End for everyone", run: () => void cast.stop(st.id), confirm: `End ${st.label}'s stream for everyone?` } : undefined,
     })),
   ];
-  const sources = allSources.filter((x) => !p.removed.has(removeKey(x.id)));
-  const removedCount = allSources.length - sources.length;
-  const restore = () => {
-    for (const x of allSources) p.setRemoved(removeKey(x.id), false);
-  };
   // What's on is loaded and playing; off is unloaded for you only. Others' streams that are off
   // still show on the stage, as a card to start watching.
   const visible = sources.filter((x) => x.on);
@@ -305,13 +294,13 @@ export function Home({ session }: { session: Session }) {
             )}
             <div className="stage-main">
             <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}${layout === "grid" ? " is-grid" : ""}${full ? " is-full" : ""}`}>
-              {layout === "idle" && sources.length === 0 && removedCount === 0 && (
+              {layout === "idle" && sources.length === 0 && (
                 <div className="stage-idle"><h1>Nothing playing</h1></div>
               )}
-              {layout === "idle" && (sources.length > 0 || removedCount > 0) && (
+              {layout === "idle" && sources.length > 0 && (
                 <div className="stage-idle">
-                  <h1>{sources.length > 0 ? "Everything is off" : "Everything is removed"}</h1>
-                  {sources.length > 0 ? <p>Turn a source on from Sources.</p> : <button className="btn btn-quiet btn-s" onClick={restore}>Bring them back</button>}
+                  <h1>Everything is hidden</h1>
+                  <p>Show a source from Sources.</p>
                 </div>
               )}
               {offer && (

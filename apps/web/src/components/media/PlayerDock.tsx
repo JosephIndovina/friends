@@ -55,7 +55,7 @@ export function PlayerDock({ session }: { session: Session }) {
   return (
     <>
       <MainPlayer session={session} />
-      {p.stageOpen && state?.screens.filter((sc) => !p.hidden.has(sc.item.id) && !p.removed.has(sc.item.id)).map((sc) => (
+      {p.stageOpen && state?.screens.filter((sc) => !p.hidden.has(sc.item.id)).map((sc) => (
         <ScreenPlayer key={sc.item.id} playback={sc} slot={p.screenSlots[sc.item.id] ?? null} />
       ))}
     </>
@@ -82,7 +82,7 @@ function MainPlayer({ session }: { session: Session }) {
   const p = usePlayer();
   const rect = useSlotRect(p.slot);
 
-  if (!now || p.hidden.has("player") || p.removed.has(`player:${now.item.id}`)) return null;
+  if (!now || p.hidden.has("player")) return null;
   const docked = !p.slot;
   const hidden = p.slot?.classList.contains("player-slot-hidden");
   if (docked && p.dismissedFor === now.item.id) return null;
