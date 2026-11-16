@@ -55,30 +55,21 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
     }, 750);
   };
 
-  const mine = APP_OS ? links[APP_OS] : null;
-  const other = APP_OS === "windows" ? { label: "Linux", url: links.linux } : { label: "Windows", url: links.windows };
+  // Only the installer for this computer's system.
+  const download = APP_OS ? links[APP_OS] : null;
 
   return (
     <div className="app-launch">
       <button className="btn btn-primary" disabled={state === "opening" || state === "opened"} onClick={launch}>
         <MonitorUp aria-hidden />{state === "opening" ? "Starting…" : "Start streaming"}
       </button>
-      <p className="block-note" role="status">
-        {state === "opened"
-          ? "Choose what to stream in the window that opened."
-          : "Opens Friends Live to choose a window. It streams that window with only its own sound."}
-      </p>
-      {state === "error" && <p className="field-error" role="alert">Couldn't start. Try again in a moment.</p>}
-      {state === "missing" && <p className="field-error" role="alert">Friends Live didn't open. Download it, install it, then try again.</p>}
-      {(mine || other.url) && (
-        <div className="app-downloads">
-          {mine && (
-            <a className="btn btn-s btn-quiet" href={mine} download>
-              <Download aria-hidden />Download Friends Live
-            </a>
-          )}
-          {other.url && <a className="quiet" href={other.url} download>{other.label} version</a>}
-        </div>
+      {state === "opened" && <p className="block-note" role="status">Choose a window in Friends Live.</p>}
+      {state === "error" && <p className="field-error" role="alert">Couldn't start. Try again.</p>}
+      {state === "missing" && <p className="field-error" role="alert">Friends Live didn't open. Install it, then try again.</p>}
+      {download && (
+        <a className="btn btn-quiet" href={download} download>
+          <Download aria-hidden />Download Friends Live
+        </a>
       )}
     </div>
   );
@@ -175,12 +166,12 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
         </button>
       )}
       {open && (
-        <div className="stack-panel golive-panel" role="dialog" aria-label="Go live">
+        <div className={`stack-panel golive-panel${appReady && !inBrowser ? " is-compact" : ""}`} role="dialog" aria-label="Go live">
           {appReady && (
             <>
               <h2>Go live</h2>
               <AppLaunch links={links!} onDone={() => setOpen(false)} />
-              <button className="btn btn-s btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
+              <button className="btn btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
                 {inBrowser ? "Hide browser streaming" : "Stream from this browser"}
               </button>
             </>
