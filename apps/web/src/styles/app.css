@@ -655,7 +655,10 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .range:disabled::-webkit-slider-thumb { visibility: hidden; }
 .range:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 4px; }
 
-.now-meta { display: grid; gap: 2px; min-width: 0; }
+/* When the stage is narrow, the actions wrap under the title instead of squeezing it. */
+.stage-bar { flex-wrap: wrap; }
+.now-meta { display: grid; gap: 2px; min-width: 0; flex: 1 1 18rem; }
+.stage-bar .info-actions { margin-left: auto; }
 .now-title { color: var(--ink); font-size: var(--step-2); font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .now-meta > span { color: var(--mute); font-size: var(--step--1); }
 .syncing { color: var(--hint-music); }
@@ -986,6 +989,17 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
   main.page:has(.media-room.is-theatre) { max-width: none; }
   .is-theatre .stage { margin-inline: calc(var(--gutter) * -1); border: 0; box-shadow: none; background: #000; }
   .is-theatre .player-screen.is-grid:not(.is-full) { background: #000 !important; }
+  /* No top bar: the stage starts at the top of the window and, with its bars, fills it (THEATRE_CHROME in Home). */
+  .shell:has(.media-room.is-theatre) > .topbar { display: none; }
+  main.page:has(.media-room.is-theatre) { padding-top: 0; }
+  .is-theatre .player-screen:not(.is-grid):not(.is-full) { max-height: calc(100dvh - 150px); }
+  .is-theatre .transport, .is-theatre .stage-info { padding-inline: var(--space-5); }
+}
+/* Who's here and your avatar, at the end of the stage bar in theatre; the list opens upward. */
+.theatre-me { display: none; }
+@media (min-width: 861px) {
+  .theatre-me { display: flex; align-items: center; gap: var(--space-2); margin-left: var(--space-2); padding-left: var(--space-3); border-left: 1px solid var(--line); }
+  .theatre-me .stack-panel { top: auto; bottom: calc(100% + 8px); }
 }
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff4d5e; box-shadow: 0 0 0 3px color-mix(in oklab, #ff4d5e 25%, transparent); margin-right: 6px; vertical-align: 1px; }
 .go-live-note { font-size: var(--step--1); }
@@ -1050,6 +1064,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 /* Your broadcast: going live and stopping sit together at the foot. */
 .rail-foot { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-2) 12px 12px; border-top: 1px solid var(--line); }
 .rail.is-open .rail-foot { justify-items: stretch; }
+.rail-foot:empty { display: none; }
 .rail-foot-title { font-size: 12px; font-weight: 650; color: var(--ink); }
 .rail-own { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .rail-own .rail-text { flex: 1; }

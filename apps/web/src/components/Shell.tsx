@@ -42,11 +42,22 @@ function StreamSound() {
   return <>{cast.streams.filter((st) => !st.local && !p.hidden.has(st.id)).map((st) => <StreamAudio key={st.id} stream={st} />)}</>;
 }
 
+/** Your avatar: opens settings, with a badge for access requests waiting on you. */
+export function MeLink({ session, size = 34 }: { session: Session; size?: number }) {
+  const me = session.user;
+  const pending = usePendingCount(session);
+  return (
+    <Link to="/settings" className="me-link" aria-label={pending ? `Settings, ${pending} access ${pending === 1 ? "request" : "requests"} waiting` : "Settings"}>
+      <Avatar src={me.avatarUrl} name={me.name} size={size} />
+      {pending > 0 && <span className="me-badge" aria-hidden>{pending}</span>}
+    </Link>
+  );
+}
+
 export function Shell({ session }: { session: Session }) {
   const me = session.user;
   const path = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => reportSection(sectionFor(path)), [path]);
-  const pending = usePendingCount(session);
   // Settings and admin live behind the avatar. The section nav only shows once there's more than one section.
   const nav = [{ to: "/", label: "Home", Icon: Home }] as const;
   const showNav = nav.length > 1;
@@ -66,10 +77,7 @@ export function Shell({ session }: { session: Session }) {
           )}
           <div className="topbar-end">
             <PresenceStack me={me} />
-            <Link to="/settings" className="me-link" aria-label={pending ? `Settings, ${pending} access ${pending === 1 ? "request" : "requests"} waiting` : "Settings"}>
-              <Avatar src={me.avatarUrl} name={me.name} size={34} />
-              {pending > 0 && <span className="me-badge" aria-hidden>{pending}</span>}
-            </Link>
+            <MeLink session={session} />
           </div>
         </header>
 

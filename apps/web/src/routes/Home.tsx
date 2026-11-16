@@ -3,6 +3,8 @@ import { Maximize, Minimize, RectangleHorizontal, Pause, Play, Square, SkipForwa
 import { SCREENS_MAX, SEEKABLE, type Playback, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
+import { PresenceStack } from "../components/PresenceStack";
+import { MeLink } from "../components/Shell";
 import { fitGrid, StageRail, StageTile, type StageSource } from "../components/stage/Sources";
 import { StreamVideo, useCast } from "../lib/cast";
 import { LyricsView } from "../components/music/LyricsView";
@@ -17,6 +19,9 @@ import { useSite } from "../lib/site";
 
 type MusicView = "art" | "viz" | "lyrics";
 const GRID_PAD = 12;
+/** Height above and below the stage screen: the top bar and page padding plus the stage bars, or just the stage bars in theatre. Matches app.css. */
+const PAGE_CHROME = 250;
+const THEATRE_CHROME = 150;
 const GRID_GAP = 12;
 function usePref<T extends string>(key: string, fallback: T): [T, (v: T) => void] {
   const [v, setV] = useState<T>(() => {
@@ -183,7 +188,7 @@ export function Home({ session }: { session: Session }) {
       window.removeEventListener("resize", measure);
     };
   }, [screen]);
-  const gridH = full ? box.h - 2 * GRID_PAD : Math.max(320, box.h - 250);
+  const gridH = full ? box.h - 2 * GRID_PAD : Math.max(320, box.h - (theatre === "on" && window.innerWidth > 860 ? THEATRE_CHROME : PAGE_CHROME));
   let grid = fitGrid(visible.length, box.w, gridH, GRID_GAP);
   // YouTube's player must stay at least 200px tall wherever it's visible.
   const youtubeInGrid = (playerOnStage && !hideVideo && now?.item.kind === "youtube") || screens.some((sc) => sc.item.kind === "youtube" && !p.hidden.has(sc.item.id));
@@ -375,6 +380,13 @@ export function Home({ session }: { session: Session }) {
                     onClick={toggleTheatre}><RectangleHorizontal aria-hidden /></button>
                   {sources.length > 0 && <button className="icon-btn" aria-label="Full screen" data-tip="Full screen" onClick={toggleFull}><Maximize aria-hidden /></button>}
                 </div>
+                {/* Theatre hides the top bar, so who's here and your avatar move down here. */}
+                {theatre === "on" && (
+                  <div className="theatre-me">
+                    <PresenceStack me={session.user} />
+                    <MeLink session={session} size={30} />
+                  </div>
+                )}
               </div>
             </div>
 
