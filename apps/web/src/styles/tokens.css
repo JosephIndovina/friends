@@ -98,3 +98,24 @@
   --stage-shadow: 0 24px 70px -28px color-mix(in oklab, var(--glow) 70%, #141821);
   color-scheme: light;
 }
+
+/* Theatre forces the dark room on a black ground, whatever the theme. */
+@media (min-width: 861px) {
+  :root:has(.media-room.is-theatre) {
+    --ground: #000;
+    --upholstery: #151a23;
+    --surface: color-mix(in oklab, #151a23 62%, transparent);
+    --surface-strong: color-mix(in oklab, #151a23 86%, transparent);
+    --line: color-mix(in oklab, #e6ecf5 10%, transparent);
+    --ink: #e6ecf5;
+    --mute: #95a0b2;
+    --on-ink: #0d1118;
+    --hint-media: #ff9db0;
+    --hint-cast: #7fe0d0;
+    --hint-music: #b9a7ff;
+    --danger: #ff8f80;
+    --glow-strength: 0%;
+    --stage-shadow: none;
+    color-scheme: dark;
+  }
+}

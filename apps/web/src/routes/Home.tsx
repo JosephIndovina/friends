@@ -169,7 +169,7 @@ export function Home({ session }: { session: Session }) {
   const own = cast.streams.filter((st) => st.mine).map((st) => ({ id: st.id, label: ownName(st.id), detail: st.mode ?? "Live", preview: <StreamVideo stream={st} className="rail-preview-video" /> }));
   const showRail = sources.length > 0 || (cast.canStream && cast.supported);
 
-  // Grid sizing: tiles as large as the stage allows (the window height in theatre and full screen).
+  // Grid sizing: tiles as large as the stage allows (the window height, or the screen in full screen).
   const [box, setBox] = useState({ w: 0, h: typeof window === "undefined" ? 800 : window.innerHeight });
   useEffect(() => {
     if (!screen) return;
@@ -183,7 +183,7 @@ export function Home({ session }: { session: Session }) {
       window.removeEventListener("resize", measure);
     };
   }, [screen]);
-  const gridH = full ? box.h - 2 * GRID_PAD : theatre === "on" ? Math.max(320, box.h - 250) : (box.w * 9) / 16;
+  const gridH = full ? box.h - 2 * GRID_PAD : Math.max(320, box.h - 250);
   let grid = fitGrid(visible.length, box.w, gridH, GRID_GAP);
   // YouTube's player must stay at least 200px tall wherever it's visible.
   const youtubeInGrid = (playerOnStage && !hideVideo && now?.item.kind === "youtube") || screens.some((sc) => sc.item.kind === "youtube" && !p.hidden.has(sc.item.id));

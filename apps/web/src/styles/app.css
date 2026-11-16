@@ -613,17 +613,9 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .signin-inner .avatar { margin-bottom: var(--space-2); }
 
 /* ---------- media ---------- */
-.media-room { grid-template-columns: minmax(0, 1fr) 380px; }
-@media (max-width: 1080px) { .media-room { grid-template-columns: minmax(0, 1fr) 320px; } }
-@media (max-width: 860px) { .media-room { grid-template-columns: minmax(0, 1fr); } }
-/* Beside the stage, the side column takes the stage's height rather than setting it, so a long
-   list scrolls in place instead of pushing the posts down and leaving a gap under the stage. */
-@media (min-width: 861px) {
-  .media-room:not(.is-theatre) { align-items: stretch; }
-  .media-room:not(.is-theatre) > .side { display: flex; flex-direction: column; height: 0; min-height: 100%; overflow-y: auto; }
-  .media-room:not(.is-theatre) > .side > * { flex: none; }
-  .media-room:not(.is-theatre) > .side > .side-panel { flex: 1 1 auto; min-height: 12rem; overflow-y: auto; overscroll-behavior: contain; }
-}
+/* The stage spans the page and fits the window; the queue and posts follow below. */
+.media-room { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 861px) { .media-room .player-screen:not(.is-grid):not(.is-full) { max-height: calc(100dvh - 250px); min-height: 320px; } }
 
 .player-screen { position: relative; padding: 0; aspect-ratio: 16 / 9; background: #000; }
 /* Full screen: the shell goes full screen and the stage is pinned over it (see Home). */
@@ -986,9 +978,14 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .dock-passive { pointer-events: none; border-radius: var(--radius-m); }
 .source-strip .tile { flex: none; width: 356px; height: 200px; } /* YouTube's player must be at least 200px tall */
 
-/* Theatre: the stage spans the page and fits the window; the queue and posts follow below. */
-.media-room.is-theatre { grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 861px) { .is-theatre .player-screen:not(.is-grid) { max-height: calc(100dvh - 250px); min-height: 320px; } }
+/* Theatre: the page goes black and the stage runs edge to edge (dark tokens are forced in tokens.css). */
+@media (min-width: 861px) {
+  body:has(.media-room.is-theatre) { background: #000; }
+  main.page:has(.media-room.is-theatre) { max-width: none; }
+  .is-theatre .stage { margin-inline: calc(var(--gutter) * -1); border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  .is-theatre .stage-screen { border-radius: 0; }
+  .is-theatre .player-screen.is-grid:not(.is-full) { background: #000 !important; }
+}
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff4d5e; box-shadow: 0 0 0 3px color-mix(in oklab, #ff4d5e 25%, transparent); margin-right: 6px; vertical-align: 1px; }
 .go-live-note { font-size: var(--step--1); }
 .golive-panel { width: min(26rem, calc(100vw - 32px)); display: grid; gap: var(--space-3); }
