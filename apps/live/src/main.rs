@@ -40,6 +40,15 @@ enum Cmd {
         #[arg(long)]
         restore: Option<String>,
     },
+    /// Join as a viewer and print how loud each stream's sound is (for checking audio end to end).
+    Listen {
+        #[arg(long)]
+        url: String,
+        #[arg(long)]
+        token: String,
+        #[arg(long, default_value_t = 15)]
+        seconds: u64,
+    },
     /// Record an app's audio to a WAV file (for checking capture without a server).
     Record {
         #[arg(long)]
@@ -117,7 +126,7 @@ enum HintArg {
     Detail,
 }
 
-const COMMANDS: &[&str] = &["apps", "pick", "sources", "stream", "record", "help", "--help", "-h", "--version", "-V"];
+const COMMANDS: &[&str] = &["apps", "listen", "pick", "sources", "stream", "record", "help", "--help", "-h", "--version", "-V"];
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,libwebrtc=warn")).init();
@@ -143,6 +152,7 @@ async fn cli(c: Cli) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&list)?);
         }
         Cmd::Stream(a) => stream(a).await?,
+        Cmd::Listen { url, token, seconds } => listen(&url, &token, seconds).await?,
         #[cfg(target_os = "linux")]
         Cmd::Pick { restore } => {
             let p = portal::pick(restore.as_deref()).await?;
@@ -223,6 +233,42 @@ async fn stream(a: StreamArgs) -> Result<()> {
         }
     }
     s.stop().await;
+    Ok(())
+}
+
+async fn listen(url: &str, token: &str, seconds: u64) -> Result<()> {
+    use futures_util::StreamExt;
+    use livekit::prelude::*;
+    use livekit::webrtc::audio_stream::native::NativeAudioStream;
+    let (_room, mut events) = Room::connect(url, token, RoomOptions::default()).await?;
+    let deadline = tokio::time::sleep(Duration::from_secs(seconds));
+    tokio::pin!(deadline);
+    loop {
+        tokio::select! {
+            _ = &mut deadline => break,
+            ev = events.recv() => match ev {
+                Some(RoomEvent::TrackSubscribed { track: RemoteTrack::Audio(t), publication, participant }) => {
+                    let label = format!("{} {}", participant.identity(), publication.name());
+                    println!("subscribed {label}");
+                    tokio::spawn(async move {
+                        let mut s = NativeAudioStream::new(t.rtc_track(), 48000, 2);
+                        let (mut peak, mut n) = (0u16, 0u32);
+                        while let Some(f) = s.next().await {
+                            peak = peak.max(f.data.iter().map(|x| x.unsigned_abs()).max().unwrap_or(0));
+                            n += 1;
+                            if n % 100 == 0 {
+                                println!("{label}: peak {:.1}% over the last second", peak as f64 / i16::MAX as f64 * 100.0);
+                                peak = 0;
+                            }
+                        }
+                    });
+                }
+                Some(RoomEvent::TrackPublished { publication, participant }) => println!("published {} {}", participant.identity(), publication.name()),
+                None => break,
+                _ => {}
+            }
+        }
+    }
     Ok(())
 }
 

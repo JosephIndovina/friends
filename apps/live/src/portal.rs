@@ -139,6 +139,29 @@ struct Frames {
     max_height: u32,
     ended: Arc<AtomicBool>,
     streaming: bool,
+    /// Asks for crop metadata: for a window, GNOME sends a frame the size of the screen with the window in one
+    /// corner, and says where the window is in this metadata.
+    meta_param: Vec<u8>,
+}
+
+fn crop_meta_param() -> Result<Vec<u8>> {
+    use spa::pod::{Object, Property, PropertyFlags, Value};
+    let obj = Object {
+        type_: spa::utils::SpaTypes::ObjectParamMeta.as_raw(),
+        id: spa::param::ParamType::Meta.as_raw(),
+        properties: vec![
+            Property { key: spa::sys::SPA_PARAM_META_type, flags: PropertyFlags::empty(), value: Value::Id(spa::utils::Id(spa::sys::SPA_META_VideoCrop)) },
+            Property {
+                key: spa::sys::SPA_PARAM_META_size,
+                flags: PropertyFlags::empty(),
+                value: Value::Int(std::mem::size_of::<spa::sys::spa_meta_region>() as i32),
+            },
+        ],
+    };
+    Ok(spa::pod::serialize::PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &Value::Object(obj))
+        .map_err(|e| anyhow!("pod: {e:?}"))?
+        .0
+        .into_inner())
 }
 
 /// Reads frames from the portal's PipeWire stream into `out` at up to `fps`, scaled to fit `max_height`.
@@ -206,6 +229,7 @@ fn run(
         max_height,
         ended,
         streaming: false,
+        meta_param: crop_meta_param()?,
     };
     let _listener = stream
         .add_local_listener_with_user_data(data)
@@ -221,13 +245,19 @@ fn run(
             pw::stream::StreamState::Unconnected if d.streaming => d.ended.store(true, Ordering::Relaxed),
             _ => {}
         })
-        .param_changed(|_, d, id, param| {
+        .param_changed(|stream, d, id, param| {
             let Some(param) = param else { return };
             if id != spa::param::ParamType::Format.as_raw() {
                 return;
             }
             if let Err(e) = d.format.parse(param) {
                 log::warn!("bad video format: {e:?}");
+                return;
+            }
+            if let Some(pod) = spa::pod::Pod::from_bytes(&d.meta_param) {
+                if let Err(e) = stream.update_params(&mut [pod]) {
+                    log::warn!("couldn't ask for crop info: {e}");
+                }
             }
         })
         .process(|stream, d| {
@@ -236,19 +266,31 @@ fn run(
             if d.last.is_some_and(|t| now.duration_since(t) < d.min_gap) {
                 return;
             }
+            let (fw, fh) = (d.format.size().width, d.format.size().height);
+            // The window's area within the frame, when GNOME says (always for a window).
+            let crop = buffer
+                .find_meta::<spa::buffer::meta::MetaVideoCrop>()
+                .filter(|c| c.meta_region().is_valid())
+                .map(|c| {
+                    let r = c.meta_region();
+                    (r.position().x.max(0) as u32, r.position().y.max(0) as u32, r.size().width, r.size().height)
+                })
+                .filter(|&(x, y, w, h)| w > 0 && h > 0 && x + w <= fw && y + h <= fh);
+            let (cx, cy, w, h) = crop.unwrap_or((0, 0, fw, fh));
             let datas = buffer.datas_mut();
             let Some(data) = datas.first_mut() else { return };
             let (offset, size, stride) = (data.chunk().offset() as usize, data.chunk().size() as usize, data.chunk().stride());
             if size == 0 {
                 return; // a cursor-only update
             }
-            let (w, h) = (d.format.size().width, d.format.size().height);
             let Some(bytes) = data.data() else { return };
-            let stride = if stride > 0 { stride as u32 } else { w * 4 };
-            if w == 0 || h == 0 || bytes.len() < offset + (stride * h) as usize {
+            let stride = if stride > 0 { stride as u32 } else { fw * 4 };
+            let start = offset + (cy * stride + cx * 4) as usize;
+            if w == 0 || h == 0 || bytes.len() < start + (stride * (h - 1) + w * 4) as usize {
                 return;
             }
-            let px = &bytes[offset..];
+            let px = &bytes[start..];
+            let (w, h) = (w & !1, h & !1);
             let mut buf = I420Buffer::new(w, h);
             let (sy, su, sv) = buf.strides();
             let (y, u, v) = buf.data_mut();

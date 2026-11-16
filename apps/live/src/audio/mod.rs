@@ -26,7 +26,12 @@ pub fn app_for_title(title: &str, apps: &[AudioApp]) -> Option<AudioApp> {
             (hit > 0).then(|| (hit, a.name.len(), a))
         })
         .max_by_key(|(hit, len, _)| (*hit, *len))
-        .map(|(_, _, a)| a.clone())
+        .map(|(_, _, best)| {
+            // Some apps play from several processes (a browser's audio service, a game's launcher): take them all.
+            let mut app = best.clone();
+            app.targets = apps.iter().filter(|a| a.name == best.name).flat_map(|a| a.targets.clone()).collect();
+            app
+        })
 }
 
 #[cfg(test)]
@@ -90,6 +95,13 @@ impl Mixer {
         let q = Arc::new(Mutex::new(VecDeque::new()));
         self.inputs.lock().unwrap().push(q.clone());
         MixerInput(q)
+    }
+
+    /// Inputs and how much each has buffered, for logs.
+    pub fn describe(&self) -> String {
+        let inputs = self.inputs.lock().unwrap();
+        let sizes: Vec<usize> = inputs.iter().map(|q| q.lock().unwrap().len()).collect();
+        format!("{} inputs, buffered {:?}", inputs.len(), sizes)
     }
 
     /// Drop every input (before capturing a new set of streams).
