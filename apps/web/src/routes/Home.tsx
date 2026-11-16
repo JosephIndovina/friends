@@ -1,3 +1,4 @@
+import { launchFriendsLive } from "../components/stage/GoLive";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, Maximize, Minimize, RectangleHorizontal, Pause, Play, SkipForward, Volume2 } from "lucide-react";
 import { SCREENS_MAX, SEEKABLE, type Playback, type Session } from "@friends/shared";
@@ -154,6 +155,7 @@ export function Home({ session }: { session: Session }) {
       // Your own stream: a live preview, and Stop in place of the X.
       preview: st.mine ? <StreamVideo stream={st} className="rail-preview-video" /> : undefined,
       onStop: st.mine ? () => void cast.stop(st.id) : undefined,
+      onChangeWindow: st.mine && st.fromApp ? () => void launchFriendsLive() : undefined,
       audible: st.local ? false : !cast.muted.has(st.id),
       silent: st.local,
       setAudible: (v: boolean) => cast.setMuted(st.id, !v),

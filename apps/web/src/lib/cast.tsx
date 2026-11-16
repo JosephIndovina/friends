@@ -42,6 +42,8 @@ export interface Stream {
   local: boolean;
   /** published by you, from this tab or another of your tabs or devices */
   mine: boolean;
+  /** streamed by the Friends Live app, which can be asked to change window */
+  fromApp: boolean;
   /** the publisher's chosen mode, e.g. "1080p · 60 fps" */
   mode: string | null;
   video: TrackPublication;
@@ -69,6 +71,15 @@ interface CastCtx {
 const Ctx = createContext<CastCtx | null>(null);
 const SUPPORTED = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getDisplayMedia) && !/Android|iPhone|iPad/i.test(navigator.userAgent);
 
+/** Streamed by the Friends Live app (its token marks it). */
+function fromApp(p: Participant): boolean {
+  try {
+    return (JSON.parse(p.metadata ?? "{}") as { app?: boolean }).app === true;
+  } catch {
+    return false;
+  }
+}
+
 function avatarOf(p: Participant): string | null {
   try {
     return (JSON.parse(p.metadata ?? "{}") as { avatarUrl?: string }).avatarUrl ?? null;
@@ -88,6 +99,7 @@ function streamsOf(p: Participant, local: boolean, selfId: string): Stream[] {
       identity: p.identity,
       name: p.name || p.identity,
       avatarUrl: avatarOf(p),
+      fromApp: fromApp(p),
       label: videos.length > 1 ? `${p.name} (${i + 1})` : p.name || p.identity,
       local,
       mine: local || p.identity.split("#")[0] === selfId,

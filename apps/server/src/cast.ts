@@ -61,7 +61,8 @@ async function stageToken(user: { id: string; name: string; avatarUrl: string | 
   const at = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
     identity: `${user.id}#${randomBytes(4).toString("hex")}`,
     name: user.name,
-    metadata: JSON.stringify({ avatarUrl: user.avatarUrl }),
+    // The desktop app's connection (publish only) is marked, so the site can offer "Change window" for its stream.
+    metadata: JSON.stringify({ avatarUrl: user.avatarUrl, ...(canSubscribe ? {} : { app: true }) }),
     ttl: "6h",
   });
   at.addGrant({

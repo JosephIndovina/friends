@@ -1,4 +1,4 @@
-import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Volume2, VolumeX, X } from "lucide-react";
+import { AppWindow, Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { GoLive } from "./GoLive";
 
@@ -27,6 +27,8 @@ export interface StageSource {
   end?: { label: string; run: () => void; confirm?: string };
   /** your own stream: its X is a Stop button instead */
   onStop?: () => void;
+  /** your stream from the Friends Live app: ask the app for a different window */
+  onChangeWindow?: () => void;
 }
 
 /**
@@ -108,6 +110,11 @@ export function StageRail({ sources, current, onShow, open: railOpen, setOpen, f
                   {!(s.silent ?? s.local) && s.on && <span className="rail-sep" aria-hidden />}
                   <button className="icon-btn" aria-pressed={!s.on} aria-label={s.on ? `Hide ${s.label}` : `Show ${s.label}`} title={s.on ? "Hide for you" : "Show"}
                     onClick={() => s.setOn(!s.on)}>{s.on ? <Eye aria-hidden /> : <EyeOff aria-hidden />}</button>
+                  {s.onChangeWindow && (
+                    <button className="icon-btn" aria-label={`Change window for ${s.label}`} title="Change window" onClick={s.onChangeWindow}>
+                      <AppWindow aria-hidden />
+                    </button>
+                  )}
                   {(s.onStop || s.end) && <span className="rail-sep" aria-hidden />}
                   <EndButton source={s} />
                 </span>

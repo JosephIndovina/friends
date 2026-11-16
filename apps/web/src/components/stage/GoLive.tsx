@@ -22,10 +22,41 @@ function openLink(url: string) {
   setTimeout(() => f.remove(), 3000);
 }
 
+/** Hands a fresh one-time code to Friends Live (running in the tray or not); the app then asks what to stream, or,
+ * if already live, switches to the new choice. Returns the code, to watch for the app picking it up. */
+export async function launchFriendsLive(): Promise<string | null> {
+  try {
+    const { code } = await api<{ code: string }>("POST", "/api/cast/launch");
+    openLink(`friends://live?code=${encodeURIComponent(code)}&server=${encodeURIComponent(location.origin)}`);
+    return code;
+  } catch {
+    return null;
+  }
+}
+
+/** Browsers can't ask whether an app is installed, so this browser remembers once Friends Live has answered. */
+const INSTALLED_KEY = "friendsLiveInstalled";
+function knownInstalled(): boolean {
+  try {
+    return localStorage.getItem(INSTALLED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function rememberInstalled(on: boolean) {
+  try {
+    if (on) localStorage.setItem(INSTALLED_KEY, "1");
+    else localStorage.removeItem(INSTALLED_KEY);
+  } catch {
+    /* this visit only */
+  }
+}
+
 /** The Go live panel's app section: Start streaming hands a one-time code to Friends Live (running in the tray or
  * not), which then asks what to stream; Download gets the app. */
 function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
   const [state, setState] = useState<Launch>("idle");
+  const [installed, setInstalled] = useState(knownInstalled);
   const timer = useRef<number | null>(null);
 
   useEffect(() => () => void (timer.current && clearInterval(timer.current)), []);
@@ -33,30 +64,31 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
   const launch = async () => {
     if (timer.current) clearInterval(timer.current);
     setState("opening");
-    let code: string;
-    try {
-      ({ code } = await api<{ code: string }>("POST", "/api/cast/launch"));
-    } catch {
+    const code = await launchFriendsLive();
+    if (!code) {
       setState("error");
       return;
     }
-    openLink(`friends://live?code=${encodeURIComponent(code)}&server=${encodeURIComponent(location.origin)}`);
     const started = Date.now();
     timer.current = window.setInterval(async () => {
       const r = await api<{ opened: boolean }>("GET", `/api/cast/launch/${encodeURIComponent(code)}`).catch(() => null);
       if (r?.opened) {
         clearInterval(timer.current!);
         setState("opened");
+        rememberInstalled(true);
+        setInstalled(true);
         setTimeout(onDone, 2500);
       } else if (Date.now() - started > 6000) {
         clearInterval(timer.current!);
         setState("missing");
+        rememberInstalled(false);
+        setInstalled(false);
       }
     }, 750);
   };
 
-  // Only the installer for this computer's system.
-  const download = APP_OS ? links[APP_OS] : null;
+  // Only the installer for this computer's system, and only until the app has answered from this browser.
+  const download = APP_OS && !installed ? links[APP_OS] : null;
 
   return (
     <div className="app-launch">
@@ -171,6 +203,7 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
             <>
               <h2>Go live</h2>
               <AppLaunch links={links!} onDone={() => setOpen(false)} />
+              <div className="or-sep" role="separator"><span>or</span></div>
               <button className="btn btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
                 {inBrowser ? "Hide browser streaming" : "Stream from this browser"}
               </button>
