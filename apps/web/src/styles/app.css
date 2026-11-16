@@ -1095,7 +1095,16 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .rail-switch input:checked + .switch { background: color-mix(in oklab, var(--hint-cast) 75%, transparent); }
 .rail-switch input:checked + .switch::after { transform: translateX(12px); }
 .rail-switch input:focus-visible + .switch { outline: 2px solid var(--ink); outline-offset: 3px; }
-.rail-restore { margin: var(--space-2) var(--space-3) 0; align-self: flex-start; }
+/* Remove for me / for everyone. Fixed to the window so the rail's scrolling list can't clip it. */
+.remove-menu {
+  position: fixed; z-index: 80; width: 224px; padding: 4px; display: grid; gap: 2px;
+  border-radius: var(--radius-s); background: var(--upholstery); border: 1px solid var(--line);
+  box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.55);
+}
+.remove-menu button { width: 100%; padding: var(--space-2) var(--space-3); border: 0; background: none; border-radius: calc(var(--radius-s) - 2px); font: inherit; font-size: var(--step--1); font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+.remove-menu button:hover, .remove-menu button:focus-visible { background: var(--surface-strong); outline: none; }
+.remove-menu .is-danger { color: var(--danger); }
+.tile-remove.is-open { opacity: 1; }
 
 /* Your broadcast: going live and stopping sit together at the foot. */
 .rail-foot { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-2) 12px 12px; border-top: 1px solid var(--line); }

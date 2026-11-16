@@ -1,5 +1,5 @@
-import { LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, PowerOff, RotateCcw, Square, Volume2, VolumeX, X } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import { LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, PowerOff, Square, Volume2, VolumeX, X } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { GoLive } from "./GoLive";
 
 /** Anything that can be on the stage: the shared player, and each person's cast stream. */
@@ -21,6 +21,8 @@ export interface StageSource {
   stream?: boolean;
   /** take it out of this viewer's list (and turn it off) */
   onRemove: () => void;
+  /** take it off the stage for everyone, when this viewer is allowed to: e.g. "Close for everyone" */
+  removeAll?: { label: string; run: () => void };
 }
 
 /** One of your own streams, listed with its Stop button at the foot of the rail. */
@@ -38,15 +40,12 @@ export interface OwnStream {
  * Expanded it has names, sound and hide; collapsed it is thumbnails. Clicking a source shows it large,
  * and "All" shows every visible source as a grid. Going live and stopping sit at the foot.
  */
-export function StageRail({ sources, current, onShow, removedCount, onRestore, open, setOpen, own, onStop, full }: {
+export function StageRail({ sources, current, onShow, open, setOpen, own, onStop, full }: {
   sources: StageSource[];
   /** the source shown large, or "all" for the grid */
   current: string | "all" | null;
   /** show one source large (turning it on), or null for the grid */
   onShow: (id: string | null) => void;
-  /** sources removed from this list that are still around */
-  removedCount: number;
-  onRestore: () => void;
   open: boolean;
   setOpen: (open: boolean) => void;
   own: OwnStream[];
@@ -99,15 +98,12 @@ export function StageRail({ sources, current, onShow, removedCount, onRestore, o
                     <span className="switch" aria-hidden />
                   </label>
                   <span className="rail-sep" aria-hidden />
-                  <button className="icon-btn" aria-label={`Remove ${s.label} from your list`} title="Remove from your list" onClick={s.onRemove}><X aria-hidden /></button>
+                  <RemoveButton source={s} />
                 </span>
               )}
             </li>
           ))}
         </ul>
-        {open && removedCount > 0 && (
-          <button className="btn btn-quiet btn-s rail-restore" onClick={onRestore}><RotateCcw aria-hidden />Bring back {removedCount} removed</button>
-        )}
 
         <div className="rail-foot">
           {open && own.length > 0 && <span className="rail-foot-title"><span className="live-dot" aria-hidden />You're live</span>}
@@ -137,6 +133,65 @@ export function StageRail({ sources, current, onShow, removedCount, onRestore, o
 }
 
 /**
+ * The X on a source. With nothing more you're allowed to do it just removes it from your list;
+ * otherwise it opens a menu: remove for you, or for everyone. The menu is fixed to the window so
+ * the rail's scrolling list can't clip it.
+ */
+function RemoveButton({ source, className }: { source: StageSource; className?: string }) {
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!at) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent) {
+        if (e.key !== "Escape") return;
+        btn.current?.focus();
+      } else if (e.type === "mousedown" && (menu.current?.contains(e.target as Node) || btn.current?.contains(e.target as Node))) return;
+      setAt(null);
+    };
+    menu.current?.querySelector("button")?.focus();
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [at]);
+
+  const all = source.removeAll;
+  if (!all) {
+    return <button className={`icon-btn${className ? ` ${className}` : ""}`} aria-label={`Remove ${source.label} from your list`} title="Remove from your list" onClick={source.onRemove}><X aria-hidden /></button>;
+  }
+  const toggle = () => {
+    if (at) return setAt(null);
+    const r = btn.current!.getBoundingClientRect();
+    const w = 224;
+    setAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) });
+  };
+  const pick = (fn: () => void) => {
+    setAt(null);
+    fn();
+  };
+  return (
+    <>
+      <button ref={btn} className={`icon-btn${className ? ` ${className}` : ""}${at ? " is-open" : ""}`} aria-label={`Remove ${source.label}`} title="Remove"
+        aria-haspopup="menu" aria-expanded={Boolean(at)} onClick={toggle}><X aria-hidden /></button>
+      {at && (
+        <div ref={menu} className="remove-menu" role="menu" aria-label={`Remove ${source.label}`} style={{ top: at.top, left: at.left }}>
+          <button role="menuitem" onClick={() => pick(source.onRemove)}>Remove for me</button>
+          <button role="menuitem" className="is-danger" onClick={() => pick(all.run)}>{all.label}</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
  * One source on the stage grid or the strip under a focused source. The whole tile shows it large.
  * The hit area stacks above the shared player, which can't take clicks here.
  */
@@ -162,7 +217,7 @@ export function StageTile({ source, onFocus, style, children }: {
           <span className="live-dot" aria-hidden />
           <span className="tile-label">{source.label}</span>
         </span>
-        <button className="icon-btn tile-remove" aria-label={`Remove ${source.label} from your list`} title="Remove from your list" onClick={source.onRemove}><X aria-hidden /></button>
+        <RemoveButton source={source} className="tile-remove" />
       </li>
     );
   }

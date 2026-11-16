@@ -128,9 +128,14 @@ export function Home({ session }: { session: Session }) {
     if (cast.streams.some((st) => st.id === id)) cast.setWatching(id, false);
     if (p.focused === id) p.setFocused(null);
   };
+  const canStopOthers = can(session, "playback.moderate");
+  const endStream = (id: string, label: string) => {
+    if (window.confirm(`End ${label}'s stream for everyone?`)) void cast.stop(id);
+  };
   const allSources: StageSource[] = [
     ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible,
-      on: !p.hidden.has("player"), setOn: setMediaOn("player"), onRemove: () => remove("player") }] : []),
+      on: !p.hidden.has("player"), setOn: setMediaOn("player"), onRemove: () => remove("player"),
+      removeAll: control ? { label: "Skip for everyone", run: () => void act(mediaAction("media:skip")) } : undefined }] : []),
     ...screens.map((sc) => ({
       id: sc.item.id,
       live: sc.item.kind === "twitch-live",
@@ -142,6 +147,7 @@ export function Home({ session }: { session: Session }) {
       on: !p.hidden.has(sc.item.id),
       setOn: setMediaOn(sc.item.id),
       onRemove: () => remove(sc.item.id),
+      removeAll: canClose(sc) ? { label: "Close for everyone", run: () => closeScreen(sc) } : undefined,
     })),
     ...cast.streams.map((st) => ({
       id: st.id,
@@ -156,6 +162,8 @@ export function Home({ session }: { session: Session }) {
       setOn: (on: boolean) => cast.setWatching(st.id, on),
       stream: !st.local,
       onRemove: () => remove(st.id),
+      removeAll: st.mine ? { label: "Stop your stream", run: () => void cast.stop(st.id) }
+        : canStopOthers ? { label: "End for everyone", run: () => endStream(st.id, st.label) } : undefined,
     })),
   ];
   const sources = allSources.filter((x) => !p.removed.has(removeKey(x.id)));
@@ -183,7 +191,6 @@ export function Home({ session }: { session: Session }) {
   const playerOnStage = layout === "grid" ? visible.some((x) => x.id === "player") : playerFocused;
   const focusedStream = cast.streams.find((st) => st.id === focusId) ?? null;
   const focusedScreen = screens.find((sc) => sc.item.id === focusId) ?? null;
-  const canStopOthers = can(session, "playback.moderate");
   // Theatre turns itself on while you're watching someone else's stream, and back off when you stop.
   // Toggling it then only lasts until you stop watching; otherwise it's your saved setting.
   const othersLive = cast.streams.some((st) => !st.mine && cast.watching.has(st.id));
@@ -274,7 +281,6 @@ export function Home({ session }: { session: Session }) {
           <section className={`stage${showRail ? " has-rail" : ""}`} aria-label="Stage">
             {showRail && (
               <StageRail sources={sources} current={layout === "grid" ? "all" : focusId} onShow={show}
-                removedCount={removedCount} onRestore={restore}
                 open={railOpen === "on"} setOpen={(o) => setRailOpen(o ? "on" : "off")}
                 own={own} onStop={(id) => void cast.stop(id)} full={full} />
             )}
@@ -289,7 +295,7 @@ export function Home({ session }: { session: Session }) {
               {layout === "idle" && (sources.length > 0 || removedCount > 0) && (
                 <div className="stage-idle">
                   <h1>{sources.length > 0 ? "Everything is off" : "Everything is removed"}</h1>
-                  <p>{sources.length > 0 ? "Turn a source on from Sources." : "Bring sources back from Sources."}</p>
+                  {sources.length > 0 ? <p>Turn a source on from Sources.</p> : <button className="btn btn-quiet btn-s" onClick={restore}>Bring them back</button>}
                 </div>
               )}
               {offer && (
@@ -430,7 +436,7 @@ export function Home({ session }: { session: Session }) {
                     )}
                     {!focusedStream.mine && canStopOthers && <span className="bar-sep" aria-hidden />}
                     {!focusedStream.mine && canStopOthers && (
-                      <button className="btn btn-quiet btn-s" onClick={() => { if (window.confirm(`End ${focusedStream.label}'s stream?`)) void cast.stop(focusedStream.id); }}>
+                      <button className="btn btn-quiet btn-s" onClick={() => endStream(focusedStream.id, focusedStream.label)}>
                         <Square aria-hidden />End stream
                       </button>
                     )}
