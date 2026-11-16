@@ -30,14 +30,14 @@
       </div>
 
       <section class="settings">
-        <label class="field">
-          <span>Sound</span>
+        <div class="field">
+          <span>Window</span>
           <div class="row">
-            <select id="sound"></select>
-            <button id="refresh" class="btn btn-quiet btn-s" title="Look again for apps playing sound">Refresh</button>
+            <p id="window" class="window-name"></p>
+            <button id="change" class="btn btn-quiet btn-s">Change window</button>
           </div>
-          <small class="quiet">Only this app's sound is streamed, never your voice chat. Apps show up here while they play something.</small>
-        </label>
+          <small class="quiet">The sound comes from the app that owns this window, never from your voice chat. Next time it's reused without asking.</small>
+        </div>
 
         <label class="field">
           <span>Quality</span>

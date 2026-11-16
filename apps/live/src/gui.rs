@@ -2,7 +2,6 @@
 //! and goes live with the saved sound and quality. Everything about the stream is controlled from here.
 
 use crate::session::{self, Quality, Session, QUALITIES};
-use crate::audio::{self, AudioApp};
 use livekit::prelude::RoomEvent;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -17,16 +16,18 @@ const DEFAULT_SERVER: &str = "https://friends.indovina.dev";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct Settings {
-    /// App name whose sound to stream; None for no sound.
-    sound: Option<String>,
     quality: String,
     /// Go live as soon as the site opens the app.
     auto_start: bool,
+    /// The last shared window, reused without asking (Wayland restore token) until "Change window".
+    restore_token: Option<String>,
+    /// Its title, to show which window that is.
+    window: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { sound: None, quality: QUALITIES[0].id.into(), auto_start: true }
+        Settings { quality: QUALITIES[0].id.into(), auto_start: true, restore_token: None, window: None }
     }
 }
 
@@ -87,6 +88,7 @@ struct View {
 #[derive(Serialize, Clone)]
 struct LiveView {
     detail: String,
+    window: Option<String>,
     sound: Option<String>,
 }
 
@@ -95,7 +97,7 @@ fn view(i: &Inner) -> View {
         name: i.link.as_ref().map(|l| l.name.clone()),
         server: i.link.as_ref().map(|l| l.server.clone()).filter(|s| s != DEFAULT_SERVER),
         starting: i.starting,
-        live: i.live.as_ref().map(|s| LiveView { detail: format!("{}×{}", s.width, s.height), sound: s.sound_from.clone() }),
+        live: i.live.as_ref().map(|s| LiveView { detail: format!("{}×{}", s.width, s.height), window: s.window.clone(), sound: s.sound_from() }),
         error: i.error.clone(),
         settings: i.settings.clone(),
         qualities: QUALITIES,
@@ -113,16 +115,37 @@ async fn get_state(shared: State<'_, Shared>) -> Result<View, ()> {
     Ok(view(&*shared.lock().await))
 }
 
+/// The window only changes quality and auto-start; the window choice is kept by the app itself.
 #[tauri::command]
-async fn list_apps() -> Result<Vec<AudioApp>, String> {
-    tokio::task::spawn_blocking(audio::list_apps).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+async fn save_settings(app: AppHandle, shared: State<'_, Shared>, quality: String, auto_start: bool) -> Result<(), ()> {
+    {
+        let mut i = shared.lock().await;
+        i.settings.quality = quality;
+        i.settings.auto_start = auto_start;
+        save_settings_file(&i.settings);
+    }
+    emit(&app, &shared).await;
+    Ok(())
 }
 
+/// Forget the remembered window and ask again; restarts the stream if it's live.
 #[tauri::command]
-async fn save_settings(app: AppHandle, shared: State<'_, Shared>, settings: Settings) -> Result<(), ()> {
-    save_settings_file(&settings);
-    shared.lock().await.settings = settings;
+async fn change_window(app: AppHandle, shared: State<'_, Shared>) -> Result<(), ()> {
+    let live = {
+        let mut i = shared.lock().await;
+        i.settings.restore_token = None;
+        i.settings.window = None;
+        save_settings_file(&i.settings);
+        i.live.take()
+    };
+    let was_live = live.is_some();
+    if let Some(s) = live {
+        s.stop().await;
+    }
     emit(&app, &shared).await;
+    if was_live {
+        start_live(app, shared.inner().clone()).await;
+    }
     Ok(())
 }
 
@@ -175,36 +198,43 @@ async fn start_live(app: AppHandle, shared: Shared) {
     };
     emit(&app, &shared).await;
 
-    // The sound is remembered by app name; if that app isn't playing anything right now, go live without it.
-    let mut note = None;
-    let sound = match &settings.sound {
-        None => None,
-        Some(name) => {
-            let apps = tokio::task::spawn_blocking(audio::list_apps).await.ok().and_then(|r| r.ok()).unwrap_or_default();
-            let found = apps.into_iter().find(|a| a.name.eq_ignore_ascii_case(name));
-            if found.is_none() {
-                note = Some(format!("{name} isn't playing sound, so the stream has none. Pick it again once it is."));
-            }
-            found
-        }
-    };
-
-    let opts = session::Options::from_quality(session::quality(&settings.quality), sound);
+    let opts = session::Options::from_quality(session::quality(&settings.quality), settings.restore_token.clone());
     let result = Session::start(&url, &token, opts).await;
 
     let mut i = shared.lock().await;
     i.starting = false;
     match result {
         Ok((s, mut events)) => {
+            // Remember the window so the next Go live doesn't ask.
+            i.settings.restore_token = s.restore_token.clone();
+            i.settings.window = s.window.clone();
+            save_settings_file(&i.settings);
+            i.error = match (s.is_window, &s.window) {
+                (_, Some(_)) => None,
+                // GNOME only tells us which window was shared when its choice is remembered.
+                (true, None) => Some("Streaming without sound. To include the window's sound, leave \"Remember this selection\" on when you choose the window. Change window to choose again.".into()),
+                (false, None) => Some("A whole screen is shared without sound. Share a window to include its sound.".into()),
+            };
             i.live = Some(s);
-            i.error = note;
             drop(i);
-            // Ended from the site (the X), by a moderator, or the connection dropped for good.
+            // Ended from the site (the X), by a moderator, the connection dropping for good, or the window closing.
+            // Also refreshes the window every few seconds so "sound from …" stays current.
             let (app2, shared2) = (app.clone(), shared.clone());
             tauri::async_runtime::spawn(async move {
-                while let Some(ev) = events.recv().await {
-                    if let RoomEvent::Disconnected { .. } = ev {
-                        break;
+                let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
+                loop {
+                    tokio::select! {
+                        ev = events.recv() => match ev {
+                            Some(RoomEvent::Disconnected { .. }) | None => break,
+                            _ => {}
+                        },
+                        _ = tick.tick() => {
+                            let ended = shared2.lock().await.live.as_ref().is_none_or(|s| s.capture_ended());
+                            if ended {
+                                break;
+                            }
+                            emit(&app2, &shared2).await;
+                        }
                     }
                 }
                 let s = shared2.lock().await.live.take();
@@ -319,7 +349,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| focus(app)))
         .plugin(tauri_plugin_deep_link::init())
         .manage(shared.clone())
-        .invoke_handler(tauri::generate_handler![get_state, list_apps, save_settings, go_live, stop, open_site])
+        .invoke_handler(tauri::generate_handler![get_state, save_settings, change_window, go_live, stop, open_site])
         .setup(move |app| {
             // Installed builds register friends:// at install time; this covers running a bare binary.
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -334,6 +364,17 @@ pub fn run() {
                     tauri::async_runtime::spawn(handle_link(handle.clone(), s.clone(), url));
                 }
             });
+            // A terminal kill or logout: exit through the normal path so the stream ends cleanly.
+            #[cfg(unix)]
+            {
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use tokio::signal::unix::{signal, SignalKind};
+                    let (Ok(mut term), Ok(mut int)) = (signal(SignalKind::terminate()), signal(SignalKind::interrupt())) else { return };
+                    tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
+                    h.exit(0);
+                });
+            }
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 for url in urls {
                     tauri::async_runtime::spawn(handle_link(app.handle().clone(), shared.clone(), url));
@@ -341,6 +382,18 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("couldn't start the app window");
+        .build(tauri::generate_context!())
+        .expect("couldn't start the app window")
+        .run(move |app, event| {
+            // Leave the stage properly on the way out, or viewers see a frozen stream until LiveKit times it out.
+            if let tauri::RunEvent::Exit = event {
+                let s = app.state::<Shared>().inner().clone();
+                tauri::async_runtime::block_on(async move {
+                    let live = s.lock().await.live.take();
+                    if let Some(live) = live {
+                        let _ = tokio::time::timeout(std::time::Duration::from_secs(3), live.stop()).await;
+                    }
+                });
+            }
+        });
 }

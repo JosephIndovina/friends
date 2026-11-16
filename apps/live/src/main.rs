@@ -5,6 +5,8 @@
 
 mod audio;
 mod gui;
+#[cfg(target_os = "linux")]
+mod portal;
 mod session;
 mod video;
 
@@ -33,6 +35,11 @@ enum Cmd {
     },
     /// Go live without the app window.
     Stream(StreamArgs),
+    /// Open the screen picker and show what was picked (Linux).
+    Pick {
+        #[arg(long)]
+        restore: Option<String>,
+    },
     /// Record an app's audio to a WAV file (for checking capture without a server).
     Record {
         #[arg(long)]
@@ -51,15 +58,9 @@ struct StreamArgs {
     url: String,
     #[arg(long)]
     token: String,
-    /// Audio from this app (a name or id from `apps`). Leave out for no sound.
+    /// Reuse a window picked before (the token `pick` or a previous stream printed) instead of asking.
     #[arg(long)]
-    app: Option<String>,
-    /// picker (Wayland), screen or window.
-    #[arg(long, value_enum)]
-    kind: Option<KindArg>,
-    /// A source id from `sources`; leave out to use the OS picker where there is one.
-    #[arg(long)]
-    source: Option<u64>,
+    restore: Option<String>,
     #[arg(long, default_value_t = 60)]
     fps: u32,
     /// Largest height; bigger sources are scaled down, never up.
@@ -116,7 +117,7 @@ enum HintArg {
     Detail,
 }
 
-const COMMANDS: &[&str] = &["apps", "sources", "stream", "record", "help", "--help", "-h", "--version", "-V"];
+const COMMANDS: &[&str] = &["apps", "pick", "sources", "stream", "record", "help", "--help", "-h", "--version", "-V"];
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,libwebrtc=warn")).init();
@@ -142,6 +143,13 @@ async fn cli(c: Cli) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&list)?);
         }
         Cmd::Stream(a) => stream(a).await?,
+        #[cfg(target_os = "linux")]
+        Cmd::Pick { restore } => {
+            let p = portal::pick(restore.as_deref()).await?;
+            println!("node {} size {:?} window {} token {:?} title {:?}", p.node_id, p.size, p.is_window, p.restore_token, p.title);
+        }
+        #[cfg(not(target_os = "linux"))]
+        Cmd::Pick { .. } => bail!("Linux only"),
         Cmd::Record { app, seconds, out } => {
             let app = find_app(&app).await?;
             let mixer = Arc::new(audio::Mixer::default());
@@ -162,14 +170,8 @@ async fn cli(c: Cli) -> Result<()> {
 }
 
 async fn stream(a: StreamArgs) -> Result<()> {
-    // Find the app first so a typo fails before the screen picker opens.
-    let app = match &a.app {
-        None => None,
-        Some(id) => Some(find_app(id).await?),
-    };
     let opts = session::Options {
-        kind: a.kind.map(Into::into).unwrap_or_else(video::default_kind),
-        source: a.source,
+        restore: a.restore,
         fps: a.fps,
         height: a.height,
         kbps: a.kbps,
@@ -188,14 +190,28 @@ async fn stream(a: StreamArgs) -> Result<()> {
             EncoderArg::Nvenc => VideoEncoderBackend::Nvenc,
             EncoderArg::Vaapi => VideoEncoderBackend::Vaapi,
         },
-        app,
     };
     let (s, mut events) = session::Session::start(&a.url, &a.token, opts).await?;
-    println!("live: {} {}x{}{}  (Ctrl-C to stop)", s.name, s.width, s.height,
-        s.sound_from.as_deref().map(|n| format!(", sound from {n}")).unwrap_or_default());
+    println!("live: {} {}x{} window {:?}  (Ctrl-C to stop)", s.name, s.width, s.height, s.window);
+    if let Some(t) = &s.restore_token {
+        println!("reuse this window next time with --restore {t}");
+    }
+    let mut tick = tokio::time::interval(Duration::from_secs(1));
+    let mut sound = None;
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => break,
+            _ = tick.tick() => {
+                if s.capture_ended() {
+                    log::info!("the shared window went away");
+                    break;
+                }
+                let now = s.sound_from();
+                if now != sound {
+                    println!("sound: {}", now.as_deref().unwrap_or("none"));
+                    sound = now;
+                }
+            }
             ev = events.recv() => match ev {
                 Some(RoomEvent::Disconnected { reason }) => {
                     log::info!("stream ended: {reason:?}");

@@ -17,7 +17,7 @@ unsafe extern "C" {
     fn webrtc_initialize_pipewire() -> bool;
 }
 
-fn init() -> Result<()> {
+pub fn init() -> Result<()> {
     static LOADED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if !*LOADED.get_or_init(|| unsafe { webrtc_initialize_pipewire() }) {
         return Err(anyhow!("PipeWire isn't available"));

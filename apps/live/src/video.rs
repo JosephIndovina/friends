@@ -1,6 +1,9 @@
 //! Screen and window capture through WebRTC's own desktop capturer: Windows Graphics Capture on Windows,
 //! the xdg-desktop-portal ScreenCast picker (and PipeWire) on Wayland.
 
+// On Linux capture goes through the portal (portal.rs); this path is for Windows (and `sources`).
+#![cfg_attr(target_os = "linux", allow(dead_code))]
+
 use anyhow::{anyhow, Result};
 use livekit::webrtc::desktop_capturer::{
     CaptureError, CaptureSource, DesktopCaptureSourceType, DesktopCapturer, DesktopCapturerOptions,
