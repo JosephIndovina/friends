@@ -250,10 +250,18 @@ async fn follow_sound(me: LocalParticipant, track_name: String, title: String, s
                         let pump = tokio::spawn(async move {
                             let mut tick = tokio::time::interval(Duration::from_millis(10));
                             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+                            let (mut n, mut peak) = (0u32, 0u16);
                             loop {
                                 tick.tick().await;
+                                let data = m.next_frame();
+                                peak = peak.max(data.iter().map(|x| x.unsigned_abs()).max().unwrap_or(0));
+                                n += 1;
+                                if n % 500 == 0 {
+                                    log::debug!("sound: peak {:.1}% over 5 s, {}", peak as f64 / i16::MAX as f64 * 100.0, m.describe());
+                                    peak = 0;
+                                }
                                 let frame = AudioFrame {
-                                    data: m.next_frame().into(),
+                                    data: data.into(),
                                     sample_rate: audio::SAMPLE_RATE,
                                     num_channels: audio::CHANNELS,
                                     samples_per_channel: audio::SAMPLE_RATE / 100,
