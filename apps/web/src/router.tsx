@@ -9,7 +9,7 @@ import { People } from "./routes/admin/People";
 import { RoleEdit, Roles } from "./routes/admin/Roles";
 import { SiteSettings } from "./routes/admin/SiteSettings";
 import { NotAllowed, SettingsLayout } from "./routes/settings/SettingsLayout";
-import { Account, Appearance, Playback } from "./routes/settings/You";
+import { Account, Preferences } from "./routes/settings/You";
 
 export interface RouterContext { session: Session }
 
@@ -28,9 +28,11 @@ const castRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cast", 
 
 // Your settings and the admin pages share one layout with a sidebar.
 const prefsRoute = createRoute({ getParentRoute: () => rootRoute, id: "prefs", component: () => <SettingsLayout session={useSession()} /> });
-const settingsIndex = createRoute({ getParentRoute: () => prefsRoute, path: "/settings", component: Appearance });
-const appearanceRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/settings/appearance", component: Appearance });
-const playbackRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/settings/playback", component: Playback });
+const settingsIndex = createRoute({ getParentRoute: () => prefsRoute, path: "/settings", component: Preferences });
+const preferencesRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/settings/preferences", component: Preferences });
+// Appearance and Playback were merged into Preferences.
+const appearanceRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/appearance", beforeLoad: to("/settings/preferences") });
+const playbackRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/playback", beforeLoad: to("/settings/preferences") });
 const accountRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/settings/account", component: () => <Account session={useSession()} /> });
 
 const guarded = (perm: Permission | "any-admin", el: (s: Session) => React.ReactNode) =>
@@ -61,8 +63,8 @@ const oldSiteSettings = createRoute({ getParentRoute: () => rootRoute, path: "/a
 const oldSystem = createRoute({ getParentRoute: () => rootRoute, path: "/admin/system", beforeLoad: to("/admin") });
 
 const routeTree = rootRoute.addChildren([
-  homeRoute, musicRoute, mediaRoute, castRoute, oldSiteSettings, oldSystem,
-  prefsRoute.addChildren([settingsIndex, appearanceRoute, playbackRoute, accountRoute, overviewRoute, peopleRoute, rolesRoute, roleRoute, siteRoute, auditRoute]),
+  homeRoute, musicRoute, mediaRoute, castRoute, oldSiteSettings, oldSystem, appearanceRoute, playbackRoute,
+  prefsRoute.addChildren([settingsIndex, preferencesRoute, accountRoute, overviewRoute, peopleRoute, rolesRoute, roleRoute, siteRoute, auditRoute]),
 ]);
 
 export const router = createRouter({ routeTree, context: undefined! as RouterContext });

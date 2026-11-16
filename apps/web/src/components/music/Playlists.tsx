@@ -92,12 +92,19 @@ export function PlaylistsPanel({ session, queueCount }: { session: Session; queu
   const [open, setOpen] = useState<Playlist | null>(null);
   const [note, setNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [newName, setNewName] = useState("");
+  const [saving, setSaving] = useState(false);
+  /** the open playlist's footer: its actions, the rename field, or the delete question */
+  const [edit, setEdit] = useState<{ kind: "rename"; name: string } | { kind: "delete" } | null>(null);
   const queue = can(session, "player.queue");
   const control = can(session, "player.control");
 
   const openList = async (id: string) => {
     try {
-      setOpen(await api<Playlist>("GET", `/api/playlists/${id}`));
+      const pl = await api<Playlist>("GET", `/api/playlists/${id}`);
+      setOpen((cur) => {
+        if (cur?.id !== pl.id) setEdit(null);
+        return pl;
+      });
     } catch (e) {
       setNote({ kind: "error", text: msg(e) });
     }
@@ -116,7 +123,7 @@ export function PlaylistsPanel({ session, queueCount }: { session: Session; queu
     return (
       <div className="block">
         <div className="block-head">
-          <button className="btn btn-quiet btn-s" onClick={() => { setOpen(null); setNote(null); void reload(); }}><ArrowLeft aria-hidden />Playlists</button>
+          <button className="btn btn-quiet btn-s" onClick={() => { setOpen(null); setNote(null); setEdit(null); void reload(); }}><ArrowLeft aria-hidden />Playlists</button>
         </div>
         <h2 className="playlist-name">{open.name}</h2>
         <p className="block-note">{open.items.length} items · by {open.owner.name}</p>
@@ -145,15 +152,36 @@ export function PlaylistsPanel({ session, queueCount }: { session: Session; queu
             </li>
           ))}
         </ol>
-        {editable && (
+        {editable && !edit && (
           <div className="add-actions">
-            <button className="btn btn-quiet btn-s" onClick={async () => {
-              const name = window.prompt("Rename playlist", open.name)?.trim();
-              if (name) await run(async () => { await api("PATCH", `/api/playlists/${open.id}`, { name }); await openList(open.id); }, "Renamed.");
-            }}><Pencil aria-hidden />Rename</button>
-            <button className="btn btn-quiet btn-s" onClick={async () => {
-              if (window.confirm(`Delete ${open.name}?`)) await run(async () => { await api("DELETE", `/api/playlists/${open.id}`); setOpen(null); await reload(); }, "Deleted.");
-            }}><Trash2 aria-hidden />Delete</button>
+            <button className="btn btn-quiet btn-s" onClick={() => setEdit({ kind: "rename", name: open.name })}><Pencil aria-hidden />Rename</button>
+            <button className="btn btn-quiet btn-s" onClick={() => setEdit({ kind: "delete" })}><Trash2 aria-hidden />Delete</button>
+          </div>
+        )}
+        {editable && edit?.kind === "rename" && (
+          <form className="inline-form" onSubmit={async (e) => {
+            e.preventDefault();
+            const name = edit.name.trim();
+            if (!name) return;
+            await run(async () => { await api("PATCH", `/api/playlists/${open.id}`, { name }); await openList(open.id); }, "Renamed.");
+            setEdit(null);
+          }}>
+            <input className="input grow" value={edit.name} maxLength={60} autoFocus aria-label="Playlist name"
+              onChange={(e) => setEdit({ kind: "rename", name: e.target.value })} onKeyDown={(e) => e.key === "Escape" && setEdit(null)} />
+            <button className="btn btn-primary btn-s" disabled={!edit.name.trim()}>Save</button>
+            <button type="button" className="btn btn-quiet btn-s" onClick={() => setEdit(null)}>Cancel</button>
+          </form>
+        )}
+        {editable && edit?.kind === "delete" && (
+          <div className="choice" role="group" aria-label={`Delete ${open.name}`}>
+            <span>Delete {open.name}? This can’t be undone.</span>
+            <div className="add-actions">
+              <button className="btn btn-danger btn-s" autoFocus onClick={async () => {
+                await run(async () => { await api("DELETE", `/api/playlists/${open.id}`); setOpen(null); await reload(); }, "Deleted.");
+                setEdit(null);
+              }}><Trash2 aria-hidden />Delete</button>
+              <button className="btn btn-quiet btn-s" onClick={() => setEdit(null)}>Cancel</button>
+            </div>
           </div>
         )}
       </div>
@@ -163,18 +191,6 @@ export function PlaylistsPanel({ session, queueCount }: { session: Session; queu
   return (
     <div className="block">
       {note && <p className={`flash flash-${note.kind}`} role="status">{note.text}</p>}
-      {queue && (
-        <form className="inline-form" onSubmit={async (e) => {
-          e.preventDefault();
-          if (!newName.trim()) return;
-          await run(() => api("POST", "/api/playlists", { name: newName.trim(), fromQueue: true }), `Saved the queue as ${newName.trim()}.`);
-          setNewName("");
-          void reload();
-        }}>
-          <input className="input grow" placeholder="Playlist name" value={newName} maxLength={60} onChange={(e) => setNewName(e.target.value)} aria-label="Playlist name" />
-          <button className="btn btn-quiet btn-s" disabled={!newName.trim() || queueCount === 0} title={queueCount === 0 ? "The queue is empty" : undefined}><Plus aria-hidden />Save queue</button>
-        </form>
-      )}
       {list === null ? null : list.length === 0 ? <p className="block-note">No playlists yet.</p> : (
         <ul className="queue">
           {list.map((p) => (
@@ -188,6 +204,27 @@ export function PlaylistsPanel({ session, queueCount }: { session: Session; queu
           ))}
         </ul>
       )}
+      {queue && (saving ? (
+        <form className="inline-form" onSubmit={async (e) => {
+          e.preventDefault();
+          if (!newName.trim()) return;
+          await run(() => api("POST", "/api/playlists", { name: newName.trim(), fromQueue: true }), `Saved the queue as ${newName.trim()}.`);
+          setNewName("");
+          setSaving(false);
+          void reload();
+        }}>
+          <input className="input grow" placeholder="Playlist name" value={newName} maxLength={60} autoFocus onChange={(e) => setNewName(e.target.value)} aria-label="Playlist name"
+            onKeyDown={(e) => e.key === "Escape" && setSaving(false)} />
+          <button className="btn btn-primary btn-s" disabled={!newName.trim()}>Save</button>
+          <button type="button" className="btn btn-quiet btn-s" onClick={() => setSaving(false)}>Cancel</button>
+        </form>
+      ) : (
+        <div className="add-actions">
+          <button className="btn btn-quiet btn-s" disabled={queueCount === 0} title={queueCount === 0 ? "The queue is empty" : undefined} onClick={() => setSaving(true)}>
+            <Plus aria-hidden />Save queue as playlist
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

@@ -25,6 +25,9 @@ interface PlayerCtx {
   /** screens this viewer turned the sound on for; screens start muted */
   screenSound: ReadonlySet<string>;
   setScreenSound: (id: string, on: boolean) => void;
+  /** each screen's own volume for this viewer; a screen without one uses the player's */
+  screenVolume: Readonly<Record<string, number>>;
+  setScreenVolume: (id: string, v: number) => void;
   /** viewer closed the docked mini player for this item */
   dismissedFor: string | null;
   setDismissedFor: (id: string | null) => void;
@@ -99,6 +102,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+  const [screenVolume, setScreenVolumes] = useState<Record<string, number>>({});
+  const setScreenVolume = useCallback((id: string, v: number) => setScreenVolumes((prev) => ({ ...prev, [id]: v })), []);
   const [hidden, setHiddenSet] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>("stage.hidden", [])));
   // The source shown large. Not saved: each visit starts on the grid when there's more than one.
   const [focused, setFocused] = useState<string | null>(null);
@@ -184,9 +189,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, stageOpen, setStageOpen, screenSlots, setScreenSlot,
-      screenSound, setScreenSound, dismissedFor, setDismissedFor, hidden, setHidden, removed, setRemoved, clearRemoved, focused, setFocused, viewOverrides, setViewOverride, clearViewOverrides,
+      screenSound, setScreenSound, screenVolume, setScreenVolume, dismissedFor, setDismissedFor, hidden, setHidden, removed, setRemoved, clearRemoved, focused, setFocused, viewOverrides, setViewOverride, clearViewOverrides,
     }),
-    [audible, blocked, volume, syncing, slot, stageOpen, screenSlots, setScreenSlot, screenSound, setScreenSound, dismissedFor, hidden, setHidden, removed, setRemoved, clearRemoved, focused, viewOverrides, setViewOverride, clearViewOverrides],
+    [audible, blocked, volume, syncing, slot, stageOpen, screenSlots, setScreenSlot, screenSound, setScreenSound, screenVolume, setScreenVolume, dismissedFor, hidden, setHidden, removed, setRemoved, clearRemoved, focused, viewOverrides, setViewOverride, clearViewOverrides],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

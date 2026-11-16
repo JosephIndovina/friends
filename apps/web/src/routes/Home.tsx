@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, Maximize, Minimize, RectangleHorizontal, Pause, Play, Square, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import { Activity, Maximize, Minimize, RectangleHorizontal, Pause, Play, SkipForward, Volume2 } from "lucide-react";
 import { SCREENS_MAX, SEEKABLE, type Playback, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
@@ -10,12 +10,13 @@ import { StreamVideo, useCast } from "../lib/cast";
 import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
 import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
-import { History, ModeToggle, Queue, Seek, Volume } from "../components/media/parts";
+import { History, Queue, Seek, Volume } from "../components/media/parts";
 import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
 import { expectedPosition, KIND_LABEL, mediaAction, mediaError, useMediaState } from "../lib/media";
 import { usePlayer, viewModeOf } from "../lib/player";
 import { useSite } from "../lib/site";
+import { useToast } from "../lib/toast";
 
 type MusicView = "art" | "viz" | "lyrics";
 const GRID_PAD = 12;
@@ -47,12 +48,12 @@ export function Home({ session }: { session: Session }) {
   const [theatrePref, setTheatrePref] = usePref<"on" | "off">("theatre", "off");
   const [railOpen, setRailOpen] = usePref<"on" | "off">("railOpen2", "on");
   const [statsPref, setStatsPref] = usePref<"on" | "off">("streamStats", "off");
-  const [tab, setTab] = usePref<"queue" | "recent" | "playlists">("sideTab", "queue");
+  const [tab, setTab] = usePref<"queue" | "recent" | "playlists" | "posts">("sideTab", "queue");
   const state = useMediaState();
   const now = state?.now ?? null;
   const p = usePlayer();
   useArtworkGlow(now?.item.thumbnail);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [screen, setScreen] = useState<HTMLDivElement | null>(null);
   const [full, setFull] = useState(false);
   const control = can(session, "player.control");
@@ -72,14 +73,14 @@ export function Home({ session }: { session: Session }) {
     else void (screen?.closest(".shell") as HTMLElement | null)?.requestFullscreen?.().catch(() => {});
   };
 
+  // Stage and queue actions report failures as a toast, wherever on the page they were clicked.
   const act = useCallback(async (pr: Promise<void>) => {
-    setError(null);
     try {
       await pr;
     } catch (e) {
-      setError(mediaError(e));
+      toast(mediaError(e), { kind: "error" });
     }
-  }, []);
+  }, [toast]);
 
   // Progress readout ticks while playing.
   const [, setTick] = useState(0);
@@ -129,13 +130,10 @@ export function Home({ session }: { session: Session }) {
     if (p.focused === id) p.setFocused(null);
   };
   const canStopOthers = can(session, "playback.moderate");
-  const endStream = (id: string, label: string) => {
-    if (window.confirm(`End ${label}'s stream for everyone?`)) void cast.stop(id);
-  };
+  // Everything that removes a source for everyone lives in its X menu, and asks first. Skip stays in the transport.
   const allSources: StageSource[] = [
     ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible,
-      on: !p.hidden.has("player"), setOn: setMediaOn("player"), onRemove: () => remove("player"),
-      removeAll: control ? { label: "Skip for everyone", run: () => void act(mediaAction("media:skip")) } : undefined }] : []),
+      on: !p.hidden.has("player"), setOn: setMediaOn("player"), onRemove: () => remove("player") }] : []),
     ...screens.map((sc) => ({
       id: sc.item.id,
       live: sc.item.kind === "twitch-live",
@@ -147,23 +145,25 @@ export function Home({ session }: { session: Session }) {
       on: !p.hidden.has(sc.item.id),
       setOn: setMediaOn(sc.item.id),
       onRemove: () => remove(sc.item.id),
-      removeAll: canClose(sc) ? { label: "Close for everyone", run: () => closeScreen(sc) } : undefined,
+      removeAll: canClose(sc) ? { label: "Close for everyone", run: () => closeScreen(sc), confirm: `Close ${sc.item.title} for everyone?` } : undefined,
     })),
     ...cast.streams.map((st) => ({
       id: st.id,
       live: true,
       local: st.mine,
       label: st.mine ? ownName(st.id) : st.label,
-      detail: st.mode ? `Live · ${st.mode}` : "Live",
+      detail: ["Live", st.mode, st.mine && !st.audio && "No sound"].filter(Boolean).join(" · "),
       thumbnail: st.avatarUrl,
+      // Your own stream: a live preview, and Stop in place of the X.
+      preview: st.mine ? <StreamVideo stream={st} className="rail-preview-video" /> : undefined,
+      onStop: st.mine ? () => void cast.stop(st.id) : undefined,
       audible: st.mine ? false : !cast.muted.has(st.id),
       setAudible: (v: boolean) => cast.setMuted(st.id, !v),
       on: cast.watching.has(st.id),
       setOn: (on: boolean) => cast.setWatching(st.id, on),
       stream: !st.local,
       onRemove: () => remove(st.id),
-      removeAll: st.mine ? { label: "Stop your stream", run: () => void cast.stop(st.id) }
-        : canStopOthers ? { label: "End for everyone", run: () => endStream(st.id, st.label) } : undefined,
+      removeAll: !st.mine && canStopOthers ? { label: "End for everyone", run: () => void cast.stop(st.id), confirm: `End ${st.label}'s stream for everyone?` } : undefined,
     })),
   ];
   const sources = allSources.filter((x) => !p.removed.has(removeKey(x.id)));
@@ -204,7 +204,6 @@ export function Home({ session }: { session: Session }) {
     if (othersLive) setTheatreOverride(next);
     else setTheatrePref(next);
   };
-  const own = cast.streams.filter((st) => st.mine).map((st) => ({ id: st.id, label: ownName(st.id), detail: [st.mode ?? "Live", !st.audio && "No sound"].filter(Boolean).join(" · "), preview: <StreamVideo stream={st} className="rail-preview-video" /> }));
   const streamsOnStage = cast.streams.some((st) => visible.some((x) => x.id === st.id));
   const showStats = statsPref === "on" && streamsOnStage;
   const showRail = sources.length > 0 || (cast.canStream && cast.supported);
@@ -231,7 +230,7 @@ export function Home({ session }: { session: Session }) {
     const measure = () => {
       let h = 0;
       for (const el of Array.from(main.children) as HTMLElement[]) {
-        if (el !== screen && getComputedStyle(el).position !== "fixed") h += el.offsetHeight;
+        if (el !== screen && !["fixed", "absolute"].includes(getComputedStyle(el).position)) h += el.offsetHeight;
       }
       setBars(h);
     };
@@ -275,22 +274,39 @@ export function Home({ session }: { session: Session }) {
     return st ? <StreamVideo stream={st} className="stream-tile" stats={showStats ? "compact" : undefined} /> : null;
   };
 
+  // What the bar under the stage is about: the stream or screen shown large, or the shared player when it's on the stage.
+  const bar = focusedStream ? "stream" : focusedScreen ? "screen" : now && playerOnStage ? "player" : null;
+  // The browser blocked sound: one notice over the stage; the first click or key press anywhere clears it.
+  const soundBlocked = p.blocked && visible.some((x) => x.audible && !x.local);
+  // Video, or one of the music views, in one control. Video is only for YouTube.
+  const views = now ? [...(now.item.kind === "youtube" ? [["video", "Video"]] : []), ["viz", "Visualizer"], ["lyrics", "Lyrics"], ["art", "Artwork"]] as const : [];
+  const setView = (v: "video" | MusicView) => {
+    if (!now) return;
+    if (v === "video") return p.setViewOverride(now.item, "video");
+    if (!music) p.setViewOverride(now.item, "music");
+    setMusicView(v);
+  };
+  const theatreTip = theatre === "on"
+    ? othersLive ? "Exit theatre mode for this stream" : "Exit theatre mode"
+    : othersLive ? "Theatre mode for this stream" : "Theatre mode";
+  const playPause = (playing: boolean, run: () => void) => (
+    <button className="icon-btn transport-main" disabled={!control} aria-label={playing ? "Pause for everyone" : "Play for everyone"} onClick={run}>
+      {playing ? <Pause aria-hidden /> : <Play aria-hidden />}
+    </button>
+  );
+
   return (
     <>
       <div className={`room media-room${theatre === "on" ? " is-theatre" : ""}`} style={{ "--stage-bars": `${bars}px` } as React.CSSProperties}>
           <section className={`stage${showRail ? " has-rail" : ""}`} aria-label="Stage">
             {showRail && (
               <StageRail sources={sources} current={layout === "grid" ? "all" : focusId} onShow={show}
-                open={railOpen === "on"} setOpen={(o) => setRailOpen(o ? "on" : "off")}
-                own={own} onStop={(id) => void cast.stop(id)} full={full} />
+                open={railOpen === "on"} setOpen={(o) => setRailOpen(o ? "on" : "off")} full={full} />
             )}
             <div className="stage-main">
             <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}${layout === "grid" ? " is-grid" : ""}${full ? " is-full" : ""}`}>
               {layout === "idle" && sources.length === 0 && removedCount === 0 && (
-                <div className="stage-idle">
-                  <h1>Nothing playing</h1>
-                  <p>Search YouTube, or paste a YouTube, Spotify or Twitch link. Use Watch alongside to play several at once. Or go live and share your screen.</p>
-                </div>
+                <div className="stage-idle"><h1>Nothing playing</h1></div>
               )}
               {layout === "idle" && (sources.length > 0 || removedCount > 0) && (
                 <div className="stage-idle">
@@ -318,21 +334,6 @@ export function Home({ session }: { session: Session }) {
                     {now.item.author && <p className="music-artist">{now.item.author.replace(/ - Topic$/, "")}</p>}
                   </div>
                   {musicView === "lyrics" && <div className="lyrics-col"><LyricsView playback={now} /></div>}
-                  <div className="music-controls">
-                    {musicView === "viz" && (
-                      <select className="select select-s" aria-label="Visualizer preset" value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
-                        {PRESETS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-                      </select>
-                    )}
-                    <div className="segmented segmented-s" role="radiogroup" aria-label="Music view">
-                      {([["viz", "Visualizer"], ["lyrics", "Lyrics"], ["art", "Artwork"]] as const).map(([v, label]) => (
-                        <label key={v}>
-                          <input type="radio" name="music-view" checked={musicView === v} onChange={() => setMusicView(v)} />
-                          <span>{label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               )}
               {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" stats={showStats ? "full" : undefined} />}
@@ -340,127 +341,105 @@ export function Home({ session }: { session: Session }) {
               {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
             </div>
 
-            {/* Outside the stage screen so it stacks above the shared player. */}
+            {/* Outside the stage screen so they stack above the shared player. */}
             {full && <button className="icon-btn exit-full" aria-label="Exit full screen" title="Exit full screen" onClick={toggleFull}><Minimize aria-hidden /></button>}
-            {now && playerOnStage && (
-              <div className="transport">
-                  <button className="icon-btn transport-main" disabled={!control}
-                    aria-label={now.playing ? "Pause for everyone" : "Play for everyone"}
-                    onClick={() => {
-                      void act(now.playing ? mediaAction("media:pause", { position: pos }) : mediaAction("media:play"));
-                    }}>
-                    {now.playing ? <Pause aria-hidden /> : <Play aria-hidden />}
-                  </button>
-                  <button className="icon-btn" disabled={!control} aria-label="Skip" title="Skip" onClick={() => act(mediaAction("media:skip"))}><SkipForward aria-hidden /></button>
-                  {SEEKABLE[now.item.kind] ? (
-                    <Seek position={pos} duration={now.item.duration} disabled={!control} onSeek={(s) => act(mediaAction("media:seek", { position: s }))} />
-                  ) : (
-                    <span className="live-badge">{now.item.kind === "twitch-live" ? "Live" : "Clip"}</span>
-                  )}
-                  {p.blocked && p.audible
-                    ? <button className="btn btn-primary btn-s sound-on" onClick={() => p.setBlocked(false)}><Volume2 aria-hidden /><span className="sound-label">Click anywhere for sound</span></button>
-                    : <Volume volume={p.volume} muted={!p.audible} onChange={(v) => { p.setVolume(v); p.setAudible(v > 0); }} onToggle={() => p.setAudible(!p.audible)} />}
-              </div>
-            )}
+            {soundBlocked && <div className={`sound-notice${full ? " is-full" : ""}`} role="status"><Volume2 aria-hidden />Click anywhere for sound</div>}
 
-            {focusedScreen && (
-              <div className="transport">
-                {focusedScreen.item.kind !== "twitch-live" && focusedScreen.item.kind !== "twitch-clip" && (
-                  <button className="icon-btn transport-main" disabled={!control}
-                    aria-label={focusedScreen.playing ? "Pause for everyone" : "Play for everyone"}
-                    onClick={() => void act(mediaAction(focusedScreen.playing ? "media:screen:pause" : "media:screen:play", { id: focusedScreen.item.id }))}>
-                    {focusedScreen.playing ? <Pause aria-hidden /> : <Play aria-hidden />}
-                  </button>
-                )}
-                {SEEKABLE[focusedScreen.item.kind] ? (
-                  <Seek position={expectedPosition(focusedScreen)} duration={focusedScreen.item.duration} disabled={!control}
-                    onSeek={(sec) => act(mediaAction("media:screen:seek", { id: focusedScreen.item.id, position: sec }))} />
-                ) : (
-                  <span className="live-badge">{focusedScreen.item.kind === "twitch-live" ? "Live" : "Clip"}</span>
-                )}
-                {p.blocked && p.screenSound.has(focusedScreen.item.id)
-                  ? <button className="btn btn-primary btn-s sound-on" onClick={() => p.setBlocked(false)}><Volume2 aria-hidden /><span className="sound-label">Click anywhere for sound</span></button>
-                  : <Volume volume={p.volume} muted={!p.screenSound.has(focusedScreen.item.id)}
-                      onChange={(v) => { p.setVolume(v); p.setScreenSound(focusedScreen.item.id, v > 0); }}
-                      onToggle={() => p.setScreenSound(focusedScreen.item.id, !p.screenSound.has(focusedScreen.item.id))} />}
-              </div>
-            )}
-
-            {/* One bar for what's showing and for the stage itself. */}
-            <div className="stage-info stage-bar">
-              {focusedStream ? (
-                <div className="now-meta">
-                  <strong className="now-title">{focusedStream.mine ? ownName(focusedStream.id) : focusedStream.label}</strong>
-                  <span><span className="live-dot" aria-hidden />{["Live", focusedStream.mode, !focusedStream.audio && "No sound"].filter(Boolean).join(" · ")}</span>
-                </div>
-              ) : focusedScreen ? (
-                <div className="now-meta">
-                  <strong className="now-title">{focusedScreen.item.title}</strong>
-                  <span>
-                    {focusedScreen.item.kind === "twitch-live" && <span className="live-dot" aria-hidden />}
-                    {[focusedScreen.item.author, KIND_LABEL[focusedScreen.item.kind], `opened by ${focusedScreen.startedBy.name}`].filter(Boolean).join(" · ")}
-                  </span>
-                </div>
-              ) : now && playerOnStage ? (
-                <div className="now-meta">
-                  {!music && <strong className="now-title">{now.item.title}</strong>}
-                  <span>
-                    {[now.item.author, KIND_LABEL[now.item.kind], `started by ${now.startedBy.name}`].filter(Boolean).join(" · ")}
-                    {p.syncing && <span className="syncing"> · Syncing</span>}
-                  </span>
-                </div>
-              ) : (
-                <div className="now-meta">{layout === "grid" && <span>{visible.length} on{onStage.length > visible.length ? ` · ${onStage.length - visible.length} to watch` : ""}</span>}</div>
+            {/* One bar under the stage: seek on top, then play, what's showing, and its controls and the stage's. */}
+            <div className="stage-bar">
+              {bar === "player" && now && SEEKABLE[now.item.kind] && (
+                <Seek position={pos} duration={now.item.duration} disabled={!control} onSeek={(s) => act(mediaAction("media:seek", { position: s }))} />
               )}
-              <div className="info-actions">
-                {focusedStream ? (
-                  <>
-                    {!focusedStream.mine && focusedStream.audio && p.blocked && !cast.muted.has(focusedStream.id) && (
-                      <button className="btn btn-primary btn-s sound-on" onClick={() => p.setBlocked(false)}><Volume2 aria-hidden /><span className="sound-label">Click anywhere for sound</span></button>
-                    )}
-                    {!focusedStream.mine && !(focusedStream.audio && p.blocked && !cast.muted.has(focusedStream.id)) && (
-                      <>
-                        <button className="icon-btn" aria-label={cast.muted.has(focusedStream.id) ? "Unmute stream" : "Mute stream"} onClick={() => cast.setMuted(focusedStream.id, !cast.muted.has(focusedStream.id))}>
-                          {cast.muted.has(focusedStream.id) ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
-                        </button>
-                        <input type="range" className="range stream-volume" min={0} max={100} aria-label="Stream volume" value={cast.volume[focusedStream.id] ?? 100}
-                          style={{ "--fill": `${cast.volume[focusedStream.id] ?? 100}%` } as React.CSSProperties}
-                          onChange={(e) => cast.setVolume(focusedStream.id, Number(e.target.value))} />
-                      </>
-                    )}
-                    {!focusedStream.mine && canStopOthers && <span className="bar-sep" aria-hidden />}
-                    {!focusedStream.mine && canStopOthers && (
-                      <button className="btn btn-quiet btn-s" onClick={() => endStream(focusedStream.id, focusedStream.label)}>
-                        <Square aria-hidden />End stream
-                      </button>
-                    )}
-                  </>
-                ) : focusedScreen ? (
-                  canClose(focusedScreen) && (
-                    <button className="btn btn-quiet btn-s" onClick={() => closeScreen(focusedScreen)}><X aria-hidden />Close for everyone</button>
-                  )
-                ) : now && playerOnStage ? (
-                  <>
-                    {now.item.kind === "youtube" && <ModeToggle item={now.item} mode={music ? "music" : "video"} onChange={p.setViewOverride} />}
-                    {can(session, "player.queue") && <SaveToPlaylist itemId={now.item.id} label={now.item.title} />}
-                  </>
-                ) : null}
-                <div className="stage-buttons">
-                  {streamsOnStage && (
-                    <button className="icon-btn" aria-label="Stream stats" aria-pressed={showStats} data-tip={showStats ? "Hide stream stats" : "Stream stats"}
-                      onClick={() => setStatsPref(showStats ? "off" : "on")}><Activity aria-hidden /></button>
-                  )}
-                  <button className="icon-btn theatre-btn" aria-label="Theatre mode" aria-pressed={theatre === "on"} data-tip={theatre === "on" ? "Exit theatre mode" : "Theatre mode"}
-                    onClick={toggleTheatre}><RectangleHorizontal aria-hidden /></button>
-                  {sources.length > 0 && <button className="icon-btn" aria-label="Full screen" data-tip="Full screen" onClick={toggleFull}><Maximize aria-hidden /></button>}
-                </div>
-                {/* Theatre hides the top bar, so who's here and your avatar move down here. */}
-                {theatre === "on" && (
-                  <div className="theatre-me">
-                    <PresenceStack me={session.user} />
-                    <MeLink session={session} size={30} />
+              {bar === "screen" && focusedScreen && SEEKABLE[focusedScreen.item.kind] && (
+                <Seek position={expectedPosition(focusedScreen)} duration={focusedScreen.item.duration} disabled={!control}
+                  onSeek={(sec) => act(mediaAction("media:screen:seek", { id: focusedScreen.item.id, position: sec }))} />
+              )}
+              <div className="stage-bar-row">
+                {bar === "player" && now && (
+                  <div className="bar-transport">
+                    {playPause(now.playing, () => void act(now.playing ? mediaAction("media:pause", { position: pos }) : mediaAction("media:play")))}
+                    <button className="icon-btn" disabled={!control} aria-label="Skip for everyone" data-tip="Skip" onClick={() => act(mediaAction("media:skip"))}><SkipForward aria-hidden /></button>
                   </div>
                 )}
+                {bar === "screen" && focusedScreen && focusedScreen.item.kind !== "twitch-live" && focusedScreen.item.kind !== "twitch-clip" && (
+                  <div className="bar-transport">
+                    {playPause(focusedScreen.playing, () => void act(mediaAction(focusedScreen.playing ? "media:screen:pause" : "media:screen:play", { id: focusedScreen.item.id })))}
+                  </div>
+                )}
+
+                <div className="now-meta">
+                  {bar === "stream" && focusedStream ? (
+                    <>
+                      <strong className="now-title">{focusedStream.mine ? ownName(focusedStream.id) : focusedStream.label}</strong>
+                      <span><span className="live-dot" aria-hidden />{["Live", focusedStream.mode, !focusedStream.audio && "No sound"].filter(Boolean).join(" · ")}</span>
+                    </>
+                  ) : bar === "screen" && focusedScreen ? (
+                    <>
+                      <strong className="now-title">{focusedScreen.item.title}</strong>
+                      <span>
+                        {focusedScreen.item.kind === "twitch-live" && <span className="live-dot" aria-hidden />}
+                        {[focusedScreen.item.author, KIND_LABEL[focusedScreen.item.kind], `opened by ${focusedScreen.startedBy.name}`].filter(Boolean).join(" · ")}
+                      </span>
+                    </>
+                  ) : bar === "player" && now ? (
+                    <>
+                      {!(music && playerFocused) && <strong className="now-title">{now.item.title}</strong>}
+                      <span>
+                        {now.item.kind === "twitch-live" && <span className="live-dot" aria-hidden />}
+                        {[now.item.author, KIND_LABEL[now.item.kind], `started by ${now.startedBy.name}`].filter(Boolean).join(" · ")}
+                        {p.syncing && <span className="syncing"> · Syncing</span>}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+
+                <div className="info-actions">
+                  {bar === "player" && now && (
+                    <>
+                      {(now.item.kind === "youtube" || music) && (
+                        <select className="select select-s" aria-label="View (just for you)" title="View (just for you)" value={music ? musicView : "video"}
+                          onChange={(e) => setView(e.target.value as "video" | MusicView)}>
+                          {views.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                        </select>
+                      )}
+                      {music && musicView === "viz" && playerFocused && (
+                        <select className="select select-s" aria-label="Visualizer preset" value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
+                          {PRESETS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                        </select>
+                      )}
+                      {can(session, "player.queue") && <SaveToPlaylist itemId={now.item.id} label={now.item.title} />}
+                      <Volume volume={p.volume} muted={!p.audible} onChange={(v) => { p.setVolume(v); p.setAudible(v > 0); }} onToggle={() => p.setAudible(!p.audible)} />
+                    </>
+                  )}
+                  {bar === "screen" && focusedScreen && (() => {
+                    const id = focusedScreen.item.id;
+                    const on = p.screenSound.has(id);
+                    return <Volume volume={p.screenVolume[id] ?? p.volume} muted={!on}
+                      onChange={(v) => { p.setScreenVolume(id, v); p.setScreenSound(id, v > 0); }} onToggle={() => p.setScreenSound(id, !on)} />;
+                  })()}
+                  {bar === "stream" && focusedStream && !focusedStream.mine && (() => {
+                    const id = focusedStream.id;
+                    const muted = cast.muted.has(id);
+                    return <Volume volume={cast.volume[id] ?? 100} muted={muted}
+                      onChange={(v) => { cast.setVolume(id, v); cast.setMuted(id, v === 0); }} onToggle={() => cast.setMuted(id, !muted)} />;
+                  })()}
+                  <div className="stage-buttons">
+                    {streamsOnStage && (
+                      <button className="icon-btn" aria-label="Stream stats" aria-pressed={showStats} data-tip={showStats ? "Hide stream stats" : "Stream stats"}
+                        onClick={() => setStatsPref(showStats ? "off" : "on")}><Activity aria-hidden /></button>
+                    )}
+                    <button className="icon-btn theatre-btn" aria-label="Theatre mode" aria-pressed={theatre === "on"} data-tip={theatreTip}
+                      onClick={toggleTheatre}><RectangleHorizontal aria-hidden /></button>
+                    {sources.length > 0 && <button className="icon-btn" aria-label="Full screen" data-tip="Full screen" onClick={toggleFull}><Maximize aria-hidden /></button>}
+                  </div>
+                  {/* Theatre hides the top bar, so who's here and your avatar move down here. */}
+                  {theatre === "on" && (
+                    <div className="theatre-me">
+                      <PresenceStack me={session.user} />
+                      <MeLink session={session} size={30} />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -475,21 +454,18 @@ export function Home({ session }: { session: Session }) {
           </section>
 
         <aside className="side">
-          {error && <p className="flash flash-error" role="alert">{error}</p>}
           {can(session, "player.queue") && (
             <AddBox canPlayNext={control} canAlongside={screens.length < SCREENS_MAX} onAdd={async ({ alongside, ...input }) => {
-              setError(null);
               try {
                 await (alongside ? mediaAction("media:screen:add", { url: input.url }) : mediaAction("media:add", input));
-                return true;
+                return null;
               } catch (e) {
-                setError(mediaError(e));
-                return false;
+                return mediaError(e);
               }
             }} />
           )}
-          <div className="side-tabs" role="tablist" aria-label="Queue, recent and playlists">
-            {([["queue", `Up next${state?.queue.length ? ` ${state.queue.length}` : ""}`], ["recent", "Recent"], ["playlists", "Playlists"]] as const).map(([id, label]) => (
+          <div className="side-tabs" role="tablist" aria-label="Queue, recent, playlists and posts">
+            {([["queue", `Up next${state?.queue.length ? ` ${state.queue.length}` : ""}`], ["recent", "Recent"], ["playlists", "Playlists"], ["posts", "Posts"]] as const).map(([id, label]) => (
               <button key={id} role="tab" aria-selected={tab === id} className="side-tab" onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
@@ -497,11 +473,10 @@ export function Home({ session }: { session: Session }) {
           {tab === "queue" && <Queue session={session} items={state?.queue ?? []} act={act} />}
           {tab === "recent" && <History items={state?.history ?? []} canReplay={can(session, "player.queue")} onReplay={(id) => act(mediaAction("media:replay", { id }))} />}
           {tab === "playlists" && <PlaylistsPanel session={session} queueCount={(state?.queue.length ?? 0) + (now ? 1 : 0)} />}
+          {tab === "posts" && <Feed session={session} inTab />}
           </div>
         </aside>
       </div>
-
-      <Feed session={session} />
     </>
   );
 }

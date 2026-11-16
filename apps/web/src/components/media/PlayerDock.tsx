@@ -69,7 +69,7 @@ function ScreenPlayer({ playback, slot }: { playback: Playback; slot: HTMLElemen
   return (
     <div className={slotClass(slot, "dock dock-hidden")} aria-hidden={!slot || undefined} style={rect ?? undefined}>
       <div className="dock-video">
-        <SyncedPlayer playback={playback} audible={Boolean(slot) && p.screenSound.has(playback.item.id) && !p.blocked} volume={p.volume}
+        <SyncedPlayer playback={playback} audible={Boolean(slot) && p.screenSound.has(playback.item.id) && !p.blocked} volume={p.screenVolume[playback.item.id] ?? p.volume}
           onBlocked={() => p.setBlocked(true)} />
       </div>
     </div>

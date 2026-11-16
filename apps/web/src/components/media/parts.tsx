@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { GripVertical, Music2, Play, RotateCcw, Trash2, Tv, Volume2, VolumeX } from "lucide-react";
-import type { MediaItem, MediaMode, Session } from "@friends/shared";
+import { GripVertical, Music2, Play, RotateCcw, Trash2, Volume2, VolumeX } from "lucide-react";
+import type { MediaItem, Session } from "@friends/shared";
 import { can } from "../../lib/api";
 import { ago } from "../../lib/format";
 import { fmtTime, KIND_LABEL, mediaAction } from "../../lib/media";
@@ -38,17 +38,30 @@ export function Volume({ volume, muted, onChange, onToggle }: { volume: number; 
 export function Queue({ session, items, act }: { session: Session; items: MediaItem[]; act: (p: Promise<void>) => Promise<void> }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
   const control = can(session, "player.control");
   const canRemove = (i: MediaItem) => i.addedBy.id === session.user.id ? can(session, "player.queue") : can(session, "playback.moderate");
 
   return (
     <div className="block">
-      <div className="block-head">
-        <span />
-        {items.length > 0 && can(session, "playback.moderate") && (
-          <button className="btn btn-quiet btn-s" onClick={() => window.confirm("Clear the whole queue?") && act(mediaAction("media:clear"))}>Clear</button>
-        )}
-      </div>
+      {items.length > 0 && can(session, "playback.moderate") && (
+        <div className="block-head">
+          {clearing ? (
+            <>
+              <span>Clear the whole queue?</span>
+              <span className="add-actions">
+                <button className="btn btn-danger btn-s" autoFocus onClick={() => { setClearing(false); void act(mediaAction("media:clear")); }}>Clear</button>
+                <button className="btn btn-quiet btn-s" onClick={() => setClearing(false)}>Cancel</button>
+              </span>
+            </>
+          ) : (
+            <>
+              <span />
+              <button className="btn btn-quiet btn-s" onClick={() => setClearing(true)}>Clear</button>
+            </>
+          )}
+        </div>
+      )}
       {items.length === 0 ? <p className="block-note">The queue is empty.</p> : (
         <ol className="queue">
           {items.map((item, i) => (
@@ -110,15 +123,4 @@ export function History({ items, canReplay, onReplay }: { items: Array<MediaItem
 
 export function Thumb({ item }: { item: MediaItem }) {
   return item.thumbnail ? <img className="thumb" src={item.thumbnail} alt="" loading="lazy" /> : <span className="thumb thumb-empty" aria-hidden>{KIND_LABEL[item.kind].slice(0, 2)}</span>;
-}
-
-/** Switch between music and video view for this viewer only. */
-export function ModeToggle({ item, mode, onChange }: { item: MediaItem; mode: MediaMode; onChange: (item: MediaItem, mode: MediaMode) => void }) {
-  const music = mode === "music";
-  return (
-    <button className="btn btn-quiet btn-s" title={music ? "Show the video (just for you)" : "Show the music view (just for you)"}
-      onClick={() => onChange(item, music ? "video" : "music")}>
-      {music ? <Tv aria-hidden /> : <Music2 aria-hidden />}{music ? "Video view" : "Music view"}
-    </button>
-  );
 }

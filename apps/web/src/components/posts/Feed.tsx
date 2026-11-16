@@ -237,7 +237,8 @@ function PostCard({ post, session, onChange, onOpenImage }: { post: Post; sessio
   );
 }
 
-export function Feed({ session }: { session: Session }) {
+/** The posts. `inTab`: shown in a side tab, which already names it. */
+export function Feed({ session, inTab }: { session: Session; inTab?: boolean }) {
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [more, setMore] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -273,8 +274,8 @@ export function Feed({ session }: { session: Session }) {
   }, [lightbox]);
 
   return (
-    <section className="stream" aria-labelledby="stream-title">
-      <h2 id="stream-title">Posts</h2>
+    <section className={`stream${inTab ? " stream-in-tab" : ""}`} aria-label="Posts">
+      {!inTab && <h2>Posts</h2>}
       {can(session, "posts.create") && <Composer me={session.user} onPosted={upsert} />}
       {posts && posts.length === 0 && <p className="empty">No posts yet.</p>}
       <div className="posts">

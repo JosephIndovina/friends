@@ -102,15 +102,14 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
                   {[15, 24, 30, 60].map((f) => <option key={f} value={f}>{f} fps</option>)}
                 </select>
               </label>
-              <label className="field grow"><span>Bitrate: {custom.mbps} Mbps</span>
+              <label className="field grow"><span>Bitrate: {custom.mbps} Mbps <span className="quiet">· your upload speed needs to be higher</span></span>
                 <input type="range" className="range" min={1} max={15} step={0.5} value={custom.mbps}
                   style={{ "--fill": `${((custom.mbps - 1) / 14) * 100}%` } as React.CSSProperties}
                   onChange={(e) => setCustom({ ...custom, mbps: Number(e.target.value) })} />
               </label>
             </div>
           )}
-          <p className="block-note">To include sound, share a whole screen or a browser tab and turn on sharing audio in the picker. Browsers can’t capture sound from a single window, and Firefox and Safari can’t capture it at all.</p>
-          <p className="block-note">Your upload speed needs to be above the bitrate. Everyone watching gets this quality, so their download speed needs to keep up too.</p>
+          <p className="block-note">For sound, share a screen or tab and turn on audio in the picker. A single window, Firefox and Safari share no sound. Everyone watching gets the quality you pick.</p>
           {error && <p className="field-error" role="alert">{error}</p>}
           <button className="btn btn-primary" disabled={busy} onClick={start}><Radio aria-hidden />{busy ? "Choose what to share…" : "Choose screen and go live"}</button>
         </div>

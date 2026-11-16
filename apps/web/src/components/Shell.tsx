@@ -6,6 +6,7 @@ import { usePendingCount } from "../lib/attention";
 import { useMediaState } from "../lib/media";
 import { PlayerProvider, usePlayer, viewModeOf } from "../lib/player";
 import { CastProvider, StreamAudio, useCast } from "../lib/cast";
+import { ToastProvider } from "../lib/toast";
 import { reportActivity, reportSection } from "../lib/presence";
 import { Avatar } from "./Avatar";
 import { PlayerDock } from "./media/PlayerDock";
@@ -64,6 +65,7 @@ export function Shell({ session }: { session: Session }) {
   return (
     <PlayerProvider>
      <CastProvider session={session}>
+      <ToastProvider>
       <div className={`shell${showNav ? "" : " no-tabbar"}`}>
         <header className="topbar">
           <Link to="/" className="wordmark">friends</Link>
@@ -99,6 +101,7 @@ export function Shell({ session }: { session: Session }) {
           </nav>
         )}
       </div>
+      </ToastProvider>
      </CastProvider>
     </PlayerProvider>
   );

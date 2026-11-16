@@ -19,28 +19,22 @@ export interface StageSource {
   setOn: (on: boolean) => void;
   /** a cast stream from someone else: while off it shows on the stage as a card to watch */
   stream?: boolean;
+  /** a live picture in place of the thumbnail: your own stream, so you can tell your streams apart */
+  preview?: ReactNode;
   /** take it out of this viewer's list (and turn it off) */
   onRemove: () => void;
-  /** take it off the stage for everyone, when this viewer is allowed to: e.g. "Close for everyone" */
-  removeAll?: { label: string; run: () => void };
-}
-
-/** One of your own streams, listed with its Stop button at the foot of the rail. */
-export interface OwnStream {
-  id: string;
-  /** the same name its source row and tile use, e.g. "Your screen 2" */
-  label: string;
-  detail: string;
-  /** a live thumbnail of what you're sharing, so you can tell your streams apart */
-  preview: ReactNode;
+  /** take it off the stage for everyone, when this viewer is allowed to: e.g. "Close for everyone". `confirm` asks first. */
+  removeAll?: { label: string; run: () => void; confirm?: string };
+  /** your own stream: its X is a Stop button instead */
+  onStop?: () => void;
 }
 
 /**
  * The stage's source list: a column the full height of the stage, beside it rather than over it.
- * Expanded it has names, sound and hide; collapsed it is thumbnails. Clicking a source shows it large,
- * and "All" shows every visible source as a grid. Going live and stopping sit at the foot.
+ * Expanded it has names, sound, on/off and remove (Stop for your own streams); collapsed it is thumbnails.
+ * Clicking a source shows it large, and "All" shows every visible source as a grid. Going live sits at the foot.
  */
-export function StageRail({ sources, current, onShow, open, setOpen, own, onStop, full }: {
+export function StageRail({ sources, current, onShow, open, setOpen, full }: {
   sources: StageSource[];
   /** the source shown large, or "all" for the grid */
   current: string | "all" | null;
@@ -48,8 +42,6 @@ export function StageRail({ sources, current, onShow, open, setOpen, own, onStop
   onShow: (id: string | null) => void;
   open: boolean;
   setOpen: (open: boolean) => void;
-  own: OwnStream[];
-  onStop: (id: string) => void;
   /** full screen: the rail is pinned down the left of the window, beside the stage */
   full?: boolean;
 }) {
@@ -68,7 +60,7 @@ export function StageRail({ sources, current, onShow, open, setOpen, own, onStop
             <li className="rail-row">
               <button className="rail-item" aria-current={current === "all" || undefined} data-tip={open ? undefined : "All sources"} onClick={() => onShow(null)}>
                 <span className="rail-thumb rail-thumb-icon"><LayoutGrid aria-hidden /></span>
-                <span className="rail-text"><span className="rail-label">All</span><span className="rail-detail">{shown} on</span></span>
+                <span className="rail-text"><span className="rail-label">All</span><span className="rail-detail">Grid</span></span>
               </button>
             </li>
           )}
@@ -77,8 +69,8 @@ export function StageRail({ sources, current, onShow, open, setOpen, own, onStop
               <button className="rail-item" aria-current={current === s.id || undefined} data-tip={open ? undefined : s.on ? s.label : `${s.label} (off)`}
                 aria-label={s.on ? `Show ${s.label} large` : `Turn on ${s.label}`}
                 onClick={() => onShow(s.id)}>
-                <span className={`rail-thumb${s.live ? " is-live" : ""}`}>
-                  {s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="rail-initial">{s.label.slice(0, 1)}</span>}
+                <span className={`rail-thumb${s.live ? " is-live" : ""}${s.preview ? " has-preview" : ""}`}>
+                  {s.preview && s.on ? s.preview : s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="rail-initial">{s.label.slice(0, 1)}</span>}
                   {!s.on ? <span className="rail-badge"><PowerOff aria-hidden /></span> : !s.audible && !s.local && <span className="rail-badge"><VolumeX aria-hidden /></span>}
                 </span>
                 <span className="rail-text">
@@ -86,6 +78,9 @@ export function StageRail({ sources, current, onShow, open, setOpen, own, onStop
                   <span className="rail-detail">{s.live && <span className="live-dot" aria-hidden />}{s.on ? s.detail : "Off"}</span>
                 </span>
               </button>
+              {s.onStop && (
+                <button className="icon-btn rail-stop-mini" aria-label={`Stop ${s.label}`} data-tip={`Stop ${s.label.toLowerCase()}`} onClick={s.onStop}><Square aria-hidden /></button>
+              )}
               {open && (
                 <span className="rail-actions">
                   {!s.local && s.on && (
@@ -106,25 +101,6 @@ export function StageRail({ sources, current, onShow, open, setOpen, own, onStop
         </ul>
 
         <div className="rail-foot">
-          {open && own.length > 0 && <span className="rail-foot-title"><span className="live-dot" aria-hidden />You're live</span>}
-          {own.map((s, i) => (
-            <div key={s.id} className="rail-own">
-              {open ? (
-                <>
-                  <button className="rail-preview" aria-label={`Show ${s.label} large`} onClick={() => onShow(s.id)}>{s.preview}</button>
-                  <span className="rail-text">
-                    <span className="rail-label">{s.label}</span>
-                    <span className="rail-detail">{s.detail}</span>
-                  </span>
-                  <button className="btn btn-danger btn-s" aria-label={`Stop ${s.label}`} onClick={() => onStop(s.id)}><Square aria-hidden />Stop</button>
-                </>
-              ) : (
-                <button className="icon-btn rail-stop" aria-label={`Stop ${s.label}`} data-tip={`Stop ${s.label.toLowerCase()}`} onClick={() => onStop(s.id)}>
-                  <Square aria-hidden />{own.length > 1 && <span className="rail-stop-n">{i + 1}</span>}
-                </button>
-              )}
-            </div>
-          ))}
           <GoLive icon={!open} />
         </div>
       </div>
@@ -139,6 +115,7 @@ export function StageRail({ sources, current, onShow, open, setOpen, own, onStop
  */
 function RemoveButton({ source, className }: { source: StageSource; className?: string }) {
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const [asking, setAsking] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -151,6 +128,7 @@ function RemoveButton({ source, className }: { source: StageSource; className?: 
       setAt(null);
     };
     menu.current?.querySelector("button")?.focus();
+    setAsking(false);
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", close);
     window.addEventListener("resize", close);
@@ -164,6 +142,9 @@ function RemoveButton({ source, className }: { source: StageSource; className?: 
   }, [at]);
 
   const all = source.removeAll;
+  if (source.onStop) {
+    return <button className={`btn btn-danger btn-s rail-stop${className ? ` ${className}` : ""}`} aria-label={`Stop ${source.label}`} onClick={source.onStop}><Square aria-hidden />Stop</button>;
+  }
   if (!all) {
     return <button className={`icon-btn${className ? ` ${className}` : ""}`} aria-label={`Remove ${source.label} from your list`} title="Remove from your list" onClick={source.onRemove}><X aria-hidden /></button>;
   }
@@ -183,8 +164,18 @@ function RemoveButton({ source, className }: { source: StageSource; className?: 
         aria-haspopup="menu" aria-expanded={Boolean(at)} onClick={toggle}><X aria-hidden /></button>
       {at && (
         <div ref={menu} className="remove-menu" role="menu" aria-label={`Remove ${source.label}`} style={{ top: at.top, left: at.left }}>
-          <button role="menuitem" onClick={() => pick(source.onRemove)}>Remove for me</button>
-          <button role="menuitem" className="is-danger" onClick={() => pick(all.run)}>{all.label}</button>
+          {asking && all.confirm ? (
+            <>
+              <p className="remove-ask">{all.confirm}</p>
+              <button role="menuitem" className="is-danger" autoFocus onClick={() => pick(all.run)}>{all.label}</button>
+              <button role="menuitem" onClick={() => setAsking(false)}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <button role="menuitem" onClick={() => pick(source.onRemove)}>Remove for me</button>
+              <button role="menuitem" className="is-danger" onClick={() => (all.confirm ? setAsking(true) : pick(all.run))}>{all.label}</button>
+            </>
+          )}
         </div>
       )}
     </>

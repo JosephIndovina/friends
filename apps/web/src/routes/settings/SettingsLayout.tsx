@@ -1,14 +1,13 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { ChevronRight, Gauge, Globe, KeyRound, Lock, Palette, ScrollText, ShieldCheck, SlidersHorizontal, UserRound, Users } from "lucide-react";
+import { ChevronRight, Gauge, Globe, KeyRound, Lock, ScrollText, ShieldCheck, SlidersHorizontal, UserRound, Users } from "lucide-react";
 import type { Permission, Session } from "@friends/shared";
 import { Avatar } from "../../components/Avatar";
 import { can, isAdminish } from "../../lib/api";
 import { usePendingCount } from "../../lib/attention";
 import { useGlow } from "../../lib/glow";
 import { useSite } from "../../lib/site";
-import { ToastProvider } from "../../lib/toast";
 
-interface Item { to: string; label: string; Icon: typeof Palette; perm?: Permission | "any-admin"; badge?: number; also?: string[] }
+interface Item { to: string; label: string; Icon: typeof SlidersHorizontal; perm?: Permission | "any-admin"; badge?: number; also?: string[] }
 
 export function SettingsLayout({ session }: { session: Session }) {
   useGlow(null);
@@ -17,8 +16,7 @@ export function SettingsLayout({ session }: { session: Session }) {
   const site = useSite();
 
   const you: Item[] = [
-    { to: "/settings/appearance", label: "Appearance", Icon: Palette, also: ["/settings"] },
-    { to: "/settings/playback", label: "Playback", Icon: SlidersHorizontal },
+    { to: "/settings/preferences", label: "Preferences", Icon: SlidersHorizontal, also: ["/settings", "/settings/appearance", "/settings/playback"] },
     { to: "/settings/account", label: "Account", Icon: UserRound },
   ];
   const admin: Item[] = [
@@ -45,7 +43,6 @@ export function SettingsLayout({ session }: { session: Session }) {
   );
 
   return (
-    <ToastProvider>
       <div className={`prefs${atIndex ? " at-index" : ""}`}>
         <nav className="prefs-nav" aria-label="Settings">
           <Link to="/settings/account" className="prefs-me">
@@ -73,7 +70,6 @@ export function SettingsLayout({ session }: { session: Session }) {
           <Outlet />
         </div>
       </div>
-    </ToastProvider>
   );
 }
 

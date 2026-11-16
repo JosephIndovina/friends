@@ -131,11 +131,12 @@ main.page { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: va
 .stage-idle p { color: var(--mute); font-size: var(--step-1); }
 .stage-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); margin-top: var(--space-3); }
 
-.stage-info {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
-  padding: var(--space-4) var(--space-5); border-top: 1px solid var(--line); color: var(--mute);
-}
-.stage-info strong { color: var(--ink); font-weight: 650; }
+/* The one bar under the stage: seek across the top, then play, what's showing, and the controls. */
+.stage-bar { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-5) var(--space-3); border-top: 1px solid var(--line); color: var(--mute); }
+.stage-bar-row { display: flex; align-items: center; gap: var(--space-3) var(--space-4); flex-wrap: wrap; min-height: 48px; }
+.stage-bar .btn { white-space: nowrap; }
+.bar-transport { display: flex; align-items: center; gap: var(--space-1); flex: none; }
+.bar-transport .icon-btn { color: var(--ink); }
 
 @media (max-width: 860px) {
   .stage { margin-inline: calc(var(--gutter) * -1); border: 0; box-shadow: none; background: transparent; }
@@ -632,18 +633,23 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
   .player-screen { aspect-ratio: 16 / 9 !important; min-height: 0 !important; padding: 0 !important; background: #000 !important; }
 }
 
-.transport { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
-.transport .icon-btn { color: var(--ink); }
 .transport-main { width: 44px; height: 44px; border-radius: 50%; background: var(--ink); color: var(--on-ink) !important; }
 .transport-main:hover { background: color-mix(in oklab, var(--ink) 85%, var(--glow)); color: var(--on-ink) !important; }
 .transport-main svg { width: 20px; height: 20px; }
 .seek { flex: 1; display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .time { font-size: var(--step--1); color: var(--mute); min-width: 4ch; font-variant-numeric: tabular-nums; }
-.live-badge { flex: 1; font-size: var(--step--1); font-weight: 700; color: var(--hint-media); }
 .volume { display: flex; align-items: center; gap: var(--space-1); }
 .volume .range { width: 88px; }
-.sound-on { margin-left: auto; }
-@media (max-width: 520px) { .volume .range { display: none; } .transport { gap: var(--space-1); padding-inline: var(--space-3); } }
+/* Sound blocked by the browser: one notice over the stage; any click clears it. */
+.stage-main { position: relative; }
+.sound-notice {
+  position: absolute; top: var(--space-4); left: 50%; translate: -50% 0; z-index: 30; pointer-events: none;
+  display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill);
+  background: var(--ink); color: var(--on-ink); font-weight: 650; font-size: var(--step--1); box-shadow: 0 12px 30px -12px rgb(0 0 0 / 0.6);
+}
+.sound-notice svg { width: 16px; height: 16px; }
+.sound-notice.is-full { position: fixed; z-index: 64; }
+@media (max-width: 520px) { .volume .range { display: none; } .stage-bar { padding-inline: var(--space-3); } .stage-bar-row { gap: var(--space-2); } }
 
 .range { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 20px; background: transparent; cursor: pointer; }
 .range:disabled { cursor: default; }
@@ -656,8 +662,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .range:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 4px; }
 
 /* When the stage is narrow, the actions wrap under the title instead of squeezing it. */
-.stage-bar { flex-wrap: wrap; }
-.now-meta { display: grid; gap: 2px; min-width: 0; flex: 1 1 18rem; }
+.now-meta { display: grid; gap: 2px; min-width: 0; flex: 1 1 14rem; }
 .stage-bar .info-actions { margin-left: auto; }
 .now-title { color: var(--ink); font-size: var(--step-2); font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .now-meta > span { color: var(--mute); font-size: var(--step--1); }
@@ -708,10 +713,23 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .search-field .icon-btn { position: absolute; right: 4px; }
 .choice { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-s); background: var(--surface-strong); border: 1px solid var(--line); }
 .results { list-style: none; padding: 0; display: grid; gap: 2px; max-height: 26rem; overflow-y: auto; margin-inline: calc(var(--space-2) * -1); }
-.result { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-2); border-radius: var(--radius-s); }
+.result { display: flex; align-items: center; gap: 2px; border-radius: var(--radius-s); }
 .result:hover { background: var(--surface); }
-.result-actions { display: flex; gap: 2px; }
-.result-actions .icon-btn { width: 32px; height: 32px; }
+/* The whole row adds it to the queue; the … holds Play next and Watch alongside. */
+.result-main {
+  flex: 1; min-width: 0; display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: var(--space-3); align-items: center;
+  padding: var(--space-2); border: 0; border-radius: inherit; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.result-main:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.result-main:disabled { cursor: default; }
+.result-state { display: flex; align-items: center; gap: 4px; color: var(--mute); font-size: var(--step--1); font-weight: 600; }
+.result-state svg { width: 18px; height: 18px; }
+.result-main:hover:not(:disabled) .result-state { color: var(--ink); }
+.result.is-added .result-state svg { width: 14px; height: 14px; }
+.result-more { flex: none; padding-right: var(--space-1); }
+.result-more .icon-btn { width: 32px; height: 32px; }
+.result-menu button { display: flex; align-items: center; gap: var(--space-2); }
+.result-menu svg { width: 16px; height: 16px; }
 
 /* ---------- unified player ---------- */
 .shell { position: relative; }
@@ -774,12 +792,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .act-watching { color: var(--hint-media) !important; }
 .act-listening { color: var(--hint-music) !important; }
 .act-casting { color: var(--hint-cast) !important; }
-.stage-info .btn { white-space: nowrap; }
-@media (max-width: 520px) {
-  .sound-on { padding: 0 var(--space-3); }
-  .sound-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .seek .time:last-child { display: none; }
-}
+@media (max-width: 520px) { .seek .time:last-child { display: none; } }
 
 /* ---------- stage sources ---------- */
 .info-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
@@ -792,10 +805,8 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 @media (max-width: 860px) { .info-actions { flex-wrap: wrap; } }
 
 /* ---------- music view: artwork / visualizer / lyrics ---------- */
-.music-controls { position: absolute; top: var(--space-4); right: var(--space-4); z-index: 2; display: flex; gap: var(--space-2); align-items: center; }
-.segmented-s span { min-height: 30px; padding: 0 var(--space-3); font-size: var(--step--1); }
+/* Its view and preset pickers sit in the stage bar. */
 .select-s { min-height: 34px; font-size: var(--step--1); }
-.music-view .music-text { padding-top: calc(var(--space-2) + 40px); }
 .mv-viz { grid-template-columns: minmax(0, 1fr); align-items: end; }
 .mv-viz .music-backdrop { opacity: 0.25; }
 .mv-viz .music-text { padding: 0 380px 0 0; }
@@ -815,8 +826,6 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .lyrics .lyrics-credit { font-size: var(--step--1); font-weight: 500; color: var(--mute); margin-top: var(--space-4); }
 @media (max-width: 1180px) { .mv-viz .music-text { padding-right: 0; } }
 @media (max-width: 860px) {
-  .music-controls { position: relative; top: auto; right: auto; grid-column: 1 / -1; order: -1; justify-content: flex-start; flex-wrap: wrap; }
-  .music-view .music-text { padding-top: 0; }
   .mv-viz { min-height: 260px; }
   .viz-audio { position: relative; top: auto; left: auto; max-width: none; grid-column: 1 / -1; }
   .lyrics { max-height: 260px; padding-bottom: var(--space-6); }
@@ -866,6 +875,8 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 
 /* ---------- posts ---------- */
 .stream { max-width: 46rem; }
+/* Posts in the side tab: the panel's width, no section gap. */
+.stream.stream-in-tab { max-width: none; margin-top: 0; }
 .composer { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-m); background: var(--surface); border: 1px solid var(--line); margin-bottom: var(--space-5); transition: border-color 0.2s var(--ease-out); }
 .composer.is-dragging { border-color: var(--ink); border-style: dashed; }
 .composer-body { display: grid; gap: var(--space-3); min-width: 0; }
@@ -1002,7 +1013,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
   .shell:has(.media-room.is-theatre) > .topbar { display: none; }
   main.page:has(.media-room.is-theatre) { padding-top: 0; }
   .is-theatre .player-screen:not(.is-grid):not(.is-full) { max-height: calc(100dvh - var(--stage-bars, 150px)); }
-  .is-theatre .transport, .is-theatre .stage-info { padding-inline: var(--space-5); }
+  .is-theatre .stage-bar { padding-inline: var(--space-5); }
 }
 /* Who's here and your avatar, at the end of the stage bar in theatre; the list opens upward. */
 .theatre-me { display: none; }
@@ -1025,7 +1036,6 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .stream-main { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .stream-thumb { width: 100%; height: 100%; object-fit: cover; background: #000; }
 .stream-waiting { display: grid; place-items: center; color: rgb(255 255 255 / 0.7); font-size: var(--step--1); background: #000; }
-.stream-volume { width: 96px; flex: none; }
 .player-screen:has(.stream-main) { background: #000; }
 /* Stream stats overlay: over the picture, top-left, never in the way of clicks. */
 .stream-stats {
@@ -1083,8 +1093,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .rail-actions { display: flex; align-items: center; flex: none; }
 .rail-actions .icon-btn { width: 28px; height: 28px; }
 /* Sound | on/off | remove */
-.rail-sep, .bar-sep { flex: none; width: 1px; height: 18px; margin: 0 3px; background: var(--line); }
-.bar-sep { height: 22px; margin: 0 var(--space-1); }
+.rail-sep { flex: none; width: 1px; height: 18px; margin: 0 3px; background: var(--line); }
 .rail-actions .icon-btn svg { width: 16px; height: 16px; }
 /* On/off for you: a small switch between sound and remove. */
 .rail-switch { position: relative; display: grid; place-items: center; width: 36px; height: 28px; cursor: pointer; }
@@ -1103,22 +1112,22 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .remove-menu button { width: 100%; padding: var(--space-2) var(--space-3); border: 0; background: none; border-radius: calc(var(--radius-s) - 2px); font: inherit; font-size: var(--step--1); font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
 .remove-menu button:hover, .remove-menu button:focus-visible { background: var(--surface-strong); outline: none; }
 .remove-menu .is-danger { color: var(--danger); }
+.remove-ask { padding: var(--space-2) var(--space-3) var(--space-1); font-size: var(--step--1); font-weight: 600; color: var(--ink); }
 .tile-remove.is-open { opacity: 1; }
 
 /* Your broadcast: going live and stopping sit together at the foot. */
 .rail-foot { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-2) 12px 12px; border-top: 1px solid var(--line); }
 .rail.is-open .rail-foot { justify-items: stretch; }
 .rail-foot:empty { display: none; }
-.rail-foot-title { font-size: 12px; font-weight: 650; color: var(--ink); }
-.rail-own { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.rail-own .rail-text { flex: 1; }
-.rail-own .btn { flex: none; padding: 0 var(--space-3); }
-.rail-preview { flex: none; position: relative; width: 56px; height: 32px; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: #000; cursor: pointer; }
-.rail-preview:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-.rail-preview-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; font-size: 0; }
-.rail-stop { position: relative; color: #ff4d5e; }
-.rail-stop-n { position: absolute; right: 1px; bottom: 0; font-size: 10px; font-weight: 750; line-height: 1; color: var(--ink); }
-.rail-stop:hover { color: #ff4d5e; }
+.rail-thumb.has-preview { overflow: hidden; background: #000; }
+.rail-preview-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; font-size: 0; border-radius: inherit; }
+.rail-stop { flex: none; padding: 0 var(--space-3); }
+/* Collapsed (and on phones), your stream's Stop sits on the corner of its thumbnail. */
+.rail-row { position: relative; }
+.rail-stop-mini { position: absolute; left: 30px; bottom: 0; width: 20px !important; height: 20px !important; min-height: 0; padding: 0; border-radius: 50%; background: var(--ground); color: #ff4d5e; }
+.rail-stop-mini:hover { color: #ff4d5e; }
+.rail-stop-mini svg { width: 10px !important; height: 10px !important; }
+.rail.is-open .rail-stop-mini { display: none; }
 .rail.is-open .go-live .btn { width: 100%; justify-content: center; }
 .rail .golive-panel { top: auto; bottom: 0; right: auto; left: calc(100% + 20px); z-index: 70; }
 .rail .go-live-note { font-size: 12px; }
@@ -1149,5 +1158,6 @@ main.page:has(.media-room) { max-width: 1920px; }
   .rail .rail-text { display: grid; }
   .rail-detail { display: none; }
   .rail-foot { display: flex; border: 0; padding: var(--space-2) var(--gutter) var(--space-2) 0; }
-  .rail-own .rail-text { display: none; }
+  .rail.is-open .rail-stop-mini { display: grid; }
+  .rail-stop-mini { left: 22px; }
 }
