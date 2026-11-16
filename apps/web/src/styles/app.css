@@ -1034,6 +1034,17 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .golive-panel h2 { margin: 0; }
 /* With the app: three stacked choices, no wider than they need. Opening browser streaming widens it for the modes. */
 .golive-panel.is-compact { width: min(17rem, calc(100vw - 32px)); }
+/* Live: your streams first, each with its controls on one row, so it needs the room. */
+.golive-panel.has-streams { width: min(26rem, calc(100vw - 32px)); }
+.my-streams { display: grid; gap: var(--space-2); }
+.my-streams ul { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.my-stream { display: flex; align-items: center; gap: var(--space-2); }
+.my-stream-text { display: grid; flex: 1; min-width: 0; }
+.my-stream-text > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-stream-text .quiet { font-size: var(--step--1); }
+.my-stream .btn { flex: none; }
+.my-streams .block-note { margin: 0; font-size: var(--step--1); }
+.panel-rule { border-top: 1px solid var(--line); }
 .app-launch { display: grid; gap: var(--space-2); }
 .app-launch > .btn, .golive-panel .browser-toggle { width: 100%; }
 .app-launch .block-note, .app-launch .field-error { margin: 0; font-size: var(--step--1); }
@@ -1134,13 +1145,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 }
 .rail-thumb.has-preview { overflow: hidden; background: #000; }
 .rail-preview-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; font-size: 0; border-radius: inherit; }
-.rail-stop { flex: none; padding: 0 var(--space-3); }
-/* Collapsed (and on phones), your stream's Stop sits on the corner of its thumbnail. */
 .rail-row { position: relative; }
-.rail-stop-mini { position: absolute; left: 30px; bottom: 0; width: 20px !important; height: 20px !important; min-height: 0; padding: 0; border-radius: 50%; background: var(--ground); color: #ff4d5e; }
-.rail-stop-mini:hover { color: #ff4d5e; }
-.rail-stop-mini svg { width: 10px !important; height: 10px !important; }
-.rail.is-open .rail-stop-mini { display: none; }
 .rail.is-open .go-live .btn { width: 100%; justify-content: center; }
 .rail .golive-panel { top: auto; bottom: 0; right: auto; left: calc(100% + 20px); z-index: 70; }
 .rail .go-live-note { font-size: 12px; }
@@ -1171,7 +1176,6 @@ main.page:has(.media-room) { max-width: 1920px; }
   .rail .rail-text { display: grid; }
   .rail-detail { display: none; }
   .rail-foot { display: flex; border: 0; padding: var(--space-2) var(--gutter) var(--space-2) 0; }
-  .rail-stop-mini { left: 22px; }
   /* A strip of its own, part of the stage rather than the top bar above it. */
   .rail, .rail.is-full { background: var(--upholstery); border-top: 1px solid var(--line); }
   .rail-list { padding-inline: max(var(--gutter), env(safe-area-inset-left)) var(--space-2); }

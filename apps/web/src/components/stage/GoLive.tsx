@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, MonitorUp, Radio } from "lucide-react";
+import { AppWindow, Download, MonitorUp, Radio, Square } from "lucide-react";
 import { api } from "../../lib/api";
 import { STREAM_MODES, useCast, type StreamMode } from "../../lib/cast";
 
@@ -10,7 +10,7 @@ const APP_OS: "windows" | "linux" | null =
   : /Linux/i.test(navigator.userAgent) ? "linux"
   : null;
 
-type AppLinks = { linux: string | null; windows: string | null; installed?: string[] };
+type AppLinks = { linux: string | null; windows: string | null };
 type Launch = "idle" | "opening" | "opened" | "missing" | "error";
 
 /** Opens friends:// without leaving the page. A hidden frame fails quietly when nothing handles the link. */
@@ -56,10 +56,8 @@ function rememberInstalled(on: boolean) {
  * not), which then asks what to stream; Download gets the app. */
 function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
   const [state, setState] = useState<Launch>("idle");
-  // Installed if this person's app has answered before (the server saw it), or this browser saw it answer.
-  const [installed, setInstalled] = useState(
-    () => knownInstalled() || Boolean(APP_OS && links.installed?.some((os) => os === APP_OS || os === "any")),
-  );
+  // Installed once Friends Live has answered a Start streaming from this browser (kept in this browser only).
+  const [installed, setInstalled] = useState(knownInstalled);
   const timer = useRef<number | null>(null);
 
   useEffect(() => () => void (timer.current && clearInterval(timer.current)), []);
@@ -103,12 +101,49 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
       {state === "error" && <p className="field-error" role="alert">Couldn't start. Try again.</p>}
       {state === "missing" && <p className="field-error" role="alert">Friends Live didn't open. Install it, then try again.</p>}
       {download && (installed ? (
-        <a className="app-redownload" href={download} download>Download Friends Live again</a>
+        <a className="app-redownload" href={download} download>Download Friends Live</a>
       ) : (
         <a className="btn btn-quiet" href={download} download>
           <Download aria-hidden />Download Friends Live
         </a>
       ))}
+    </div>
+  );
+}
+
+type CastState = ReturnType<typeof useCast>;
+
+/** Your live streams, at the top of the Go live panel: Change window (Friends Live streams) and Stop for each. */
+function MyStreams({ cast }: { cast: CastState }) {
+  const mine = cast.streams.filter((s) => s.mine);
+  const [asked, setAsked] = useState(false);
+  const [stopping, setStopping] = useState<string | null>(null);
+  const changeWindow = async () => {
+    setAsked(Boolean(await launchFriendsLive()));
+  };
+  const stop = async (id: string) => {
+    setStopping(id);
+    await cast.stop(id);
+    setStopping(null);
+  };
+  return (
+    <div className="my-streams">
+      <h2>Your streams</h2>
+      <ul>
+        {mine.map((s, i) => (
+          <li key={s.id} className="my-stream">
+            <span className="my-stream-text">
+              <span className="my-stream-label"><span className="live-dot" aria-hidden />{mine.length > 1 ? `Your screen ${i + 1}` : "Your screen"}</span>
+              <span className="quiet">{[s.fromApp ? "Friends Live" : "This browser", s.mode, !s.audio && "No sound"].filter(Boolean).join(" · ")}</span>
+            </span>
+            {s.fromApp && (
+              <button className="btn btn-quiet btn-s" onClick={changeWindow}><AppWindow aria-hidden />Change window</button>
+            )}
+            <button className="btn btn-danger btn-s" disabled={stopping === s.id} onClick={() => stop(s.id)}><Square aria-hidden />Stop</button>
+          </li>
+        ))}
+      </ul>
+      {asked && <p className="block-note" role="status">Choose a window in Friends Live.</p>}
     </div>
   );
 }
@@ -148,7 +183,10 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
   }, [cast.canStream]);
 
   const root = useRef<HTMLDivElement>(null);
-  const mine = cast.streams.filter((s) => s.local).length;
+  // Your streams, from this browser or Friends Live: the panel lists them with Change window and Stop.
+  const mine = cast.streams.filter((s) => s.mine).length;
+  // Friends Live streams one window at a time, so while it's live the panel offers Change window instead of Start.
+  const appLive = cast.streams.some((s) => s.mine && s.fromApp);
 
   useEffect(() => {
     if (!open) return;
@@ -186,8 +224,9 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
     else setOpen(false);
   };
 
-  // Go live always opens the panel: Start streaming (the app), Download Friends Live, or stream from this browser.
-  const label = mine ? "Share another screen" : "Go live";
+  // Go live always opens the panel, the one place for streaming: your streams (Change window, Stop), Start streaming
+  // (the app), Download Friends Live, or stream from this browser.
+  const label = mine ? "Streaming" : "Go live";
   const toggle = () => setOpen(!open);
 
   return (
@@ -204,12 +243,17 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
         </button>
       )}
       {open && (
-        <div className={`stack-panel golive-panel${appReady && !inBrowser ? " is-compact" : ""}`} role="dialog" aria-label="Go live">
+        <div className={`stack-panel golive-panel${appReady && !inBrowser ? " is-compact" : ""}${mine ? " has-streams" : ""}`} role="dialog" aria-label="Go live">
+          {mine > 0 && <><MyStreams cast={cast} /><div className="panel-rule" role="separator" /></>}
           {appReady && (
             <>
-              <h2>Go live</h2>
-              <AppLaunch links={links!} onDone={() => setOpen(false)} />
-              <div className="or-sep" role="separator"><span>or</span></div>
+              {mine === 0 && <h2>Go live</h2>}
+              {!appLive && (
+                <>
+                  <AppLaunch links={links!} onDone={() => setOpen(false)} />
+                  <div className="or-sep" role="separator"><span>or</span></div>
+                </>
+              )}
               <button className="btn btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
                 {inBrowser ? "Hide browser streaming" : "Stream from this browser"}
               </button>

@@ -1,4 +1,4 @@
-import { AppWindow, Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Volume2, VolumeX, X } from "lucide-react";
+import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { GoLive } from "./GoLive";
 
@@ -10,7 +10,7 @@ export interface StageSource {
   thumbnail?: string | null;
   /** a cast stream (shows the live dot) */
   live?: boolean;
-  /** your own stream: Stop in place of the X */
+  /** your own stream */
   local?: boolean;
   /** no sound control: the tab that's streaming never plays itself back (defaults to `local`) */
   silent?: boolean;
@@ -23,17 +23,14 @@ export interface StageSource {
   stream?: boolean;
   /** a live picture in place of the thumbnail: your own stream, so you can tell your streams apart */
   preview?: ReactNode;
-  /** end it for everyone, when this viewer is allowed to: e.g. "Close for everyone". `confirm` asks first. No X without it. */
+  /** end it for everyone, when this viewer is allowed to: e.g. "Close for everyone". `confirm` asks first. No X without it.
+   * Your own streams have none: Stop is in the Go live panel with the rest of the streaming controls. */
   end?: { label: string; run: () => void; confirm?: string };
-  /** your own stream: its X is a Stop button instead */
-  onStop?: () => void;
-  /** your stream from the Friends Live app: ask the app for a different window */
-  onChangeWindow?: () => void;
 }
 
 /**
  * The stage's source list: a column the full height of the stage, beside it rather than over it.
- * Expanded it has names, sound, show/hide and, where you're allowed, end for everyone (Stop for your own streams); collapsed it is thumbnails.
+ * Expanded it has names, sound, show/hide and, where you're allowed, end for everyone; collapsed it is thumbnails.
  * Clicking a source shows it large, and "All" shows every visible source as a grid. Going live sits at the foot.
  */
 /** True while the media query matches (e.g. the phone layout). */
@@ -98,9 +95,6 @@ export function StageRail({ sources, current, onShow, open: railOpen, setOpen, f
                   <span className="rail-detail">{s.live && <span className="live-dot" aria-hidden />}{s.on ? s.detail : "Hidden"}</span>
                 </span>
               </button>
-              {s.onStop && (
-                <button className="icon-btn rail-stop-mini" aria-label={`Stop ${s.label}`} data-tip={`Stop ${s.label.toLowerCase()}`} onClick={s.onStop}><Square aria-hidden /></button>
-              )}
               {open && (
                 <span className="rail-actions">
                   {!(s.silent ?? s.local) && s.on && (
@@ -110,12 +104,7 @@ export function StageRail({ sources, current, onShow, open: railOpen, setOpen, f
                   {!(s.silent ?? s.local) && s.on && <span className="rail-sep" aria-hidden />}
                   <button className="icon-btn" aria-pressed={!s.on} aria-label={s.on ? `Hide ${s.label}` : `Show ${s.label}`} title={s.on ? "Hide for you" : "Show"}
                     onClick={() => s.setOn(!s.on)}>{s.on ? <Eye aria-hidden /> : <EyeOff aria-hidden />}</button>
-                  {s.onChangeWindow && (
-                    <button className="icon-btn" aria-label={`Change window for ${s.label}`} title="Change window" onClick={s.onChangeWindow}>
-                      <AppWindow aria-hidden />
-                    </button>
-                  )}
-                  {(s.onStop || s.end) && <span className="rail-sep" aria-hidden />}
+                  {s.end && <span className="rail-sep" aria-hidden />}
                   <EndButton source={s} />
                 </span>
               )}
@@ -139,7 +128,7 @@ export function StageRail({ sources, current, onShow, open: railOpen, setOpen, f
 
 /**
  * The X on a source: ends it for everyone, and only shows when you're allowed to. Your own stream
- * gets Stop instead. Ending someone else's asks first, in a small popover fixed to the window so the
+ * has none (Stop is in the Go live panel). Ending someone else's asks first, in a small popover fixed to the window so the
  * rail's scrolling list can't clip it.
  */
 function EndButton({ source, className }: { source: StageSource; className?: string }) {
@@ -168,9 +157,6 @@ function EndButton({ source, className }: { source: StageSource; className?: str
     };
   }, [at]);
 
-  if (source.onStop) {
-    return <button className={`btn btn-danger btn-s rail-stop${className ? ` ${className}` : ""}`} aria-label={`Stop ${source.label}`} onClick={source.onStop}><Square aria-hidden />Stop</button>;
-  }
   const end = source.end;
   if (!end) return null;
   const click = () => {

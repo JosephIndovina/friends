@@ -4,7 +4,6 @@ import { join, resolve } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AccessToken, RoomServiceClient, TrackSource, type ParticipantInfo } from "livekit-server-sdk";
 import { audit } from "./audit.js";
-import { db } from "./db.js";
 import { env } from "./env.js";
 import { events } from "./events.js";
 import { getUser, sessionFor } from "./sessions.js";
@@ -56,24 +55,6 @@ const older = (a: string, b: string) => {
 
 export const DOWNLOADS = { linux: "friends-live_amd64.deb", windows: "friends-live_x64-setup.exe" } as const;
 export const downloadsDir = resolve(env.DOWNLOADS_DIR ?? "./downloads");
-
-/** Systems this person's app has opened a launch from in the last 90 days ("any" for older entries that didn't
- * say which system). */
-const openedRecently = db.prepare(
-  "SELECT details FROM audit_log WHERE actor_id = ? AND action = 'cast.app_opened' AND at > ? ORDER BY at DESC LIMIT 50",
-);
-function installedOn(userId: string): string[] {
-  const rows = openedRecently.all(userId, Date.now() - 90 * 24 * 60 * 60 * 1000) as { details: string | null }[];
-  const out = new Set<string>();
-  for (const r of rows) {
-    try {
-      out.add((JSON.parse(r.details ?? "{}") as { os?: string | null }).os ?? "any");
-    } catch {
-      out.add("any");
-    }
-  }
-  return [...out];
-}
 
 /** A token for the stage. The site's own connection watches and may publish; the desktop app only publishes. */
 async function stageToken(user: { id: string; name: string; avatarUrl: string | null }, canStream: boolean, canSubscribe: boolean) {
@@ -164,12 +145,10 @@ export async function castRoutes(app: FastifyInstance) {
     },
   );
 
-  // Installers for the desktop app, if this server has them (see DOWNLOADS_DIR), and which systems this person's
-  // app has answered from: browsers can't tell whether an app is installed, but the server has seen it open.
-  app.get("/api/cast/app", { config: { permission: "cast.stream" } }, async (req) => {
+  // Installers for the desktop app, if this server has them (see DOWNLOADS_DIR).
+  app.get("/api/cast/app", { config: { permission: "cast.stream" } }, async () => {
     const have = (f: string) => existsSync(join(downloadsDir, f));
     return {
-      installed: installedOn(req.session!.user.id),
       minVersion: APP_MIN_VERSION,
       linux: have(DOWNLOADS.linux) ? `/download/${DOWNLOADS.linux}` : null,
       windows: have(DOWNLOADS.windows) ? `/download/${DOWNLOADS.windows}` : null,
