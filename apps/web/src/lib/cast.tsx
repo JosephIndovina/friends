@@ -176,10 +176,14 @@ export function CastProvider({ session, children }: { session: Session; children
   }, [allowed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Your own stream from this tab starts watched (it costs nothing). Ended streams drop out of the set.
+  // Your own stream from elsewhere (the app, another tab or device) starts muted: on the computer that's
+  // streaming it would echo, but on your phone you'll want it, so it's one tap to turn on.
   const seen = useRef(new Set<string>());
   useEffect(() => {
     const ids = new Set(streams.map((s) => s.id));
     const fresh = streams.filter((s) => s.local && !seen.current.has(s.id)).map((s) => s.id);
+    const ownElsewhere = streams.filter((s) => s.mine && !s.local && !seen.current.has(s.id)).map((s) => s.id);
+    if (ownElsewhere.length) setMutedSet((prev) => new Set([...prev, ...ownElsewhere]));
     for (const s of streams) seen.current.add(s.id);
     for (const id of seen.current) if (!ids.has(id)) seen.current.delete(id);
     setWatchingSet((prev) => {
@@ -196,8 +200,7 @@ export function CastProvider({ session, children }: { session: Session; children
       if (s.local) continue;
       const on = watching.has(s.id);
       (s.video as RemoteTrackPublication).setSubscribed(on);
-      // Your own stream from another tab is never played back, so don't fetch its sound.
-      (s.audio as RemoteTrackPublication | null)?.setSubscribed(on && !s.mine);
+      (s.audio as RemoteTrackPublication | null)?.setSubscribed(on);
     }
   }, [streams, watching]);
 
@@ -331,7 +334,7 @@ function pairOf(report: Map<string, Stat>): Stat | undefined {
 function useStreamStats(stream: Stream): [string, string][] {
   const [rows, setRows] = useState<[string, string][]>([]);
   const video = stream.video.track;
-  const audio = stream.mine && !stream.local ? null : stream.audio?.track ?? null;
+  const audio = stream.audio?.track ?? null;
   useEffect(() => {
     if (!video) return;
     const prev = new Map<string, { bytes: number; t: number }>();
@@ -386,8 +389,7 @@ function useStreamStats(stream: Stream): [string, string][] {
       if (rtt != null) out.push(["Round trip", `${Math.round(rtt * 1000)} ms`]);
       // Sound: whether it exists, arrives, and carries any signal.
       if (!stream.audio) out.push(["Audio", "None shared"]);
-      // Your own stream from another tab or the app has sound, but it's never fetched here: it would echo.
-      else if (!a) out.push(["Audio", stream.local ? "Sending" : stream.mine ? "Shared · not played back to you" : "Not received"]);
+      else if (!a) out.push(["Audio", stream.local ? "Sending" : "Not received"]);
       else {
         const s = [...a.values()].find((x) => (x.type === "inbound-rtp" || x.type === "outbound-rtp") && x.kind === "audio");
         const level = num(s?.audioLevel) ?? num([...a.values()].find((x) => x.type === "media-source" && x.kind === "audio")?.audioLevel);
@@ -427,7 +429,7 @@ export function StreamAudio({ stream }: { stream: Stream }) {
   const cast = useCast();
   const player = usePlayer();
   const el = useRef<HTMLAudioElement>(null);
-  const track = stream.mine ? null : stream.audio?.track; // never play your own stream back to yourself
+  const track = stream.local ? null : stream.audio?.track; // the tab that's streaming never plays itself back
   useEffect(() => {
     if (!track || !el.current) return;
     track.attach(el.current);

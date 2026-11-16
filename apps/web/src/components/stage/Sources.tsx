@@ -10,8 +10,10 @@ export interface StageSource {
   thumbnail?: string | null;
   /** a cast stream (shows the live dot) */
   live?: boolean;
-  /** your own stream: never played back to you, so it has no sound control */
+  /** your own stream: Stop in place of the X */
   local?: boolean;
+  /** no sound control: the tab that's streaming never plays itself back (defaults to `local`) */
+  silent?: boolean;
   audible: boolean;
   setAudible: (v: boolean) => void;
   /** shown for this viewer: loaded, received and heard. Hidden uses no bandwidth. Only affects you, for this visit. */
@@ -87,7 +89,7 @@ export function StageRail({ sources, current, onShow, open: railOpen, setOpen, f
                 onClick={() => onShow(s.id)}>
                 <span className={`rail-thumb${s.live ? " is-live" : ""}${s.preview ? " has-preview" : ""}`}>
                   {s.preview && s.on ? s.preview : s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="rail-initial">{s.label.slice(0, 1)}</span>}
-                  {!s.on ? <span className="rail-badge"><EyeOff aria-hidden /></span> : !s.audible && !s.local && <span className="rail-badge"><VolumeX aria-hidden /></span>}
+                  {!s.on ? <span className="rail-badge"><EyeOff aria-hidden /></span> : !s.audible && !(s.silent ?? s.local) && <span className="rail-badge"><VolumeX aria-hidden /></span>}
                 </span>
                 <span className="rail-text">
                   <span className="rail-label">{s.label}</span>
@@ -99,11 +101,11 @@ export function StageRail({ sources, current, onShow, open: railOpen, setOpen, f
               )}
               {open && (
                 <span className="rail-actions">
-                  {!s.local && s.on && (
+                  {!(s.silent ?? s.local) && s.on && (
                     <button className="icon-btn" aria-label={s.audible ? `Mute ${s.label}` : `Unmute ${s.label}`} title={s.audible ? "Mute" : "Unmute"}
                       onClick={() => s.setAudible(!s.audible)}>{s.audible ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}</button>
                   )}
-                  {!s.local && s.on && <span className="rail-sep" aria-hidden />}
+                  {!(s.silent ?? s.local) && s.on && <span className="rail-sep" aria-hidden />}
                   <button className="icon-btn" aria-pressed={!s.on} aria-label={s.on ? `Hide ${s.label}` : `Show ${s.label}`} title={s.on ? "Hide for you" : "Show"}
                     onClick={() => s.setOn(!s.on)}>{s.on ? <Eye aria-hidden /> : <EyeOff aria-hidden />}</button>
                   {(s.onStop || s.end) && <span className="rail-sep" aria-hidden />}
@@ -223,7 +225,7 @@ export function StageTile({ source, onFocus, style, children }: {
       <span className="tile-name">
         {source.live && <span className="live-dot" aria-hidden />}
         <span className="tile-label">{source.label}</span>
-        {!source.audible && !source.local && <VolumeX aria-label="Muted" />}
+        {!source.audible && !(source.silent ?? source.local) && <VolumeX aria-label="Muted" />}
       </span>
     </li>
   );

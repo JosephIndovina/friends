@@ -154,7 +154,8 @@ export function Home({ session }: { session: Session }) {
       // Your own stream: a live preview, and Stop in place of the X.
       preview: st.mine ? <StreamVideo stream={st} className="rail-preview-video" /> : undefined,
       onStop: st.mine ? () => void cast.stop(st.id) : undefined,
-      audible: st.mine ? false : !cast.muted.has(st.id),
+      audible: st.local ? false : !cast.muted.has(st.id),
+      silent: st.local,
       setAudible: (v: boolean) => cast.setMuted(st.id, !v),
       on: cast.watching.has(st.id),
       setOn: (on: boolean) => cast.setWatching(st.id, on),
@@ -411,7 +412,7 @@ export function Home({ session }: { session: Session }) {
                     return <Volume volume={p.screenVolume[id] ?? p.volume} muted={!on}
                       onChange={(v) => { p.setScreenVolume(id, v); p.setScreenSound(id, v > 0); }} onToggle={() => p.setScreenSound(id, !on)} />;
                   })()}
-                  {bar === "stream" && focusedStream && !focusedStream.mine && (() => {
+                  {bar === "stream" && focusedStream && !focusedStream.local && (() => {
                     const id = focusedStream.id;
                     const muted = cast.muted.has(id);
                     return <Volume volume={cast.volume[id] ?? 100} muted={muted}
