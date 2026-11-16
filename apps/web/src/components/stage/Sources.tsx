@@ -16,6 +16,9 @@ export interface StageSource {
   silent?: boolean;
   audible: boolean;
   setAudible: (v: boolean) => void;
+  /** this viewer's volume for it, 0–100 (the volume panel) */
+  volume?: number;
+  setVolume?: (v: number) => void;
   /** shown for this viewer: loaded, received and heard. Hidden uses no bandwidth. Only affects you, for this visit. */
   on: boolean;
   setOn: (on: boolean) => void;
@@ -31,7 +34,8 @@ export interface StageSource {
 /**
  * The stage's source list: a column the full height of the stage, beside it rather than over it.
  * Expanded it has names, sound, show/hide and, where you're allowed, end for everyone; collapsed it is thumbnails.
- * Clicking a source shows it large, and "All" shows every visible source as a grid. Going live sits at the foot.
+ * Clicking a source focuses it, or unfocuses it if it was focused, like Discord: focused sources share the stage
+ * and the rest sit in the strip below. "All" clears focus, back to the grid. Going live sits at the foot.
  */
 /** True while the media query matches (e.g. the phone layout). */
 function useMedia(query: string) {
@@ -46,12 +50,16 @@ function useMedia(query: string) {
   return match;
 }
 
-export function StageRail({ sources, current, onShow, open: railOpen, setOpen, full }: {
+export function StageRail({ sources, focused, all, onToggle, onAll, open: railOpen, setOpen, full }: {
   sources: StageSource[];
-  /** the source shown large, or "all" for the grid */
-  current: string | "all" | null;
-  /** show one source large (turning it on), or null for the grid */
-  onShow: (id: string | null) => void;
+  /** the focused sources */
+  focused: ReadonlySet<string>;
+  /** the grid is showing: nothing focused */
+  all: boolean;
+  /** focus a source (turning it on), or unfocus it */
+  onToggle: (id: string) => void;
+  /** clear focus: every source as a grid */
+  onAll: () => void;
   open: boolean;
   setOpen: (open: boolean) => void;
   /** full screen: the rail is pinned down the left of the window, beside the stage */
@@ -75,7 +83,7 @@ export function StageRail({ sources, current, onShow, open: railOpen, setOpen, f
         <ul className="rail-list">
           {sources.length > 1 && (
             <li className="rail-row">
-              <button className="rail-item" aria-current={current === "all" || undefined} data-tip={open ? undefined : "All sources"} onClick={() => onShow(null)}>
+              <button className="rail-item" aria-pressed={all} data-tip={open ? undefined : "All sources"} onClick={onAll}>
                 <span className="rail-thumb rail-thumb-icon"><LayoutGrid aria-hidden /></span>
                 <span className="rail-text"><span className="rail-label">All</span><span className="rail-detail">Grid</span></span>
               </button>
@@ -83,9 +91,9 @@ export function StageRail({ sources, current, onShow, open: railOpen, setOpen, f
           )}
           {sources.map((s) => (
             <li key={s.id} className={`rail-row${s.on ? "" : " is-off"}`}>
-              <button className="rail-item" aria-current={current === s.id || undefined} data-tip={open ? undefined : s.on ? s.label : `${s.label} (hidden)`}
-                aria-label={s.on ? `Show ${s.label} large` : `Show ${s.label}`}
-                onClick={() => onShow(s.id)}>
+              <button className="rail-item" aria-pressed={s.on && focused.has(s.id)} data-tip={open ? undefined : s.on ? s.label : `${s.label} (hidden)`}
+                aria-label={!s.on ? `Show ${s.label}` : focused.has(s.id) ? `Unfocus ${s.label}` : `Focus ${s.label}`}
+                onClick={() => onToggle(s.id)}>
                 <span className={`rail-thumb${s.live ? " is-live" : ""}${s.preview ? " has-preview" : ""}`}>
                   {s.preview && s.on ? s.preview : s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="rail-initial">{s.label.slice(0, 1)}</span>}
                   {!s.on ? <span className="rail-badge"><EyeOff aria-hidden /></span> : !s.audible && !(s.silent ?? s.local) && <span className="rail-badge"><VolumeX aria-hidden /></span>}
@@ -182,11 +190,15 @@ function EndButton({ source, className }: { source: StageSource; className?: str
 }
 
 /**
- * One source on the stage grid or the strip under a focused source. The whole tile shows it large.
- * The hit area stacks above the shared player, which can't take clicks here.
+ * One source on the stage grid or the strip under the focused ones. Clicking the tile focuses it, or unfocuses it when it's focused.
+ * The hit area stacks above the shared player, which never takes clicks.
  */
-export function StageTile({ source, onFocus, style, children }: {
+export function StageTile({ source, focused, onFocus, controls, style, children }: {
   source: StageSource;
+  /** its own play, skip and seek, over the bottom of the tile on hover */
+  controls?: ReactNode;
+  /** focused: clicking unfocuses it */
+  focused?: boolean;
   onFocus: (id: string) => void;
   style?: CSSProperties;
   children?: ReactNode;
@@ -212,14 +224,16 @@ export function StageTile({ source, onFocus, style, children }: {
     );
   }
   return (
-    <li className="tile" style={style}>
+    <li className={`tile${controls ? " has-controls" : ""}`} style={style}>
       <div className="tile-media">{children}</div>
-      <button className="tile-hit" aria-label={`Show ${source.label} large`} title="Show large" onClick={() => onFocus(source.id)} />
+      <button className={`tile-hit${focused ? " is-focused" : ""}`} aria-label={focused ? `Unfocus ${source.label}` : `Focus ${source.label}`}
+        title={focused ? "Unfocus" : "Focus"} onClick={() => onFocus(source.id)} />
       <span className="tile-name">
         {source.live && <span className="live-dot" aria-hidden />}
         <span className="tile-label">{source.label}</span>
         {!source.audible && !(source.silent ?? source.local) && <VolumeX aria-label="Muted" />}
       </span>
+      {controls && <div className="tile-controls">{controls}</div>}
     </li>
   );
 }

@@ -34,9 +34,9 @@ interface PlayerCtx {
   /** shared media this viewer hid (not loaded, not heard): "player" or a screen id; this visit only. Streams use the cast's watching set. */
   hidden: ReadonlySet<string>;
   setHidden: (id: string, hide: boolean) => void;
-  /** source this viewer picked to show large; null = the grid (or the only source) */
-  focused: string | null;
-  setFocused: (id: string | null) => void;
+  /** sources this viewer focused: shown large, with the rest in the strip below; empty = the grid */
+  focused: ReadonlySet<string>;
+  setFocused: (ids: ReadonlySet<string>) => void;
   /** this viewer's music/video view choice per track (keyed by source ref); overrides the room's default */
   viewOverrides: Readonly<Record<string, MediaMode>>;
   setViewOverride: (item: MediaItem, mode: MediaMode) => void;
@@ -101,8 +101,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [screenVolume, setScreenVolumes] = useState<Record<string, number>>({});
   const setScreenVolume = useCallback((id: string, v: number) => setScreenVolumes((prev) => ({ ...prev, [id]: v })), []);
   const [hidden, setHiddenSet] = useState<ReadonlySet<string>>(new Set());
-  // The source shown large. Not saved: each visit starts on the grid when there's more than one.
-  const [focused, setFocused] = useState<string | null>(null);
+  // The sources shown large. Not saved: each visit starts on the grid when there's more than one.
+  const [focused, setFocused] = useState<ReadonlySet<string>>(new Set());
   const [viewOverrides, setViewOverrides] = useState<Record<string, MediaMode>>(() => readJson<Record<string, MediaMode>>("viewModes", {}));
   const setViewOverride = useCallback((item: MediaItem, mode: MediaMode) => {
     setViewOverrides((prev) => {

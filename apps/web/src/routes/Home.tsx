@@ -10,7 +10,7 @@ import { StreamVideo, useCast } from "../lib/cast";
 import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
 import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
-import { History, Queue, Seek, Volume } from "../components/media/parts";
+import { History, Mixer, Queue, Seek } from "../components/media/parts";
 import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
 import { expectedPosition, KIND_LABEL, mediaAction, mediaError, useMediaState } from "../lib/media";
@@ -128,6 +128,7 @@ export function Home({ session }: { session: Session }) {
   // and only shows when you're allowed to. Ending someone else's asks first. Closing the player keeps the queue for Play.
   const sources: StageSource[] = [
     ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible,
+      volume: p.volume, setVolume: (v: number) => { p.setVolume(v); p.setAudible(v > 0); },
       on: !p.hidden.has("player"), setOn: setMediaOn("player"),
       end: canClose(now) ? { label: "Close for everyone", run: () => void act(mediaAction("media:stop", { id: now.item.id })),
         confirm: now.startedBy.id === session.user.id ? undefined : `Close ${now.item.title} for everyone?` } : undefined }] : []),
@@ -139,6 +140,8 @@ export function Home({ session }: { session: Session }) {
       thumbnail: sc.item.thumbnail,
       audible: p.screenSound.has(sc.item.id),
       setAudible: (v: boolean) => p.setScreenSound(sc.item.id, v),
+      volume: p.screenVolume[sc.item.id] ?? p.volume,
+      setVolume: (v: number) => { p.setScreenVolume(sc.item.id, v); p.setScreenSound(sc.item.id, v > 0); },
       on: !p.hidden.has(sc.item.id),
       setOn: setMediaOn(sc.item.id),
       end: canClose(sc) ? { label: "Close for everyone", run: () => closeScreen(sc),
@@ -156,6 +159,8 @@ export function Home({ session }: { session: Session }) {
       audible: st.local ? false : !cast.muted.has(st.id),
       silent: st.local,
       setAudible: (v: boolean) => cast.setMuted(st.id, !v),
+      volume: cast.volume[st.id] ?? 100,
+      setVolume: (v: number) => { cast.setVolume(st.id, v); cast.setMuted(st.id, v === 0); },
       on: cast.watching.has(st.id),
       setOn: (on: boolean) => cast.setWatching(st.id, on),
       stream: !st.local,
@@ -166,20 +171,33 @@ export function Home({ session }: { session: Session }) {
   // still show on the stage, as a card to start watching.
   const visible = sources.filter((x) => x.on);
   const onStage = sources.filter((x) => x.on || x.stream);
-  // Showing a source large turns it on; switching between sources that are on doesn't reload them.
-  const show = (id: string | null) => {
-    const x = id ? sources.find((y) => y.id === id) : null;
-    if (x && !x.on) x.setOn(true);
-    p.setFocused(id);
+  // Focus works like Discord's: clicking a source focuses it, clicking it again unfocuses it. Focused
+  // sources share the stage and the rest sit in the strip below; none focused is the grid.
+  const picked = onStage.length > 1 ? onStage.filter((x) => x.on && p.focused.has(x.id)) : [];
+  // Focusing a hidden source turns it on; moving sources in and out of focus doesn't reload them.
+  const toggleFocus = (id: string) => {
+    const x = sources.find((y) => y.id === id);
+    if (!x) return;
+    const next = new Set(picked.map((y) => y.id));
+    if (!x.on) x.setOn(true);
+    if (x.on && next.has(id)) next.delete(id);
+    else next.add(id);
+    // Focusing everything is the grid.
+    const stage = new Set([...onStage.map((y) => y.id), id]);
+    p.setFocused([...stage].every((s) => next.has(s)) ? new Set() : next);
   };
-  // One source on the stage shows on its own. Two or more show as a grid, unless you picked one to show large.
-  const picked = onStage.length > 1 && visible.some((x) => x.id === p.focused) ? p.focused : null;
-  const layout: "idle" | "single" | "focus" | "grid" = onStage.length === 0 ? "idle" : onStage.length === 1 ? "single" : picked ? "focus" : "grid";
+  const clearFocus = () => p.setFocused(new Set());
+  const layout: "idle" | "single" | "focus" | "grid" = onStage.length === 0 ? "idle" : onStage.length === 1 ? "single" : picked.length ? "focus" : "grid";
   const single = layout === "single" ? onStage[0]! : null;
   const offer = single && !single.on ? single : null;
-  const focusId = single ? (single.on ? single.id : null) : picked;
+  // Shown large on its own: the only source, or the one focused source.
+  const focusId = single ? (single.on ? single.id : null) : picked.length === 1 ? picked[0]!.id : null;
+  // Tiles on the stage: every source in the grid, or the focused ones when there are several. The rest go in the strip.
+  const tiles = layout === "grid" ? onStage : picked.length > 1 ? picked : [];
+  const strip = layout === "focus" ? onStage.filter((x) => !picked.includes(x)) : [];
+  const tiled = tiles.length > 0;
   const playerFocused = focusId === "player";
-  const playerOnStage = layout === "grid" ? visible.some((x) => x.id === "player") : playerFocused;
+  const playerOnStage = tiled ? tiles.some((x) => x.id === "player" && x.on) : playerFocused;
   const focusedStream = cast.streams.find((st) => st.id === focusId) ?? null;
   const focusedScreen = screens.find((sc) => sc.item.id === focusId) ?? null;
   // Theatre turns itself on while you're watching someone else's stream, and back off when you stop.
@@ -244,10 +262,10 @@ export function Home({ session }: { session: Session }) {
   }, [screen]);
   const theatreFit = theatre === "on" && window.innerWidth > 860;
   const gridH = full ? box.h - 2 * GRID_PAD : Math.max(320, theatreFit ? box.h - bars - 2 * GRID_PAD : box.h - PAGE_CHROME);
-  let grid = fitGrid(onStage.length, box.w, gridH, GRID_GAP);
+  let grid = fitGrid(tiled ? tiles.length : 1, box.w, gridH, GRID_GAP);
   // YouTube's player must stay at least 200px tall wherever it's visible.
-  const youtubeInGrid = (playerOnStage && !hideVideo && now?.item.kind === "youtube") || screens.some((sc) => sc.item.kind === "youtube" && visible.some((x) => x.id === sc.item.id));
-  if (layout === "grid" && youtubeInGrid && grid.h < 200 && box.w >= 600) {
+  const youtubeInGrid = (playerOnStage && !hideVideo && now?.item.kind === "youtube") || screens.some((sc) => sc.item.kind === "youtube" && tiles.some((x) => x.on && x.id === sc.item.id));
+  if (tiled && youtubeInGrid && grid.h < 200 && box.w >= 600) {
     const cols = Math.max(1, Math.floor((box.w + GRID_GAP) / (356 + GRID_GAP)));
     const w = Math.floor((box.w - GRID_GAP * (cols - 1)) / cols);
     grid = { cols, w, h: Math.floor((w * 9) / 16) };
@@ -268,8 +286,37 @@ export function Home({ session }: { session: Session }) {
     return st ? <StreamVideo stream={st} className="stream-tile" stats={showStats ? "compact" : undefined} /> : null;
   };
 
-  // What the bar under the stage is about: the stream or screen shown large, or the shared player when it's on the stage.
-  const bar = focusedStream ? "stream" : focusedScreen ? "screen" : now && playerOnStage ? "player" : null;
+  // With several sources tiled, each video controls itself: play, skip and seek sit on its tile, shown on hover.
+  // The bar under the stage only drives a source shown large on its own.
+  const tileControls = (x: StageSource) => {
+    const btn = (label: string, icon: React.ReactNode, run: () => void) => (
+      <button className="icon-btn" disabled={!control} aria-label={label} title={label} onClick={run}>{icon}</button>
+    );
+    if (x.id === "player" && now) {
+      return (
+        <>
+          {btn(now.playing ? "Pause for everyone" : "Play for everyone", now.playing ? <Pause aria-hidden /> : <Play aria-hidden />,
+            () => void act(now.playing ? mediaAction("media:pause", { position: pos }) : mediaAction("media:play")))}
+          {btn("Skip for everyone", <SkipForward aria-hidden />, () => void act(mediaAction("media:skip")))}
+          {SEEKABLE[now.item.kind] && <Seek position={pos} duration={now.item.duration} disabled={!control} onSeek={(s) => act(mediaAction("media:seek", { position: s }))} />}
+        </>
+      );
+    }
+    const sc = screens.find((y) => y.item.id === x.id);
+    if (!sc || sc.item.kind === "twitch-live" || sc.item.kind === "twitch-clip") return undefined;
+    const id = sc.item.id;
+    return (
+      <>
+        {btn(sc.playing ? "Pause for everyone" : "Play for everyone", sc.playing ? <Pause aria-hidden /> : <Play aria-hidden />,
+          () => void act(mediaAction(sc.playing ? "media:screen:pause" : "media:screen:play", { id })))}
+        {SEEKABLE[sc.item.kind] && <Seek position={expectedPosition(sc)} duration={sc.item.duration} disabled={!control}
+          onSeek={(s) => act(mediaAction("media:screen:seek", { id, position: s }))} />}
+      </>
+    );
+  };
+
+  // What the bar under the stage is about: the stream, screen or player shown large.
+  const bar = focusedStream ? "stream" : focusedScreen ? "screen" : now && playerFocused ? "player" : null;
   // The browser blocked sound: one notice over the stage; the first click or key press anywhere clears it.
   const soundBlocked = p.blocked && visible.some((x) => x.audible && !x.local);
   // Video, or one of the music views, in one control. Video is only for YouTube.
@@ -294,11 +341,11 @@ export function Home({ session }: { session: Session }) {
       <div className={`room media-room${theatre === "on" ? " is-theatre" : ""}`} style={{ "--stage-bars": `${bars}px`, "--stage-bar-h": `${barH}px` } as React.CSSProperties}>
           <section className={`stage${showRail ? " has-rail" : ""}`} aria-label="Stage">
             {showRail && (
-              <StageRail sources={sources} current={layout === "grid" ? "all" : focusId} onShow={show}
+              <StageRail sources={sources} focused={new Set(picked.map((x) => x.id))} all={layout === "grid"} onToggle={toggleFocus} onAll={clearFocus}
                 open={railOpen === "on"} setOpen={(o) => setRailOpen(o ? "on" : "off")} full={full} />
             )}
             <div className="stage-main">
-            <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}${layout === "grid" ? " is-grid" : ""}${full ? " is-full" : ""}`}>
+            <div ref={setScreen} className={`stage-screen player-screen${music && playerFocused ? " is-music" : ""}${tiled ? " is-grid" : ""}${full ? " is-full" : ""}`}>
               {layout === "idle" && sources.length === 0 && (
                 <div className="stage-idle"><h1>Nothing playing</h1></div>
               )}
@@ -310,12 +357,14 @@ export function Home({ session }: { session: Session }) {
               )}
               {offer && (
                 <ul className="stage-grid stage-offer" aria-label="Sources" style={{ width: grid.w }}>
-                  <StageTile source={offer} onFocus={show} style={{ width: grid.w, height: grid.h }} />
+                  <StageTile source={offer} onFocus={toggleFocus} style={{ width: grid.w, height: grid.h }} />
                 </ul>
               )}
-              {layout === "grid" && (
-                <ul className="stage-grid" aria-label="Sources" style={{ width: grid.cols * grid.w + (grid.cols - 1) * GRID_GAP }}>
-                  {onStage.map((x) => <StageTile key={x.id} source={x} onFocus={show} style={{ width: grid.w, height: grid.h }}>{x.on && tileMedia(x)}</StageTile>)}
+              {tiled && (
+                <ul className="stage-grid" aria-label={layout === "focus" ? "Focused sources" : "Sources"} style={{ width: grid.cols * grid.w + (grid.cols - 1) * GRID_GAP }}>
+                  {tiles.map((x) => (
+                    <StageTile key={x.id} source={x} focused={layout === "focus"} onFocus={toggleFocus} controls={x.on ? tileControls(x) : undefined} style={{ width: grid.w, height: grid.h }}>{x.on && tileMedia(x)}</StageTile>
+                  ))}
                 </ul>
               )}
               {now && playerFocused && music && (
@@ -333,6 +382,11 @@ export function Home({ session }: { session: Session }) {
               {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" stats={showStats ? "full" : undefined} />}
               {focusedScreen && <div key={focusedScreen.item.id} ref={screenRef(focusedScreen.item.id)} className="player-slot" />}
               {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
+              {/* The one focused source: clicking it unfocuses it. Music view keeps its own clicks (lyrics scroll). */}
+              {layout === "focus" && focusId && !(playerFocused && music) && (() => {
+                const x = sources.find((y) => y.id === focusId)!;
+                return <button className="stage-hit" aria-label={`Unfocus ${x.label}`} title="Unfocus" onClick={() => toggleFocus(focusId)} />;
+              })()}
             </div>
 
             {/* Outside the stage screen so they stack above the shared player. */}
@@ -402,22 +456,12 @@ export function Home({ session }: { session: Session }) {
                         </select>
                       )}
                       {can(session, "player.queue") && <SaveToPlaylist itemId={now.item.id} label={now.item.title} />}
-                      <Volume volume={p.volume} muted={!p.audible} onChange={(v) => { p.setVolume(v); p.setAudible(v > 0); }} onToggle={() => p.setAudible(!p.audible)} />
                     </>
                   )}
-                  {bar === "screen" && focusedScreen && (() => {
-                    const id = focusedScreen.item.id;
-                    const on = p.screenSound.has(id);
-                    return <Volume volume={p.screenVolume[id] ?? p.volume} muted={!on}
-                      onChange={(v) => { p.setScreenVolume(id, v); p.setScreenSound(id, v > 0); }} onToggle={() => p.setScreenSound(id, !on)} />;
-                  })()}
-                  {bar === "stream" && focusedStream && !focusedStream.local && (() => {
-                    const id = focusedStream.id;
-                    const muted = cast.muted.has(id);
-                    return <Volume volume={cast.volume[id] ?? 100} muted={muted}
-                      onChange={(v) => { cast.setVolume(id, v); cast.setMuted(id, v === 0); }} onToggle={() => cast.setMuted(id, !muted)} />;
-                  })()}
                   <div className="stage-buttons">
+                    <Mixer channels={visible.filter((x) => !(x.silent ?? x.local) && x.setVolume).map((x) => ({
+                      id: x.id, label: x.label, volume: x.volume ?? 100, muted: !x.audible, setMuted: (m) => x.setAudible(!m), setVolume: x.setVolume!,
+                    }))} />
                     {streamsOnStage && (
                       <button className="icon-btn" aria-label="Stream stats" aria-pressed={showStats} data-tip={showStats ? "Hide stream stats" : "Stream stats"}
                         onClick={() => setStatsPref(showStats ? "off" : "on")}><Activity aria-hidden /></button>
@@ -437,10 +481,10 @@ export function Home({ session }: { session: Session }) {
               </div>
             </div>
 
-            {layout === "focus" && (
+            {strip.length > 0 && (
               <ul className="source-strip" aria-label="Other sources">
-                {onStage.filter((x) => x.id !== focusId).map((x) => (
-                  <StageTile key={x.id} source={x} onFocus={show}>{x.on && tileMedia(x)}</StageTile>
+                {strip.map((x) => (
+                  <StageTile key={x.id} source={x} onFocus={toggleFocus} controls={x.on ? tileControls(x) : undefined}>{x.on && tileMedia(x)}</StageTile>
                 ))}
               </ul>
             )}

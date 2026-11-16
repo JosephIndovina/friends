@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GripVertical, Music2, Play, RotateCcw, Trash2, Volume2, VolumeX } from "lucide-react";
 import type { MediaItem, Session } from "@friends/shared";
 import { can } from "../../lib/api";
@@ -23,14 +23,59 @@ export function Seek({ position, duration, disabled, onSeek }: { position: numbe
   );
 }
 
-export function Volume({ volume, muted, onChange, onToggle }: { volume: number; muted: boolean; onChange: (v: number) => void; onToggle: () => void }) {
+/** One source's sound in the volume panel. */
+export interface MixerChannel {
+  id: string;
+  label: string;
+  volume: number;
+  muted: boolean;
+  setVolume: (v: number) => void;
+  setMuted: (m: boolean) => void;
+}
+
+/**
+ * The stage's volume: one button, and a slider for each source you can hear in a panel above it.
+ * Hovering opens the panel; clicking keeps it open (and is how touch screens open it) until you click away or press Escape.
+ */
+export function Mixer({ channels }: { channels: MixerChannel[] }) {
+  const [pinned, setPinned] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pinned) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key !== "Escape" : box.current?.contains(e.target as Node)) return;
+      setPinned(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [pinned]);
+  if (!channels.length) return null;
+  const allMuted = channels.every((c) => c.muted || c.volume === 0);
   return (
-    <div className="volume">
-      <button className="icon-btn" aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={onToggle}>
-        {muted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
+    <div ref={box} className={`mixer${pinned ? " is-open" : ""}`}>
+      <button className="icon-btn" aria-label="Volume" aria-expanded={pinned} onClick={() => setPinned(!pinned)}>
+        {allMuted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
       </button>
-      <input type="range" className="range" min={0} max={100} value={muted ? 0 : volume} aria-label="Volume"
-        style={{ "--fill": `${muted ? 0 : volume}%` } as React.CSSProperties} onChange={(e) => onChange(Number(e.target.value))} />
+      <div className="mixer-panel" role="group" aria-label="Volume">
+        <ul className="mixer-list">
+          {channels.map((c) => {
+            const v = c.muted ? 0 : c.volume;
+            return (
+              <li key={c.id} className="mixer-row">
+                <button className="icon-btn" aria-label={c.muted ? `Unmute ${c.label}` : `Mute ${c.label}`} title={c.muted ? "Unmute" : "Mute"}
+                  onClick={() => c.setMuted(!c.muted)}>{c.muted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}</button>
+                <span className="mixer-label" title={c.label}>{c.label}</span>
+                <input type="range" className="range" min={0} max={100} value={v} aria-label={`${c.label} volume`}
+                  style={{ "--fill": `${v}%` } as React.CSSProperties} onChange={(e) => c.setVolume(Number(e.target.value))} />
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }
