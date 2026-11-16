@@ -18,6 +18,8 @@ ENV NODE_ENV=production DATA_DIR=/data WEB_DIST=/app/web PORT=3000
 WORKDIR /app
 COPY --from=build /out ./
 COPY --from=build /src/apps/web/dist ./web
+# Friends Live installers, put here by CI (served at /download/…; the folder may be empty).
+COPY downloads/ ./downloads/
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 3000

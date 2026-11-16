@@ -13,6 +13,8 @@ declare module "fastify" {
     allowPending?: boolean;
     /** required permission; omit only for routes every active user may call */
     permission?: Permission;
+    /** callable from outside the browser (the desktop app): skips the same-origin check, so the route must authorize by something other than the cookie */
+    anyOrigin?: boolean;
   }
   interface FastifyRequest {
     session: Session | null;
@@ -47,7 +49,7 @@ export async function accessControl(app: FastifyInstance) {
   app.decorateRequest("session", null);
 
   app.addHook("onRequest", async (req, reply) => {
-    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS" && !req.routeOptions.config.anyOrigin) {
       const origin = req.headers.origin;
       const sameSite = req.headers["sec-fetch-site"];
       const ok = origin ? origin === publicOrigin || (!isProd && origin.startsWith("http://localhost")) : sameSite === "same-origin";

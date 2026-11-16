@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Friends Live
+Comment=Stream a window and its sound to Friends
+Exec=friends-live %u
+Icon=friends-live
+StartupWMClass=friends-live
+Terminal=false
+Categories=AudioVideo;Video;
+MimeType=x-scheme-handler/friends;

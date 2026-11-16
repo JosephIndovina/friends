@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AccessToken, RoomServiceClient, TrackSource, type ParticipantInfo } from "livekit-server-sdk";
 import { audit } from "./audit.js";
 import { env } from "./env.js";
@@ -39,6 +41,41 @@ async function remove(userId: string, reason: string) {
   if (mine.length) audit({ actorId: null, action: "cast.removed", target: { type: "user", id: userId, name: getUser(userId)?.name ?? null }, details: { reason } });
 }
 
+/** One-time codes handed to the desktop app; see /api/cast/launch. */
+const LAUNCH_TTL_MS = 2 * 60 * 1000;
+const launches = new Map<string, { userId: string; expires: number; opened: boolean }>();
+/** Older desktop apps are told to update before they can go live. */
+const APP_MIN_VERSION = "0.1.0";
+const older = (a: string, b: string) => {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) < (pb[i] || 0);
+  return false;
+};
+
+export const DOWNLOADS = { linux: "friends-live_amd64.deb", windows: "friends-live_x64-setup.exe" } as const;
+export const downloadsDir = resolve(env.DOWNLOADS_DIR ?? "./downloads");
+
+/** A token for the stage. The site's own connection watches and may publish; the desktop app only publishes. */
+async function stageToken(user: { id: string; name: string; avatarUrl: string | null }, canStream: boolean, canSubscribe: boolean) {
+  const at = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
+    identity: `${user.id}#${randomBytes(4).toString("hex")}`,
+    name: user.name,
+    metadata: JSON.stringify({ avatarUrl: user.avatarUrl }),
+    ttl: "6h",
+  });
+  at.addGrant({
+    room: ROOM,
+    roomJoin: true,
+    canSubscribe,
+    canPublish: canStream,
+    canPublishData: false,
+    canUpdateOwnMetadata: false,
+    canPublishSources: canStream ? [TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [],
+  });
+  return at.toJwt();
+}
+
 export async function castRoutes(app: FastifyInstance) {
   if (!castEnabled()) {
     app.post("/api/cast/token", { config: { anyActive: true } }, async (_req, reply) => reply.code(503).send({ error: "cast_not_configured" }));
@@ -51,28 +88,69 @@ export async function castRoutes(app: FastifyInstance) {
     prefix: "/livekit/rtc",
     rewritePrefix: "/rtc",
     websocket: true,
+    // Browsers put the token in the URL; the desktop app sends it as "Authorization: Bearer". The proxy only
+    // passes cookies along by default. (rewriteRequestHeaders is supported but missing from the plugin's types.)
+    wsClientOptions: {
+      rewriteRequestHeaders: (headers: Record<string, string>, req: FastifyRequest) => {
+        const out = req.headers.cookie ? { ...headers, cookie: req.headers.cookie } : { ...headers };
+        return req.headers.authorization ? { ...out, authorization: req.headers.authorization } : out;
+      },
+    } as object,
   });
 
   app.post("/api/cast/token", { config: { permission: "cast.watch", rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req, reply) => {
     if (!getSettings().sections.cast) return reply.code(403).send({ error: "section_disabled" });
     const s = req.session!;
     const canStream = s.permissions.includes("cast.stream");
-    const at = new AccessToken(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, {
-      identity: `${s.user.id}#${randomBytes(4).toString("hex")}`,
-      name: s.user.name,
-      metadata: JSON.stringify({ avatarUrl: s.user.avatarUrl }),
-      ttl: "6h",
-    });
-    at.addGrant({
-      room: ROOM,
-      roomJoin: true,
-      canSubscribe: true,
-      canPublish: canStream,
-      canPublishData: false,
-      canUpdateOwnMetadata: false,
-      canPublishSources: canStream ? [TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [],
-    });
-    return { token: await at.toJwt(), canStream };
+    return { token: await stageToken(s.user, canStream, true), canStream };
+  });
+
+  // Go live from the desktop app. The site makes a one-time code and opens friends://live?code=…; the app
+  // trades the code for a publish-only token. The code is the only credential the app ever holds.
+  app.post("/api/cast/launch", { config: { permission: "cast.stream", rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    if (!getSettings().sections.cast) return reply.code(403).send({ error: "section_disabled" });
+    const now = Date.now();
+    for (const [k, v] of launches) if (v.expires < now) launches.delete(k);
+    const code = randomBytes(24).toString("base64url");
+    launches.set(code, { userId: req.session!.user.id, expires: now + LAUNCH_TTL_MS, opened: false });
+    return { code, expiresIn: LAUNCH_TTL_MS };
+  });
+
+  // The site polls this to tell "the app opened" apart from "nothing is installed".
+  app.get<{ Params: { code: string } }>("/api/cast/launch/:code", { config: { permission: "cast.stream" } }, async (req, reply) => {
+    const l = launches.get(req.params.code);
+    if (!l || l.userId !== req.session!.user.id) return reply.code(404).send({ error: "not_found" });
+    return { opened: l.opened };
+  });
+
+  app.post<{ Body: { code?: unknown; version?: unknown } }>(
+    "/api/cast/launch/redeem",
+    { config: { public: true, anyOrigin: true, rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (req, reply) => {
+      const code = typeof req.body?.code === "string" ? req.body.code : "";
+      const l = launches.get(code);
+      if (!l || l.opened || l.expires < Date.now()) return reply.code(404).send({ error: "expired" });
+      const version = typeof req.body?.version === "string" ? req.body.version : "0";
+      if (older(version, APP_MIN_VERSION)) return reply.code(426).send({ error: "update_required", minVersion: APP_MIN_VERSION });
+      l.opened = true;
+      // Re-check access now, not when the code was made.
+      const row = getUser(l.userId);
+      const s = row ? sessionFor(row) : null;
+      if (!getSettings().sections.cast) return reply.code(403).send({ error: "section_disabled" });
+      if (gate(s) || !s!.permissions.includes("cast.stream")) return reply.code(403).send({ error: "missing_permission" });
+      audit({ actorId: s!.user.id, action: "cast.app_opened", details: { version }, req });
+      return { token: await stageToken(s!.user, true, false), name: s!.user.name, livekitPath: "/livekit" };
+    },
+  );
+
+  // Installers for the desktop app, if this server has them (see DOWNLOADS_DIR).
+  app.get("/api/cast/app", { config: { permission: "cast.stream" } }, async () => {
+    const have = (f: string) => existsSync(join(downloadsDir, f));
+    return {
+      minVersion: APP_MIN_VERSION,
+      linux: have(DOWNLOADS.linux) ? `/download/${DOWNLOADS.linux}` : null,
+      windows: have(DOWNLOADS.windows) ? `/download/${DOWNLOADS.windows}` : null,
+    };
   });
 
   // Moderators can end someone's stream: that connection leaves the room and can rejoin without it.
