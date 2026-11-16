@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AppWindow, Download, MonitorUp, Radio, Square } from "lucide-react";
+import { AppWindow, Download, MonitorUp, Plus, Radio, Square, X } from "lucide-react";
 import { api } from "../../lib/api";
 import { STREAM_MODES, useCast, type StreamMode } from "../../lib/cast";
 
@@ -113,8 +113,9 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
 
 type CastState = ReturnType<typeof useCast>;
 
-/** Your live streams, at the top of the Go live panel: Change window (Friends Live streams) and Stop for each. */
-function MyStreams({ cast }: { cast: CastState }) {
+/** Your live streams, at the top of the Go live panel: Change window (Friends Live streams) and Stop for each, and
+ * Add a stream, which opens the ways to start another below. */
+function MyStreams({ cast, adding, setAdding }: { cast: CastState; adding: boolean; setAdding: (on: boolean) => void }) {
   const mine = cast.streams.filter((s) => s.mine);
   const [asked, setAsked] = useState(false);
   const [stopping, setStopping] = useState<string | null>(null);
@@ -128,20 +129,34 @@ function MyStreams({ cast }: { cast: CastState }) {
   };
   return (
     <div className="my-streams">
-      <h2>Your streams</h2>
+      <div className="my-streams-head">
+        <h2>Your streams</h2>
+        <button className="icon-btn" aria-expanded={adding} aria-label={adding ? "Hide add a stream" : "Add a stream"}
+          data-tip={adding ? undefined : "Add a stream"} onClick={() => setAdding(!adding)}>
+          {adding ? <X aria-hidden /> : <Plus aria-hidden />}
+        </button>
+      </div>
       <ul>
-        {mine.map((s, i) => (
-          <li key={s.id} className="my-stream">
-            <span className="my-stream-text">
-              <span className="my-stream-label"><span className="live-dot" aria-hidden />{mine.length > 1 ? `Your screen ${i + 1}` : "Your screen"}</span>
-              <span className="quiet">{[s.fromApp ? "Friends Live" : "This browser", s.mode, !s.audio && "No sound"].filter(Boolean).join(" · ")}</span>
-            </span>
-            {s.fromApp && (
-              <button className="btn btn-quiet btn-s" onClick={changeWindow}><AppWindow aria-hidden />Change window</button>
-            )}
-            <button className="btn btn-danger btn-s" disabled={stopping === s.id} onClick={() => stop(s.id)}><Square aria-hidden />Stop</button>
-          </li>
-        ))}
+        {mine.map((s, i) => {
+          const name = mine.length > 1 ? `Your screen ${i + 1}` : "Your screen";
+          return (
+            <li key={s.id} className="my-stream">
+              <span className="my-stream-text">
+                <span className="my-stream-label"><span className="live-dot" aria-hidden />{name}</span>
+                <span className="quiet">{[s.fromApp ? "Friends Live" : "This browser", s.mode, !s.audio && "No sound"].filter(Boolean).join(" · ")}</span>
+              </span>
+              {s.fromApp && (
+                <button className="icon-btn" aria-label={`Change window for ${name}`} data-tip="Change window" onClick={changeWindow}>
+                  <AppWindow aria-hidden />
+                </button>
+              )}
+              <button className="icon-btn my-stream-stop" aria-label={`Stop ${name}`} data-tip="Stop streaming"
+                disabled={stopping === s.id} onClick={() => stop(s.id)}>
+                <Square aria-hidden />
+              </button>
+            </li>
+          );
+        })}
       </ul>
       {asked && <p className="block-note" role="status">Choose a window in Friends Live.</p>}
     </div>
@@ -185,6 +200,15 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
   const root = useRef<HTMLDivElement>(null);
   // Your streams, from this browser or Friends Live: the panel lists them with Change window and Stop.
   const mine = cast.streams.filter((s) => s.mine).length;
+  // Friends Live streams one window at a time, so Add a stream only offers it while it isn't live (Change window
+  // covers the rest).
+  const appLive = cast.streams.some((s) => s.mine && s.fromApp);
+  // While live, the ways to start another stream stay hidden until Add a stream. Closing the panel hides them again.
+  const [adding, setAdding] = useState(false);
+  const showStart = mine === 0 || adding;
+  useEffect(() => {
+    if (!open) setAdding(false);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent | KeyboardEvent) => {
@@ -221,8 +245,8 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
     else setOpen(false);
   };
 
-  // Go live always opens the panel, the one place for streaming: while live, your streams (Change window, Stop);
-  // otherwise Start streaming (the app), Download Friends Live, or stream from this browser.
+  // Go live always opens the panel, the one place for streaming: while live, your streams (Change window, Stop,
+  // Add a stream); otherwise Start streaming (the app), Download Friends Live, or stream from this browser.
   const label = mine ? "Streaming" : "Go live";
   const toggle = () => setOpen(!open);
 
@@ -241,20 +265,25 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
       )}
       {open && (
         <div className={`stack-panel golive-panel${appReady && !inBrowser ? " is-compact" : ""}${mine ? " has-streams" : ""}`} role="dialog" aria-label="Go live">
-          {/* While you're live the panel is just your streams; starting is offered again once they've stopped. */}
-          {mine > 0 && <MyStreams cast={cast} />}
-          {mine === 0 && appReady && (
+          {/* While you're live the panel is your streams; Add a stream opens the ways to start another below. */}
+          {mine > 0 && <MyStreams cast={cast} adding={adding} setAdding={setAdding} />}
+          {showStart && appReady && (
             <>
-              <h2>Go live</h2>
-              <AppLaunch links={links!} onDone={() => setOpen(false)} />
-              <div className="or-sep" role="separator"><span>or</span></div>
+              {mine === 0 ? <h2>Go live</h2> : <div className="panel-rule" role="separator" />}
+              {!appLive && (
+                <>
+                  <AppLaunch links={links!} onDone={() => setOpen(false)} />
+                  <div className="or-sep" role="separator"><span>or</span></div>
+                </>
+              )}
               <button className="btn btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
                 {inBrowser ? "Hide browser streaming" : "Stream from this browser"}
               </button>
             </>
           )}
-          {mine === 0 && (inBrowser || !appReady) && (
+          {showStart && (inBrowser || !appReady) && (
             <>
+            {mine > 0 && !appReady && <div className="panel-rule" role="separator" />}
             <h2>Streaming mode</h2>
             <div className="modes" role="radiogroup" aria-label="Streaming mode">
               {[...STREAM_MODES, { id: "custom", label: "Custom", detail: customMode().detail } as StreamMode].map((m) => (
