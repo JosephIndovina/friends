@@ -115,7 +115,7 @@ main.page { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: va
 @media (max-width: 860px) { .room { grid-template-columns: minmax(0, 1fr); } }
 
 .stage {
-  border-radius: var(--radius-l); overflow: hidden;
+  overflow: hidden;
   background: var(--surface); border: 1px solid var(--line);
   box-shadow: var(--stage-shadow);
 }
@@ -138,7 +138,7 @@ main.page { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: va
 .stage-info strong { color: var(--ink); font-weight: 650; }
 
 @media (max-width: 860px) {
-  .stage { margin-inline: calc(var(--gutter) * -1); border-radius: 0; border: 0; box-shadow: none; background: transparent; }
+  .stage { margin-inline: calc(var(--gutter) * -1); border: 0; box-shadow: none; background: transparent; }
   .stage-screen { background: none; }
   .stage-screen { aspect-ratio: auto; min-height: 56vw; padding: var(--space-7) var(--gutter); }
 }
@@ -621,7 +621,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 /* Full screen: the shell goes full screen and the stage is pinned over it (see Home). */
 .shell:fullscreen { overflow: hidden; }
 .player-screen.is-full { position: fixed; inset: 0; z-index: 60; width: 100vw; height: 100dvh; aspect-ratio: auto !important; border-radius: 0 !important; }
-.shell:fullscreen .dock:not(.dock-mini) { z-index: 61; border-radius: 0; }
+.shell:fullscreen .dock:not(.dock-mini) { z-index: 61; }
 .shell:fullscreen .dock-inset { border-radius: var(--radius-s); }
 .exit-full { position: fixed; top: var(--space-3); right: var(--space-3); z-index: 62; color: #fff; background: rgb(0 0 0 / 0.45); opacity: 0.6; transition: opacity 0.2s; }
 .exit-full:hover, .exit-full:focus-visible { opacity: 1; }
@@ -711,7 +711,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 /* ---------- unified player ---------- */
 .shell { position: relative; }
 .player-slot { position: absolute; inset: 0; }
-.dock { position: absolute; z-index: 10; overflow: hidden; border-radius: var(--radius-l) var(--radius-l) 0 0; background: #000; }
+.dock { position: absolute; z-index: 10; overflow: hidden; background: #000; }
 .dock-inset { border-radius: var(--radius-s); box-shadow: 0 18px 50px -18px rgb(0 0 0 / 0.7); }
 .dock-video { position: relative; width: 100%; height: 100%; }
 .dock-mini {
@@ -782,9 +782,9 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .source-strip { list-style: none; display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); overflow-x: auto; border-top: 1px solid var(--line); }
 /* Let popovers escape the stage; round the screen itself instead. */
 .stage { overflow: visible; }
-.stage-screen { border-radius: var(--radius-l) var(--radius-l) 0 0; overflow: hidden; }
+.stage-screen { overflow: hidden; }
 .info-actions { flex: none; flex-wrap: nowrap; }
-@media (max-width: 860px) { .stage-screen { border-radius: 0; } .info-actions { flex-wrap: wrap; } }
+@media (max-width: 860px) { .info-actions { flex-wrap: wrap; } }
 
 /* ---------- music view: artwork / visualizer / lyrics ---------- */
 .music-controls { position: absolute; top: var(--space-4); right: var(--space-4); z-index: 2; display: flex; gap: var(--space-2); align-items: center; }
@@ -954,7 +954,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 }
 .stage-grid { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-content: center; max-width: 100%; }
 .stage-grid .tile { flex: none; }
-.tile { position: relative; border-radius: var(--radius-m); overflow: hidden; background: #000; }
+.tile { position: relative; overflow: hidden; background: #000; }
 .tile-media { position: absolute; inset: 0; }
 .tile-media .player-slot { position: absolute; inset: 0; }
 .stream-tile { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
@@ -975,15 +975,14 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .tile-name .live-dot { margin-right: 0; }
 .tile-name svg { width: 14px; height: 14px; flex: none; opacity: 0.85; }
 .tile-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dock-passive { pointer-events: none; border-radius: var(--radius-m); }
+.dock-passive { pointer-events: none; }
 .source-strip .tile { flex: none; width: 356px; height: 200px; } /* YouTube's player must be at least 200px tall */
 
 /* Theatre: the page goes black and the stage runs edge to edge (dark tokens are forced in tokens.css). */
 @media (min-width: 861px) {
   body:has(.media-room.is-theatre) { background: #000; }
   main.page:has(.media-room.is-theatre) { max-width: none; }
-  .is-theatre .stage { margin-inline: calc(var(--gutter) * -1); border: 0; border-radius: 0; box-shadow: none; background: #000; }
-  .is-theatre .stage-screen { border-radius: 0; }
+  .is-theatre .stage { margin-inline: calc(var(--gutter) * -1); border: 0; box-shadow: none; background: #000; }
   .is-theatre .player-screen.is-grid:not(.is-full) { background: #000 !important; }
 }
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff4d5e; box-shadow: 0 0 0 3px color-mix(in oklab, #ff4d5e 25%, transparent); margin-right: 6px; vertical-align: 1px; }
@@ -1009,10 +1008,9 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .stage.has-rail { display: flex; align-items: stretch; --rail-w: 60px; }
 .stage.has-rail:has(> .rail.is-open) { --rail-w: 248px; }
 .stage-main { flex: 1; min-width: 0; }
-.stage.has-rail .stage-screen { border-top-left-radius: 0; }
 .rail {
   flex: none; width: var(--rail-w); position: relative; z-index: 20; display: flex; flex-direction: column;
-  background: var(--upholstery); border-right: 1px solid var(--line); border-radius: var(--radius-l) 0 0 var(--radius-l);
+  background: var(--upholstery); border-right: 1px solid var(--line);
 }
 .rail-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; position: sticky; top: 0; max-height: 100dvh; }
 .rail-head { display: flex; align-items: center; gap: var(--space-2); padding: 10px 12px 6px; }
