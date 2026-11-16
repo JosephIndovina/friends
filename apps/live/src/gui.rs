@@ -2,7 +2,8 @@
 //! and goes live with the saved sound and quality. Everything about the stream is controlled from here.
 
 use crate::session::{self, Quality, Session, QUALITIES};
-use livekit::prelude::{DisconnectReason, RoomEvent};
+use livekit::prelude::RoomEvent;
+use livekit::DisconnectReason;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
