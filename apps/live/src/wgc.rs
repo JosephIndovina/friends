@@ -15,6 +15,7 @@ use windows_capture::settings::{
     ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings, MinimumUpdateIntervalSettings,
     SecondaryWindowSettings, Settings,
 };
+use windows_capture::graphics_capture_picker::GraphicsCapturePicker;
 use windows_capture::window::Window;
 
 pub struct Flags {
@@ -87,6 +88,20 @@ impl GraphicsCaptureApiHandler for Handler {
         self.ended.store(true, Ordering::Relaxed);
         Ok(())
     }
+}
+
+/// The system's "choose a window" dialog. It says only the picked item's title, so the window is found by title
+/// (that gives its process, for the sound). Must run on a thread that can block.
+pub fn pick() -> Result<crate::winwin::WinInfo> {
+    let picked = match GraphicsCapturePicker::pick_item() {
+        Ok(Some(p)) => p,
+        Ok(None) => return Err(anyhow!("capture cancelled")),
+        Err(e) => return Err(anyhow!("capture cancelled ({e})")),
+    };
+    let title = picked.item.DisplayName().map(|t| t.to_string()).unwrap_or_default();
+    let size = picked.size().ok();
+    crate::winwin::by_title(&title, size)
+        .ok_or_else(|| anyhow!("pick a window: streaming a whole screen isn't available on Windows yet"))
 }
 
 /// A running capture; dropping it stops it.

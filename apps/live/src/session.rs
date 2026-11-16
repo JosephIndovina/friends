@@ -70,8 +70,8 @@ pub fn encoder(id: &str) -> VideoEncoderBackend {
 pub struct Options {
     /// The last window choice, to reuse without asking (a Wayland restore token; on Windows, program and title).
     pub restore: Option<String>,
-    /// Windows: a window just chosen from the list (its handle), which wins over `restore`.
-    pub pick: Option<isize>,
+    /// Ask with the system's chooser (Start streaming on the site, Change window), rather than reuse `restore`.
+    pub ask: bool,
     pub fps: u32,
     pub height: u32,
     pub kbps: u64,
@@ -84,7 +84,7 @@ impl Options {
     pub fn from_quality(q: &Quality, restore: Option<String>) -> Self {
         Options {
             restore,
-            pick: None,
+            ask: true,
             fps: q.fps,
             height: q.height,
             kbps: q.kbps,
@@ -138,11 +138,14 @@ impl Session {
         #[cfg(target_os = "linux")]
         let (window, restore_token, is_window) = (picked.title.clone(), picked.restore_token.clone(), picked.is_window);
 
-        // Windows: the app lists windows itself, so the choice is a window handle (just picked) or the remembered
-        // program and title; the sound is that window's process.
+        // Windows: the system's chooser, or the remembered program and title; the sound is that window's process.
         #[cfg(windows)]
         let (video, width, height, window, restore_token, is_window, target) = {
-            let target = crate::winwin::find(o.pick, o.restore.as_deref())?;
+            let target = if o.ask {
+                tokio::task::spawn_blocking(crate::wgc::pick).await??
+            } else {
+                crate::winwin::find(o.restore.as_deref())?
+            };
             let slot = video_slot.clone();
             let (fps, max_h, hwnd) = (o.fps, o.height, target.hwnd());
             let (c, w, h) = tokio::task::spawn_blocking(move || crate::wgc::start(hwnd, fps, max_h, slot)).await??;

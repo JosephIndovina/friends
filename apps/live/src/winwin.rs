@@ -50,13 +50,27 @@ pub fn list() -> Vec<WinInfo> {
     Window::enumerate().map(|ws| ws.iter().filter_map(info).collect()).unwrap_or_default()
 }
 
-/// The window to stream: the one just picked, or else the remembered one (same program and title, or failing
-/// that, the program's frontmost window).
-pub fn find(pick: Option<isize>, remembered: Option<&str>) -> Result<WinInfo> {
+/// The window the system chooser returned, which only says its title (and size): the matching open window.
+pub fn by_title(title: &str, size: Option<(i32, i32)>) -> Option<WinInfo> {
     let all = list();
-    if let Some(h) = pick {
-        return all.into_iter().find(|w| w.hwnd() == h).ok_or_else(|| anyhow!("that window is gone; choose another"));
+    let same: Vec<&WinInfo> = all.iter().filter(|w| w.title == title).collect();
+    if same.len() > 1 {
+        if let Some((sw, sh)) = size {
+            // Several windows with one title: the one whose size matches.
+            if let Some(w) = same.iter().find(|w| {
+                let win = Window::from_raw_hwnd(w.hwnd() as *mut std::ffi::c_void);
+                win.width().ok() == Some(sw) && win.height().ok() == Some(sh)
+            }) {
+                return Some((*w).clone());
+            }
+        }
     }
+    same.first().map(|w| (*w).clone())
+}
+
+/// The remembered window: same program and title, or failing that, the program's frontmost window.
+pub fn find(remembered: Option<&str>) -> Result<WinInfo> {
+    let all = list();
     let (exe, title) = remembered.and_then(|r| r.split_once('\t')).ok_or_else(|| anyhow!("choose a window to stream"))?;
     all.iter()
         .find(|w| w.exe.eq_ignore_ascii_case(exe) && w.title == title)

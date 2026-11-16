@@ -78,8 +78,6 @@ pub(crate) struct Inner {
     starting: bool,
     error: Option<String>,
     settings: Settings,
-    /// Windows: a window just chosen from the list, used by the next Go live.
-    pick: Option<isize>,
 }
 
 pub(crate) type Shared = Arc<Mutex<Inner>>;
@@ -95,46 +93,9 @@ struct View {
     error: Option<String>,
     settings: Settings,
     qualities: &'static [Quality],
-    /// Windows: the windows that can be streamed (the app lists them; there's no system picker).
-    windows: Option<Vec<WindowChoice>>,
     codecs: &'static [(&'static str, &'static str)],
     encoders: &'static [(&'static str, &'static str)],
     picker: bool,
-}
-
-#[derive(Serialize, Clone, PartialEq)]
-pub(crate) struct WindowChoice {
-    pub id: String,
-    pub title: String,
-    pub app: String,
-    /// The window being streamed, or the one that will be next Go live.
-    pub current: bool,
-}
-
-/// The streamable windows, marking the current one (Windows only; None elsewhere).
-fn window_choices(i: &Inner) -> Option<Vec<WindowChoice>> {
-    #[cfg(windows)]
-    {
-        let list = crate::winwin::list();
-        let remembered = i.settings.restore_token.as_deref();
-        // The remembered window may match several; mark only the first.
-        let mut marked = false;
-        return Some(
-            list.into_iter()
-                .map(|w| {
-                    let current = !marked
-                        && (i.pick == Some(w.hwnd()) || (i.pick.is_none() && remembered == Some(w.remember().as_str())));
-                    marked |= current;
-                    WindowChoice { id: w.id.clone(), app: w.app_name(), title: w.title, current }
-                })
-                .collect(),
-        );
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = i;
-        None
-    }
 }
 
 #[derive(Serialize, Clone)]
@@ -159,7 +120,6 @@ fn view(i: &Inner) -> View {
         error: i.error.clone(),
         settings: i.settings.clone(),
         qualities: QUALITIES,
-        windows: window_choices(i),
         codecs: crate::tray::CODECS,
         encoders: crate::tray::ENCODERS,
         picker: crate::video::needs_os_picker(),
@@ -200,7 +160,6 @@ fn tray_state(i: &Inner) -> crate::tray::TrayState {
         codec: i.settings.codec.clone(),
         encoder: i.settings.encoder.clone(),
         start_at_login: i.settings.start_at_login,
-        windows: window_choices(i).unwrap_or_default(),
     }
 }
 
@@ -258,37 +217,8 @@ async fn change_window(app: AppHandle, shared: State<'_, Shared>) -> Result<(), 
     Ok(())
 }
 
-#[tauri::command]
-async fn choose_window(app: AppHandle, shared: State<'_, Shared>, id: String) -> Result<(), ()> {
-    choose_window_now(app, shared.inner().clone(), id.parse().unwrap_or(0)).await;
-    Ok(())
-}
-
-/// Windows: stream this window. Switches to it if live; goes live with it if connected; otherwise it's used by
-/// the next Go live.
-pub(crate) async fn choose_window_now(app: AppHandle, shared: Shared, hwnd: isize) {
-    let (live, connected) = {
-        let mut i = shared.lock().await;
-        i.pick = Some(hwnd);
-        i.error = None;
-        (i.live.take(), i.link.is_some())
-    };
-    if let Some(s) = live {
-        s.stop().await;
-    }
-    emit(&app, &shared).await;
-    if connected {
-        start_live(app, shared).await;
-    }
-}
-
-/// Forget the remembered window and ask again; restarts the stream if it's live.
-/// (On Windows the window list in the tray and the app window is how you choose; this just shows it.)
+/// Forget the remembered window; if live, ask (the system's chooser) and switch to the new choice.
 pub(crate) async fn change_window_now(app: AppHandle, shared: Shared) {
-    if cfg!(windows) {
-        focus(&app);
-        return;
-    }
     let live = {
         let mut i = shared.lock().await;
         i.settings.restore_token = None;
@@ -302,7 +232,7 @@ pub(crate) async fn change_window_now(app: AppHandle, shared: Shared) {
     }
     emit(&app, &shared).await;
     if was_live {
-        start_live(app, shared).await;
+        start_live_with(app, shared, true).await;
     }
 }
 
@@ -368,10 +298,11 @@ async fn start_live_with(app: AppHandle, shared: Shared, ask: bool) {
     };
     emit(&app, &shared).await;
 
-    let pick = shared.lock().await.pick;
+    // Nothing remembered means asking too.
+    let ask = ask || settings.restore_token.is_none();
     let restore = if ask { None } else { settings.restore_token.clone() };
     let mut opts = session::Options::from_quality(session::quality(&settings.quality), restore);
-    opts.pick = pick;
+    opts.ask = ask;
     opts.codec = session::codec(&settings.codec);
     opts.encoder = session::encoder(&settings.encoder);
     let result = Session::start(&url, &token, opts).await;
@@ -382,7 +313,6 @@ async fn start_live_with(app: AppHandle, shared: Shared, ask: bool) {
         Ok((s, mut events)) => {
             // Remember the window so the next Go live doesn't ask.
             i.settings.restore_token = s.restore_token.clone();
-            i.pick = None;
             i.settings.window = s.window.clone();
             save_settings_file(&i.settings);
             i.error = match (s.is_window, &s.window) {
@@ -423,10 +353,6 @@ async fn start_live_with(app: AppHandle, shared: Shared, ask: bool) {
         Err(e) => {
             let msg = format!("{e:#}");
             log::warn!("go live failed: {msg}");
-            // Windows: nothing chosen yet (or it's gone): show the window list.
-            if cfg!(windows) && msg.contains("choose") {
-                focus(&app);
-            }
             i.error = Some(if msg.contains("cancelled") {
                 "Nothing was picked to share.".into()
             } else if msg.contains("join") {
@@ -508,23 +434,14 @@ async fn handle_link(app: AppHandle, shared: Shared, link: url::Url) {
     }
     // Start streaming on the site always asks what to stream, even when live (then the choice replaces the stream).
     let go = i.link.is_some() && i.error.is_none() && !i.starting;
-    if go && cfg!(windows) {
-        // No system picker on Windows: the window list is the choice; picking a window goes live (or switches).
-        i.pick = None;
-        i.error = Some("Choose the window to stream.".into());
-    }
-    let previous = if go && !cfg!(windows) { i.live.take() } else { None };
+    let previous = if go { i.live.take() } else { None };
     drop(i);
     if let Some(s) = previous {
         s.stop().await;
     }
     emit(&app, &shared).await;
     if go {
-        if cfg!(windows) {
-            focus(&app);
-        } else {
-            start_live_with(app, shared, true).await;
-        }
+        start_live_with(app, shared, true).await;
     }
 }
 
@@ -551,12 +468,40 @@ fn sync_login_start(app: &AppHandle, on: bool) {
     }
 }
 
+/// After an update the running app is still the old code (Linux shows its program as "… (deleted)"). Then a new
+/// launch is passed to the new version, started a moment after this one exits so it doesn't hand it straight back.
+fn replaced_by_update(argv: &[String]) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(exe) = std::env::current_exe() else { return false };
+        let exe = exe.to_string_lossy().to_string();
+        let Some(path) = exe.strip_suffix(" (deleted)") else { return false };
+        if !std::path::Path::new(path).exists() {
+            return false;
+        }
+        let args: Vec<String> = argv.iter().skip(1).cloned().collect();
+        let script = "sleep 1; exec \"$0\" \"$@\"";
+        let spawned = std::process::Command::new("sh").arg("-c").arg(script).arg(path).args(args).spawn().is_ok();
+        log::info!("updated on disk; handing over to the new version");
+        return spawned;
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = argv;
+        false
+    }
+}
+
 pub fn run() {
     let shared: Shared = Arc::new(Mutex::new(Inner { settings: load_settings(), ..Default::default() }));
     tauri::Builder::default()
         // A second launch (another Go live click) hands its link to the running app instead.
         // Opened again from the app grid (no link): show the window. With a link, the deep-link plugin handles it.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if replaced_by_update(&argv) {
+                app.exit(0);
+                return;
+            }
             if !argv.iter().any(|a| a.starts_with("friends://")) {
                 focus(app);
             }
@@ -565,7 +510,7 @@ pub fn run() {
         // Started at login with --hidden: straight to the tray.
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(shared.clone())
-        .invoke_handler(tauri::generate_handler![get_state, save_settings, save_video, change_window, choose_window, go_live, stop, open_site])
+        .invoke_handler(tauri::generate_handler![get_state, save_settings, save_video, change_window, go_live, stop, open_site])
         .setup(move |app| {
             // Installed builds register friends:// at install time (the .deb's desktop entry, the Windows
             // installer). A bare binary run from elsewhere registers itself, but never on top of an installed copy:
@@ -595,17 +540,6 @@ pub fn run() {
                     let (Ok(mut term), Ok(mut int)) = (signal(SignalKind::terminate()), signal(SignalKind::interrupt())) else { return };
                     tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
                     h.exit(0);
-                });
-            }
-            // Windows: keep the tray's window list current (it's only rebuilt when the list actually changes).
-            #[cfg(windows)]
-            {
-                let (h, s) = (app.handle().clone(), shared.clone());
-                tauri::async_runtime::spawn(async move {
-                    loop {
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                        emit(&h, &s).await;
-                    }
                 });
             }
             // Lives in the tray; the window opens from there (or when the tray isn't available).

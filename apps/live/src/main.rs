@@ -194,8 +194,8 @@ async fn cli(c: Cli) -> Result<()> {
 
 async fn stream(a: StreamArgs) -> Result<()> {
     let opts = session::Options {
-        restore: a.restore,
-        pick: None,
+        restore: a.restore.clone(),
+        ask: a.restore.is_none(),
         fps: a.fps,
         height: a.height,
         kbps: a.kbps,
