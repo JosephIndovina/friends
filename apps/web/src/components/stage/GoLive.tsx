@@ -206,6 +206,8 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
   // While live, the ways to start another stream stay hidden until Add a stream. Closing the panel hides them again.
   const [adding, setAdding] = useState(false);
   const showStart = mine === 0 || adding;
+  // The browser's quality modes need the room; otherwise the panel stays narrow.
+  const showModes = showStart && (inBrowser || !appReady);
   useEffect(() => {
     if (!open) setAdding(false);
   }, [open]);
@@ -264,7 +266,7 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
         </button>
       )}
       {open && (
-        <div className={`stack-panel golive-panel${appReady && !inBrowser ? " is-compact" : ""}${mine ? " has-streams" : ""}`} role="dialog" aria-label="Go live">
+        <div className={`stack-panel golive-panel${showModes ? "" : " is-compact"}`} role="dialog" aria-label="Go live">
           {/* While you're live the panel is your streams; Add a stream opens the ways to start another below. */}
           {mine > 0 && <MyStreams cast={cast} adding={adding} setAdding={setAdding} />}
           {showStart && appReady && (
@@ -281,7 +283,7 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
               </button>
             </>
           )}
-          {showStart && (inBrowser || !appReady) && (
+          {showModes && (
             <>
             {mine > 0 && !appReady && <div className="panel-rule" role="separator" />}
             <h2>Streaming mode</h2>
