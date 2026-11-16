@@ -266,7 +266,7 @@ export function useCast() {
 }
 
 /** A stream's picture. Attaching sizes the element, which tells LiveKit which quality layer to send. */
-export function StreamVideo({ stream, className }: { stream: Stream; className?: string }) {
+export function StreamVideo({ stream, className, stats }: { stream: Stream; className?: string; stats?: "full" | "compact" }) {
   const el = useRef<HTMLVideoElement>(null);
   const track = stream.video.track;
   useEffect(() => {
@@ -275,7 +275,122 @@ export function StreamVideo({ stream, className }: { stream: Stream; className?:
     const v = el.current;
     return () => void track.detach(v);
   }, [track]);
-  return track ? <video ref={el} className={className} autoPlay playsInline muted /> : <div className={`${className ?? ""} stream-waiting`}>Connecting…</div>;
+  if (!track) return <div className={`${className ?? ""} stream-waiting`}>Connecting…</div>;
+  return (
+    <>
+      <video ref={el} className={className} autoPlay playsInline muted />
+      {stats && <StreamStats stream={stream} compact={stats === "compact"} />}
+    </>
+  );
+}
+
+type Stat = Record<string, unknown> & { id: string; type: string; timestamp: number };
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const rate = (kbps: number | null) => (kbps == null ? "–" : kbps >= 1000 ? `${(kbps / 1000).toFixed(1)} Mbps` : `${Math.round(kbps)} kbps`);
+const codecOf = (report: Map<string, Stat>, s: Stat | undefined) => {
+  const c = s && report.get(s.codecId as string);
+  return c ? String(c.mimeType).split("/")[1] ?? "" : "";
+};
+/** The connection's active candidate pair (round trip and the bandwidth estimate live there). */
+function pairOf(report: Map<string, Stat>): Stat | undefined {
+  const all = [...report.values()];
+  const transport = all.find((s) => s.type === "transport" && s.selectedCandidatePairId);
+  return (transport && report.get(transport.selectedCandidatePairId as string))
+    ?? all.find((s) => s.type === "candidate-pair" && s.nominated && s.state === "succeeded");
+}
+
+/** Live connection numbers for one stream, read from WebRTC stats once a second. */
+function useStreamStats(stream: Stream): [string, string][] {
+  const [rows, setRows] = useState<[string, string][]>([]);
+  const video = stream.video.track;
+  const audio = stream.mine && !stream.local ? null : stream.audio?.track ?? null;
+  useEffect(() => {
+    if (!video) return;
+    const prev = new Map<string, { bytes: number; t: number }>();
+    // kbps from the change in a byte counter since the last read.
+    const kbps = (key: string, bytes: unknown, t: number) => {
+      const b = num(bytes);
+      if (b == null) return null;
+      const p = prev.get(key);
+      prev.set(key, { bytes: b, t });
+      return p && t > p.t ? ((b - p.bytes) * 8) / (t - p.t) : null;
+    };
+    let alive = true;
+    const read = async () => {
+      const [vr, ar] = await Promise.all([video.getRTCStatsReport(), audio?.getRTCStatsReport()]).catch(() => [undefined, undefined]);
+      if (!alive || !vr) return;
+      const v = vr as unknown as Map<string, Stat>;
+      const a = ar as unknown as Map<string, Stat> | undefined;
+      const out: [string, string][] = [];
+      const pair = pairOf(v);
+      const rtt = num(pair?.currentRoundTripTime);
+      if (stream.local) {
+        // Sending: one line per simulcast layer, biggest first.
+        const layers = [...v.values()].filter((s) => s.type === "outbound-rtp" && s.kind === "video")
+          .sort((x, y) => (num(y.frameWidth) ?? 0) - (num(x.frameWidth) ?? 0));
+        for (const l of layers) {
+          if (!num(l.frameWidth)) continue;
+          out.push([`Layer ${l.rid ?? ""}`.trim(), `${l.frameWidth}×${l.frameHeight} · ${Math.round(num(l.framesPerSecond) ?? 0)} fps · ${rate(kbps(l.id, l.bytesSent, l.timestamp))}`]);
+        }
+        const top = layers[0];
+        if (top) {
+          out.push(["Codec", [codecOf(v, top), top.encoderImplementation].filter(Boolean).join(" · ") || "–"]);
+          const why = top.qualityLimitationReason as string | undefined;
+          out.push(["Limited by", !why || why === "none" ? "Nothing" : why === "cpu" ? "CPU" : why === "bandwidth" ? "Upload speed" : why]);
+        }
+        const up = num(pair?.availableOutgoingBitrate);
+        if (up != null) out.push(["Upload estimate", rate(up / 1000)]);
+      } else {
+        const s = [...v.values()].find((x) => x.type === "inbound-rtp" && x.kind === "video");
+        if (s) {
+          out.push(["Resolution", num(s.frameWidth) ? `${s.frameWidth}×${s.frameHeight}` : "–"]);
+          out.push(["Frame rate", `${Math.round(num(s.framesPerSecond) ?? 0)} fps`]);
+          out.push(["Video", [rate(kbps(s.id, s.bytesReceived, s.timestamp)), codecOf(v, s)].filter(Boolean).join(" · ")]);
+          const got = num(s.packetsReceived) ?? 0;
+          const lost = num(s.packetsLost) ?? 0;
+          out.push(["Packet loss", got + lost ? `${((lost / (got + lost)) * 100).toFixed(2)}%` : "–"]);
+          out.push(["Dropped frames", `${num(s.framesDropped) ?? 0} of ${num(s.framesReceived) ?? num(s.framesDecoded) ?? 0}`]);
+          const jitter = num(s.jitter);
+          if (jitter != null) out.push(["Jitter", `${Math.round(jitter * 1000)} ms`]);
+          if (s.decoderImplementation) out.push(["Decoder", String(s.decoderImplementation)]);
+        }
+      }
+      if (rtt != null) out.push(["Round trip", `${Math.round(rtt * 1000)} ms`]);
+      // Sound: whether it exists, arrives, and carries any signal.
+      if (!stream.audio) out.push(["Audio", "None shared"]);
+      else if (!a) out.push(["Audio", stream.local ? "Sending" : "Not received"]);
+      else {
+        const s = [...a.values()].find((x) => (x.type === "inbound-rtp" || x.type === "outbound-rtp") && x.kind === "audio");
+        const level = num(s?.audioLevel) ?? num([...a.values()].find((x) => x.type === "media-source" && x.kind === "audio")?.audioLevel);
+        out.push(["Audio", s ? [rate(kbps(s.id, s.bytesReceived ?? s.bytesSent, s.timestamp)), codecOf(a, s), level != null ? `level ${Math.round(level * 100)}%` : ""].filter(Boolean).join(" · ") : "Connecting"]);
+      }
+      if (stream.mode) out.push(["Sent as", stream.mode]);
+      setRows(out);
+    };
+    void read();
+    const t = setInterval(read, 1000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [video, audio, stream.local, stream.audio, stream.mode]);
+  return rows;
+}
+
+const COMPACT = new Set(["Resolution", "Frame rate", "Video", "Packet loss", "Audio"]);
+
+/** Stats overlay for a stream: resolution, frame rate, bitrate, loss and sound. */
+function StreamStats({ stream, compact }: { stream: Stream; compact: boolean }) {
+  const rows = useStreamStats(stream);
+  const shown = compact ? rows.filter(([k]) => COMPACT.has(k) || k.startsWith("Layer")) : rows;
+  if (!shown.length) return null;
+  return (
+    <dl className={`stream-stats${compact ? " is-compact" : ""}`} aria-label="Stream stats">
+      {shown.map(([k, val]) => (
+        <div key={k}><dt>{k}</dt><dd>{val}</dd></div>
+      ))}
+    </dl>
+  );
 }
 
 /** A stream's sound, with this viewer's own volume and mute. */
@@ -295,5 +410,15 @@ export function StreamAudio({ stream }: { stream: Stream }) {
     el.current.muted = cast.muted.has(stream.id) || player.blocked;
     el.current.volume = (cast.volume[stream.id] ?? 100) / 100;
   });
+  // Browsers refuse sound until the viewer has clicked the page. If that happens, say so, and play
+  // again once the first click unblocks it (otherwise the element stays paused and silent).
+  const { blocked, setBlocked } = player;
+  useEffect(() => {
+    const a = el.current;
+    if (!a || !track || blocked || !a.paused) return;
+    void a.play().catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === "NotAllowedError") setBlocked(true);
+    });
+  }, [track, blocked, setBlocked]);
   return track ? <audio ref={el} autoPlay /> : null;
 }

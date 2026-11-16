@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Maximize, Minimize, RectangleHorizontal, Pause, Play, Square, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import { Activity, Maximize, Minimize, RectangleHorizontal, Pause, Play, Square, SkipForward, Volume2, VolumeX, X } from "lucide-react";
 import { SCREENS_MAX, SEEKABLE, type Playback, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
@@ -46,6 +46,7 @@ export function Home({ session }: { session: Session }) {
   const [preset, setPreset] = usePref<Preset>("vizPreset2", "alchemy");
   const [theatrePref, setTheatrePref] = usePref<"on" | "off">("theatre", "off");
   const [railOpen, setRailOpen] = usePref<"on" | "off">("railOpen2", "on");
+  const [statsPref, setStatsPref] = usePref<"on" | "off">("streamStats", "off");
   const [tab, setTab] = usePref<"queue" | "recent" | "playlists">("sideTab", "queue");
   const state = useMediaState();
   const now = state?.now ?? null;
@@ -171,7 +172,9 @@ export function Home({ session }: { session: Session }) {
     if (othersLive) setTheatreOverride(next);
     else setTheatrePref(next);
   };
-  const own = cast.streams.filter((st) => st.mine).map((st) => ({ id: st.id, label: ownName(st.id), detail: st.mode ?? "Live", preview: <StreamVideo stream={st} className="rail-preview-video" /> }));
+  const own = cast.streams.filter((st) => st.mine).map((st) => ({ id: st.id, label: ownName(st.id), detail: [st.mode ?? "Live", !st.audio && "No sound"].filter(Boolean).join(" · "), preview: <StreamVideo stream={st} className="rail-preview-video" /> }));
+  const streamsOnStage = cast.streams.some((st) => visible.some((x) => x.id === st.id));
+  const showStats = statsPref === "on" && streamsOnStage;
   const showRail = sources.length > 0 || (cast.canStream && cast.supported);
 
   // Grid sizing: tiles as large as the stage allows (the window height, or the screen in full screen).
@@ -210,7 +213,7 @@ export function Home({ session }: { session: Session }) {
     }
     if (screens.some((sc) => sc.item.id === x.id)) return <div ref={screenRef(x.id)} className="player-slot player-slot-passive" />;
     const st = cast.streams.find((c) => c.id === x.id);
-    return st ? <StreamVideo stream={st} className="stream-tile" /> : null;
+    return st ? <StreamVideo stream={st} className="stream-tile" stats={showStats ? "compact" : undefined} /> : null;
   };
 
   return (
@@ -269,7 +272,7 @@ export function Home({ session }: { session: Session }) {
                   </div>
                 </div>
               )}
-              {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" />}
+              {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" stats={showStats ? "full" : undefined} />}
               {focusedScreen && <div key={focusedScreen.item.id} ref={screenRef(focusedScreen.item.id)} className="player-slot" />}
               {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
             </div>
@@ -325,7 +328,7 @@ export function Home({ session }: { session: Session }) {
               {focusedStream ? (
                 <div className="now-meta">
                   <strong className="now-title">{focusedStream.mine ? ownName(focusedStream.id) : focusedStream.label}</strong>
-                  <span><span className="live-dot" aria-hidden />Live{focusedStream.mode ? ` · ${focusedStream.mode}` : ""}</span>
+                  <span><span className="live-dot" aria-hidden />{["Live", focusedStream.mode, !focusedStream.audio && "No sound"].filter(Boolean).join(" · ")}</span>
                 </div>
               ) : focusedScreen ? (
                 <div className="now-meta">
@@ -349,7 +352,10 @@ export function Home({ session }: { session: Session }) {
               <div className="info-actions">
                 {focusedStream ? (
                   <>
-                    {!focusedStream.mine && (
+                    {!focusedStream.mine && focusedStream.audio && p.blocked && !cast.muted.has(focusedStream.id) && (
+                      <button className="btn btn-primary btn-s sound-on" onClick={() => p.setBlocked(false)}><Volume2 aria-hidden /><span className="sound-label">Click anywhere for sound</span></button>
+                    )}
+                    {!focusedStream.mine && !(focusedStream.audio && p.blocked && !cast.muted.has(focusedStream.id)) && (
                       <>
                         <button className="icon-btn" aria-label={cast.muted.has(focusedStream.id) ? "Unmute stream" : "Mute stream"} onClick={() => cast.setMuted(focusedStream.id, !cast.muted.has(focusedStream.id))}>
                           {cast.muted.has(focusedStream.id) ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
@@ -376,6 +382,10 @@ export function Home({ session }: { session: Session }) {
                   </>
                 ) : null}
                 <div className="stage-buttons">
+                  {streamsOnStage && (
+                    <button className="icon-btn" aria-label="Stream stats" aria-pressed={showStats} data-tip={showStats ? "Hide stream stats" : "Stream stats"}
+                      onClick={() => setStatsPref(showStats ? "off" : "on")}><Activity aria-hidden /></button>
+                  )}
                   <button className="icon-btn theatre-btn" aria-label="Theatre mode" aria-pressed={theatre === "on"} data-tip={theatre === "on" ? "Exit theatre mode" : "Theatre mode"}
                     onClick={toggleTheatre}><RectangleHorizontal aria-hidden /></button>
                   {sources.length > 0 && <button className="icon-btn" aria-label="Full screen" data-tip="Full screen" onClick={toggleFull}><Maximize aria-hidden /></button>}

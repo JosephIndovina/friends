@@ -109,6 +109,7 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
               </label>
             </div>
           )}
+          <p className="block-note">To include sound, share a whole screen or a browser tab and turn on sharing audio in the picker. Browsers can’t capture sound from a single window, and Firefox and Safari can’t capture it at all.</p>
           <p className="block-note">Your upload speed needs to be above the bitrate. Viewers on slower connections automatically get a lower-quality copy.</p>
           {error && <p className="field-error" role="alert">{error}</p>}
           <button className="btn btn-primary" disabled={busy} onClick={start}><Radio aria-hidden />{busy ? "Choose what to share…" : "Choose screen and go live"}</button>

@@ -1018,6 +1018,18 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .stream-waiting { display: grid; place-items: center; color: rgb(255 255 255 / 0.7); font-size: var(--step--1); background: #000; }
 .stream-volume { width: 96px; flex: none; }
 .player-screen:has(.stream-main) { background: #000; }
+/* Stream stats overlay: over the picture, top-left, never in the way of clicks. */
+.stream-stats {
+  position: absolute; top: 10px; left: 10px; z-index: 2; margin: 0; padding: 8px 10px; max-width: calc(100% - 20px);
+  display: grid; gap: 2px; pointer-events: none; border-radius: 6px;
+  background: rgb(0 0 0 / 0.72); color: #fff;
+  font: 500 12px/1.35 ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums;
+}
+.stream-stats > div { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; }
+.stream-stats dt { color: rgb(255 255 255 / 0.6); }
+.stream-stats dd { margin: 0; overflow-wrap: anywhere; }
+.stream-stats.is-compact { top: 6px; left: 6px; padding: 5px 7px; font-size: 11px; }
+.stream-stats.is-compact > div { grid-template-columns: 7.5em 1fr; }
 
 /* ---------- sources rail ---------- */
 /* A column the full height of the stage card, beside the stage (never over it). Expanded by default. */
