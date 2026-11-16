@@ -386,7 +386,8 @@ function useStreamStats(stream: Stream): [string, string][] {
       if (rtt != null) out.push(["Round trip", `${Math.round(rtt * 1000)} ms`]);
       // Sound: whether it exists, arrives, and carries any signal.
       if (!stream.audio) out.push(["Audio", "None shared"]);
-      else if (!a) out.push(["Audio", stream.local ? "Sending" : "Not received"]);
+      // Your own stream from another tab or the app has sound, but it's never fetched here: it would echo.
+      else if (!a) out.push(["Audio", stream.local ? "Sending" : stream.mine ? "Shared · not played back to you" : "Not received"]);
       else {
         const s = [...a.values()].find((x) => (x.type === "inbound-rtp" || x.type === "outbound-rtp") && x.kind === "audio");
         const level = num(s?.audioLevel) ?? num([...a.values()].find((x) => x.type === "media-source" && x.kind === "audio")?.audioLevel);

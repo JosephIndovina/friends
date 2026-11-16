@@ -47,6 +47,13 @@ function render() {
   q.value = s.settings.quality;
   q.disabled = Boolean(s.live) || s.starting; // takes effect from the next Go live
   $("auto").checked = s.settings.autoStart;
+
+  for (const [id, list, value] of [["codec", s.codecs, s.settings.codec], ["encoder", s.encoders, s.settings.encoder]]) {
+    const sel = $(id);
+    if (!sel.options.length) for (const [v, label] of list) sel.add(new Option(label, v));
+    sel.value = value;
+    sel.disabled = Boolean(s.live) || s.starting;
+  }
 }
 
 const save = () => invoke("save_settings", { quality: $("quality").value, autoStart: $("auto").checked });
@@ -56,6 +63,9 @@ $("site").addEventListener("click", () => invoke("open_site"));
 $("change").addEventListener("click", () => invoke("change_window"));
 $("quality").addEventListener("change", save);
 $("auto").addEventListener("change", save);
+const saveVideo = () => invoke("save_video", { codec: $("codec").value, encoder: $("encoder").value });
+$("codec").addEventListener("change", saveVideo);
+$("encoder").addEventListener("change", saveVideo);
 
 listen("state", (e) => {
   state = e.payload;

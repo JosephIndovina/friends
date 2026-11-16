@@ -49,6 +49,24 @@ pub fn quality(id: &str) -> &'static Quality {
     QUALITIES.iter().find(|q| q.id == id).unwrap_or(&QUALITIES[0])
 }
 
+pub fn codec(id: &str) -> VideoCodec {
+    match id {
+        "h264" => VideoCodec::H264,
+        "vp9" => VideoCodec::VP9,
+        "av1" => VideoCodec::AV1,
+        _ => VideoCodec::VP8,
+    }
+}
+
+/// "hardware" asks for the graphics card's encoder; WebRTC falls back to the processor when it has none for the codec.
+pub fn encoder(id: &str) -> VideoEncoderBackend {
+    match id {
+        "hardware" => VideoEncoderBackend::Hardware,
+        "software" => VideoEncoderBackend::Software,
+        _ => VideoEncoderBackend::Auto,
+    }
+}
+
 pub struct Options {
     /// The last window choice, to reuse without asking (Wayland restore token).
     pub restore: Option<String>,

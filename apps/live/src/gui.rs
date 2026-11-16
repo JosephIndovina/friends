@@ -17,6 +17,10 @@ const DEFAULT_SERVER: &str = "https://friends.indovina.dev";
 #[serde(default, rename_all = "camelCase")]
 struct Settings {
     quality: String,
+    /// vp8, h264, vp9 or av1.
+    codec: String,
+    /// auto, hardware or software.
+    encoder: String,
     /// Go live as soon as the site opens the app.
     auto_start: bool,
     /// The last shared window, reused without asking (Wayland restore token) until "Change window".
@@ -27,7 +31,14 @@ struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { quality: QUALITIES[0].id.into(), auto_start: true, restore_token: None, window: None }
+        Settings {
+            quality: QUALITIES[0].id.into(),
+            codec: "vp8".into(),
+            encoder: "auto".into(),
+            auto_start: true,
+            restore_token: None,
+            window: None,
+        }
     }
 }
 
@@ -82,6 +93,8 @@ struct View {
     error: Option<String>,
     settings: Settings,
     qualities: &'static [Quality],
+    codecs: &'static [(&'static str, &'static str)],
+    encoders: &'static [(&'static str, &'static str)],
     picker: bool,
 }
 
@@ -107,6 +120,8 @@ fn view(i: &Inner) -> View {
         error: i.error.clone(),
         settings: i.settings.clone(),
         qualities: QUALITIES,
+        codecs: crate::tray::CODECS,
+        encoders: crate::tray::ENCODERS,
         picker: crate::video::needs_os_picker(),
     }
 }
@@ -142,6 +157,8 @@ fn tray_state(i: &Inner) -> crate::tray::TrayState {
         connected: i.link.is_some(),
         has_window: i.settings.restore_token.is_some(),
         quality: i.settings.quality.clone(),
+        codec: i.settings.codec.clone(),
+        encoder: i.settings.encoder.clone(),
         auto_start: i.settings.auto_start,
     }
 }
@@ -166,6 +183,27 @@ pub(crate) async fn set_settings(app: AppHandle, shared: Shared, quality: Option
         }
         if let Some(a) = auto_start {
             i.settings.auto_start = a;
+        }
+        save_settings_file(&i.settings);
+    }
+    emit(&app, &shared).await;
+}
+
+#[tauri::command]
+async fn save_video(app: AppHandle, shared: State<'_, Shared>, codec: String, encoder: String) -> Result<(), ()> {
+    set_video(app, shared.inner().clone(), Some(codec), Some(encoder)).await;
+    Ok(())
+}
+
+/// Codec and encoder, used from the next Go live.
+pub(crate) async fn set_video(app: AppHandle, shared: Shared, codec: Option<String>, encoder: Option<String>) {
+    {
+        let mut i = shared.lock().await;
+        if let Some(c) = codec.filter(|c| crate::tray::CODECS.iter().any(|(id, _)| id == c)) {
+            i.settings.codec = c;
+        }
+        if let Some(e) = encoder.filter(|e| crate::tray::ENCODERS.iter().any(|(id, _)| id == e)) {
+            i.settings.encoder = e;
         }
         save_settings_file(&i.settings);
     }
@@ -254,7 +292,9 @@ pub(crate) async fn start_live(app: AppHandle, shared: Shared) {
     };
     emit(&app, &shared).await;
 
-    let opts = session::Options::from_quality(session::quality(&settings.quality), settings.restore_token.clone());
+    let mut opts = session::Options::from_quality(session::quality(&settings.quality), settings.restore_token.clone());
+    opts.codec = session::codec(&settings.codec);
+    opts.encoder = session::encoder(&settings.encoder);
     let result = Session::start(&url, &token, opts).await;
 
     let mut i = shared.lock().await;
@@ -410,7 +450,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .manage(shared.clone())
-        .invoke_handler(tauri::generate_handler![get_state, save_settings, change_window, go_live, stop, open_site])
+        .invoke_handler(tauri::generate_handler![get_state, save_settings, save_video, change_window, go_live, stop, open_site])
         .setup(move |app| {
             // Installed builds register friends:// at install time (the .deb's desktop entry, the Windows
             // installer). A bare binary run from elsewhere registers itself, but never on top of an installed copy:
