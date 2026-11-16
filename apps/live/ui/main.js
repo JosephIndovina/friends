@@ -63,7 +63,7 @@ function render() {
   }
   q.value = s.settings.quality;
   q.disabled = Boolean(s.live) || s.starting; // takes effect from the next Go live
-  $("auto").checked = s.settings.autoStart;
+  $("auto").checked = s.settings.startAtLogin;
 
   for (const [id, list, value] of [["codec", s.codecs, s.settings.codec], ["encoder", s.encoders, s.settings.encoder]]) {
     const sel = $(id);
@@ -73,7 +73,7 @@ function render() {
   }
 }
 
-const save = () => invoke("save_settings", { quality: $("quality").value, autoStart: $("auto").checked });
+const save = () => invoke("save_settings", { quality: $("quality").value, startAtLogin: $("auto").checked });
 
 $("primary").addEventListener("click", () => invoke(state?.live ? "stop" : "go_live"));
 $("site").addEventListener("click", () => invoke("open_site"));

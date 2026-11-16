@@ -22,12 +22,11 @@ function openLink(url: string) {
   setTimeout(() => f.remove(), 3000);
 }
 
-/** Go live through the desktop app: make a one-time code, hand it over, and watch for the app to pick it up. */
+/** Start streaming through the desktop app: make a one-time code, hand it to Friends Live (running in the tray or
+ * not), and watch for it to pick it up. The app then shows what to stream, so this needs no click of its own. */
 function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
   const [state, setState] = useState<Launch>("idle");
   const timer = useRef<number | null>(null);
-
-  useEffect(() => () => void (timer.current && clearInterval(timer.current)), []);
 
   const launch = async () => {
     if (timer.current) clearInterval(timer.current);
@@ -46,7 +45,7 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
       if (r?.opened) {
         clearInterval(timer.current!);
         setState("opened");
-        setTimeout(onDone, 1500);
+        setTimeout(onDone, 2500);
       } else if (Date.now() - started > 6000) {
         clearInterval(timer.current!);
         setState("missing");
@@ -54,34 +53,38 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
     }, 750);
   };
 
+  // Mounting is the click: start right away.
+  useEffect(() => {
+    void launch();
+    return () => void (timer.current && clearInterval(timer.current));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const mine = APP_OS ? links[APP_OS] : null;
   const other = APP_OS === "windows" ? { label: "Linux", url: links.linux } : { label: "Windows", url: links.windows };
 
   return (
-    <div className="app-launch">
-      {state === "opened" ? (
-        <p role="status">Friends Live is open. Pick what to share there.</p>
+    <div className="app-launch" role="status">
+      {state === "opening" || state === "idle" ? (
+        <p>Starting Friends Live…</p>
+      ) : state === "opened" ? (
+        <p>Choose what to stream in Friends Live.</p>
       ) : (
         <>
-          <button className="btn btn-primary" disabled={state === "opening"} onClick={launch}>
-            <MonitorUp aria-hidden />{state === "opening" ? "Opening Friends Live…" : "Open Friends Live"}
-          </button>
-          <p className="block-note">
-            The Friends Live app streams a window with just that app's sound. Quality and sound are set in the app.
+          <p className="field-error" role="alert">
+            {state === "error" ? "Couldn't start. Try again in a moment." : "Friends Live didn't open. Install it, then try again."}
           </p>
-        </>
-      )}
-      {state === "error" && <p className="field-error" role="alert">Couldn't start. Try again in a moment.</p>}
-      {state === "missing" && <p className="field-error" role="alert">Friends Live didn't open. Install it, then try again.</p>}
-      {state !== "opened" && (mine || other.url) && (
-        <div className="app-downloads">
-          {mine && (
-            <a className="btn btn-s btn-quiet" href={mine} download>
-              <Download aria-hidden />Download for {APP_OS === "windows" ? "Windows" : "Linux"}
-            </a>
+          <button className="btn btn-s btn-primary" onClick={launch}><MonitorUp aria-hidden />Try again</button>
+          {(mine || other.url) && (
+            <div className="app-downloads">
+              {mine && (
+                <a className="btn btn-s btn-quiet" href={mine} download>
+                  <Download aria-hidden />Download for {APP_OS === "windows" ? "Windows" : "Linux"}
+                </a>
+              )}
+              {other.url && <a className="quiet" href={other.url} download>{other.label} version</a>}
+            </div>
           )}
-          {other.url && <a className="quiet" href={other.url} download>{other.label} version</a>}
-        </div>
+        </>
       )}
     </div>
   );
@@ -115,10 +118,13 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
   // The app is offered only where this server has an installer for this OS; everywhere else Go live is the browser's.
   const [links, setLinks] = useState<AppLinks | null>(null);
   const appReady = Boolean(APP_OS && links?.[APP_OS]);
+  // Known before the click, so the button can say what it'll do.
   useEffect(() => {
-    if (!open || !APP_OS || links) return;
+    if (!APP_OS || !cast.canStream) return;
     api<AppLinks>("GET", "/api/cast/app").then(setLinks, () => setLinks({ linux: null, windows: null }));
-  }, [open, links]);
+  }, [cast.canStream]);
+  // Each click hands over a fresh code; the key restarts the launch.
+  const [launchKey, setLaunchKey] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const mine = cast.streams.filter((s) => s.local).length;
 
@@ -158,25 +164,34 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
     else setOpen(false);
   };
 
+  // With the app: one click starts streaming (the app shows what to share). Without it: the browser's modes.
+  const label = mine ? "Share another screen" : appReady ? "Start streaming" : "Go live";
+  const toggle = () => {
+    if (appReady && !open) {
+      setInBrowser(false);
+      setLaunchKey((k) => k + 1);
+    }
+    setOpen(!open);
+  };
+
   return (
     <div className="sources go-live" ref={root}>
       {icon ? (
-        <button className={`icon-btn${mine ? " is-live" : ""}`} aria-expanded={open} disabled={!cast.available} onClick={() => setOpen(!open)}
-          aria-label={mine ? "Share another screen" : "Go live"} data-tip={cast.available ? (mine ? "Share another screen" : "Go live") : "Connecting to the stage…"}>
+        <button className={`icon-btn${mine ? " is-live" : ""}`} aria-expanded={open} disabled={!cast.available} onClick={toggle}
+          aria-label={label} data-tip={cast.available ? label : "Connecting to the stage…"}>
           <Radio aria-hidden />
         </button>
       ) : (
-        <button className={`btn btn-s ${mine ? "btn-quiet" : "btn-primary"}`} aria-expanded={open} disabled={!cast.available} onClick={() => setOpen(!open)}
+        <button className={`btn btn-s ${mine ? "btn-quiet" : "btn-primary"}`} aria-expanded={open} disabled={!cast.available} onClick={toggle}
           title={cast.available ? undefined : "Connecting to the stage…"}>
-          <Radio aria-hidden />{mine ? "Share another screen" : "Go live"}
+          <Radio aria-hidden />{label}
         </button>
       )}
       {open && (
         <div className="stack-panel golive-panel" role="dialog" aria-label="Go live">
           {appReady && (
             <>
-              <h2>Go live</h2>
-              <AppLaunch links={links!} onDone={() => setOpen(false)} />
+              <AppLaunch key={launchKey} links={links!} onDone={() => setOpen(false)} />
               <button className="btn btn-s btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
                 {inBrowser ? "Hide browser streaming" : "Stream from this browser instead"}
               </button>

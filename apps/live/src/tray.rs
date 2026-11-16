@@ -24,7 +24,7 @@ pub struct TrayState {
     pub quality: String,
     pub codec: String,
     pub encoder: String,
-    pub auto_start: bool,
+    pub start_at_login: bool,
     /// Windows: the windows to choose from.
     pub windows: Vec<gui::WindowChoice>,
 }
@@ -87,7 +87,7 @@ fn menu(app: &AppHandle, t: &TrayState) -> tauri::Result<Menu<Wry>> {
         encoder.append(&CheckMenuItem::with_id(app, format!("e:{id}"), *label, !t.live && !t.starting, t.encoder == *id, None::<&str>)?)?;
     }
     menu.append(&encoder)?;
-    menu.append(&CheckMenuItem::with_id(app, "auto", "Go live when the site opens this app", true, t.auto_start, None::<&str>)?)?;
+    menu.append(&CheckMenuItem::with_id(app, "login", "Start when you log in", true, t.start_at_login, None::<&str>)?)?;
 
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(app, "show", "Open window", true, None::<&str>)?)?;
@@ -155,8 +155,8 @@ fn on_menu(app: &AppHandle, event: MenuEvent) {
                     "stop" => gui::stop_now(app, shared).await,
                     "change" => gui::change_window_now(app, shared).await,
                     "site" => gui::open_site_now(shared).await,
-                    "auto" => {
-                        let on = !shared.lock().await.settings_auto_start();
+                    "login" => {
+                        let on = !shared.lock().await.settings_start_at_login();
                         gui::set_settings(app, shared, None, Some(on)).await;
                     }
                     q if q.starts_with("q:") => gui::set_settings(app, shared, Some(q[2..].to_string()), None).await,

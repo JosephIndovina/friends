@@ -21,8 +21,8 @@ struct Settings {
     codec: String,
     /// auto, hardware or software.
     encoder: String,
-    /// Go live as soon as the site opens the app.
-    auto_start: bool,
+    /// Start (into the tray) when you log in, so Start streaming on the site always has the app to hand to.
+    start_at_login: bool,
     /// The last shared window, reused without asking (Wayland restore token) until "Change window".
     restore_token: Option<String>,
     /// Its title, to show which window that is.
@@ -35,7 +35,7 @@ impl Default for Settings {
             quality: QUALITIES[0].id.into(),
             codec: "vp8".into(),
             encoder: "auto".into(),
-            auto_start: true,
+            start_at_login: true,
             restore_token: None,
             window: None,
         }
@@ -145,8 +145,8 @@ struct LiveView {
 }
 
 impl Inner {
-    pub(crate) fn settings_auto_start(&self) -> bool {
-        self.settings.auto_start
+    pub(crate) fn settings_start_at_login(&self) -> bool {
+        self.settings.start_at_login
     }
 }
 
@@ -199,7 +199,7 @@ fn tray_state(i: &Inner) -> crate::tray::TrayState {
         quality: i.settings.quality.clone(),
         codec: i.settings.codec.clone(),
         encoder: i.settings.encoder.clone(),
-        auto_start: i.settings.auto_start,
+        start_at_login: i.settings.start_at_login,
         windows: window_choices(i).unwrap_or_default(),
     }
 }
@@ -211,19 +211,20 @@ async fn get_state(shared: State<'_, Shared>) -> Result<View, ()> {
 
 /// The window only changes quality and auto-start; the window choice is kept by the app itself.
 #[tauri::command]
-async fn save_settings(app: AppHandle, shared: State<'_, Shared>, quality: String, auto_start: bool) -> Result<(), ()> {
-    set_settings(app, shared.inner().clone(), Some(quality), Some(auto_start)).await;
+async fn save_settings(app: AppHandle, shared: State<'_, Shared>, quality: String, start_at_login: bool) -> Result<(), ()> {
+    set_settings(app, shared.inner().clone(), Some(quality), Some(start_at_login)).await;
     Ok(())
 }
 
-pub(crate) async fn set_settings(app: AppHandle, shared: Shared, quality: Option<String>, auto_start: Option<bool>) {
+pub(crate) async fn set_settings(app: AppHandle, shared: Shared, quality: Option<String>, start_at_login: Option<bool>) {
     {
         let mut i = shared.lock().await;
         if let Some(q) = quality {
             i.settings.quality = q;
         }
-        if let Some(a) = auto_start {
-            i.settings.auto_start = a;
+        if let Some(a) = start_at_login {
+            i.settings.start_at_login = a;
+            sync_login_start(&app, a);
         }
         save_settings_file(&i.settings);
     }
@@ -344,6 +345,11 @@ fn open_url(url: &str) {
 }
 
 pub(crate) async fn start_live(app: AppHandle, shared: Shared) {
+    start_live_with(app, shared, false).await
+}
+
+/// `ask`: show the picker even if a window is remembered (Start streaming on the site always asks).
+async fn start_live_with(app: AppHandle, shared: Shared, ask: bool) {
     let (url, token, settings) = {
         let mut i = shared.lock().await;
         if i.live.is_some() || i.starting {
@@ -363,7 +369,8 @@ pub(crate) async fn start_live(app: AppHandle, shared: Shared) {
     emit(&app, &shared).await;
 
     let pick = shared.lock().await.pick;
-    let mut opts = session::Options::from_quality(session::quality(&settings.quality), settings.restore_token.clone());
+    let restore = if ask { None } else { settings.restore_token.clone() };
+    let mut opts = session::Options::from_quality(session::quality(&settings.quality), restore);
     opts.pick = pick;
     opts.codec = session::codec(&settings.codec);
     opts.encoder = session::encoder(&settings.encoder);
@@ -499,11 +506,25 @@ async fn handle_link(app: AppHandle, shared: Shared, link: url::Url) {
         Ok((status, _)) => i.error = Some(format!("The site said no ({status}).")),
         Err(_) => i.error = Some("Couldn't reach the site.".into()),
     }
-    let go = i.link.is_some() && i.error.is_none() && i.settings.auto_start && i.live.is_none();
+    // Start streaming on the site always asks what to stream, even when live (then the choice replaces the stream).
+    let go = i.link.is_some() && i.error.is_none() && !i.starting;
+    if go && cfg!(windows) {
+        // No system picker on Windows: the window list is the choice; picking a window goes live (or switches).
+        i.pick = None;
+        i.error = Some("Choose the window to stream.".into());
+    }
+    let previous = if go && !cfg!(windows) { i.live.take() } else { None };
     drop(i);
+    if let Some(s) = previous {
+        s.stop().await;
+    }
     emit(&app, &shared).await;
     if go {
-        start_live(app, shared).await;
+        if cfg!(windows) {
+            focus(&app);
+        } else {
+            start_live_with(app, shared, true).await;
+        }
     }
 }
 
@@ -512,6 +533,21 @@ pub(crate) fn focus(app: &AppHandle) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+    }
+}
+
+/// Starting at login is the OS's job (an autostart entry on Linux, the Run key on Windows); keep it matching the setting.
+fn sync_login_start(app: &AppHandle, on: bool) {
+    use tauri_plugin_autostart::ManagerExt;
+    let al = app.autolaunch();
+    let now = al.is_enabled().unwrap_or(false);
+    let r = match (on, now) {
+        (true, false) => al.enable(),
+        (false, true) => al.disable(),
+        _ => Ok(()),
+    };
+    if let Err(e) = r {
+        log::warn!("couldn't change starting at login: {e}");
     }
 }
 
@@ -526,6 +562,8 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_deep_link::init())
+        // Started at login with --hidden: straight to the tray.
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(shared.clone())
         .invoke_handler(tauri::generate_handler![get_state, save_settings, save_video, change_window, choose_window, go_live, stop, open_site])
         .setup(move |app| {
@@ -581,7 +619,9 @@ pub fn run() {
                 }
                 _ => false,
             };
-            if !has_tray || !launched_by_link {
+            sync_login_start(app.handle(), shared.blocking_lock().settings.start_at_login);
+            let at_login = std::env::args().any(|a| a == "--hidden");
+            if !has_tray || !(launched_by_link || at_login) {
                 focus(app.handle());
             }
             Ok(())
