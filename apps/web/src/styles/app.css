@@ -659,7 +659,6 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .stage-bar { flex-wrap: wrap; }
 .now-meta { display: grid; gap: 2px; min-width: 0; flex: 1 1 18rem; }
 .stage-bar .info-actions { margin-left: auto; }
-.stream-quality { min-height: 32px; font-size: var(--step--1); }
 .now-title { color: var(--ink); font-size: var(--step-2); font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .now-meta > span { color: var(--mute); font-size: var(--step--1); }
 .syncing { color: var(--hint-music); }

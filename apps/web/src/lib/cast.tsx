@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ConnectionState, createLocalScreenTracks, LocalTrack, Room, RoomEvent, Track, VideoPreset, VideoQuality,
+  ConnectionState, createLocalScreenTracks, LocalTrack, Room, RoomEvent, Track,
   type LocalTrackPublication, type Participant, type RemoteTrackPublication, type TrackPublication,
 } from "livekit-client";
 import type { Session } from "@friends/shared";
@@ -30,15 +30,6 @@ export const STREAM_MODES: StreamMode[] = [
   { id: "text", label: "Text and code", detail: "1080p · 15 fps · 1.5 Mbps", width: 1920, height: 1080, fps: 15, kbps: 1500, hint: "detail" },
   { id: "low", label: "Low bandwidth", detail: "720p · 30 fps · 1.2 Mbps", width: 1280, height: 720, fps: 30, kbps: 1200, hint: "motion" },
 ];
-
-/** Which copy of a stream this viewer receives. The server still drops lower if their connection can't keep up. */
-export type StreamQuality = "high" | "medium" | "low";
-export const STREAM_QUALITIES: { id: StreamQuality; label: string }[] = [
-  { id: "high", label: "Best" },
-  { id: "medium", label: "Medium" },
-  { id: "low", label: "Low" },
-];
-const LK_QUALITY = { high: VideoQuality.HIGH, medium: VideoQuality.MEDIUM, low: VideoQuality.LOW } as const;
 
 /** One live stream: a screen-share video track plus its optional audio, from one person. */
 export interface Stream {
@@ -73,9 +64,6 @@ interface CastCtx {
   setMuted: (id: string, m: boolean) => void;
   volume: Readonly<Record<string, number>>;
   setVolume: (id: string, v: number) => void;
-  /** per-viewer picture quality */
-  quality: Readonly<Record<string, StreamQuality>>;
-  setQuality: (id: string, q: StreamQuality) => void;
 }
 
 const Ctx = createContext<CastCtx | null>(null);
@@ -118,7 +106,6 @@ export function CastProvider({ session, children }: { session: Session; children
   const [canStream, setCanStream] = useState(false);
   const [muted, setMutedSet] = useState<ReadonlySet<string>>(new Set());
   const [volume, setVolumes] = useState<Record<string, number>>({});
-  const [quality, setQualities] = useState<Record<string, StreamQuality>>({});
   const [watching, setWatchingSet] = useState<ReadonlySet<string>>(new Set());
   const counter = useRef(0);
 
@@ -143,7 +130,7 @@ export function CastProvider({ session, children }: { session: Session; children
       try {
         const { token, canStream } = await api<{ token: string; canStream: boolean }>("POST", "/api/cast/token");
         if (cancelled) return;
-        r = new Room({ adaptiveStream: false, dynacast: true }) // viewers pick quality themselves; adaptive stream would cap it by tile size;
+        r = new Room({ adaptiveStream: false, dynacast: true }) // one copy per stream, so nothing to adapt; adaptive stream would also pause it when off screen
         const room = r;
         current = room;
         const refresh = () => {
@@ -209,11 +196,10 @@ export function CastProvider({ session, children }: { session: Session; children
       if (s.local) continue;
       const on = watching.has(s.id);
       (s.video as RemoteTrackPublication).setSubscribed(on);
-      if (on) (s.video as RemoteTrackPublication).setVideoQuality(LK_QUALITY[quality[s.id] ?? "high"]);
       // Your own stream from another tab is never played back, so don't fetch its sound.
       (s.audio as RemoteTrackPublication | null)?.setSubscribed(on && !s.mine);
     }
-  }, [streams, watching, quality]);
+  }, [streams, watching]);
 
   const goLive = useCallback(async (mode: StreamMode): Promise<string | null> => {
     if (!room) return "Not connected to the stage yet. Try again in a moment.";
@@ -239,16 +225,13 @@ export function CastProvider({ session, children }: { session: Session; children
           await room.localParticipant.publishTrack(t, {
             name: isVideo ? name : `${name}-audio`,
             source: isVideo ? Track.Source.ScreenShare : Track.Source.ScreenShareAudio,
-            simulcast: isVideo,
-            // H.264 is hardware-encoded on most machines, so high frame rates don't pin the CPU.
-            videoCodec: "h264",
+            // One copy at the streamer's chosen quality, like Discord's Go Live: no lower copies for the
+            // browser to juggle, so it never shrinks the picture to keep them all going. VP8 encodes well in
+            // software in every browser; H.264 falls back to a slow software encoder wherever there's no hardware one.
+            simulcast: false,
+            videoCodec: "vp8",
             // Screen shares read screenShareEncoding, not videoEncoding; left unset, LiveKit caps them at 1080p 15 fps.
             screenShareEncoding: isVideo ? { maxBitrate: mode.kbps * 1000, maxFramerate: mode.fps, priority: "high" } : undefined,
-            // Lower copies viewers can pick, or fall back to on weaker connections. Same frame rate as the top, up to 60 / 30.
-            screenShareSimulcastLayers: isVideo ? [
-              new VideoPreset(640, 360, Math.min(800_000, mode.kbps * 250), Math.min(mode.fps, 30)),
-              new VideoPreset(1280, 720, Math.min(2_500_000, mode.kbps * 500), mode.fps),
-            ] : undefined,
             degradationPreference: mode.hint === "detail" ? "maintain-resolution" : "maintain-framerate",
             dtx: false,
             red: false,
@@ -289,7 +272,6 @@ export function CastProvider({ session, children }: { session: Session; children
     return next;
   }), []);
   const setVolume = useCallback((id: string, v: number) => setVolumes((prev) => ({ ...prev, [id]: v })), []);
-  const setQuality = useCallback((id: string, q: StreamQuality) => setQualities((prev) => ({ ...prev, [id]: q })), []);
   const setWatching = useCallback((id: string, on: boolean) => setWatchingSet((prev) => {
     if (prev.has(id) === on) return prev;
     const next = new Set(prev);
@@ -299,8 +281,8 @@ export function CastProvider({ session, children }: { session: Session; children
   }), []);
 
   const value = useMemo<CastCtx>(
-    () => ({ available: room?.state === ConnectionState.Connected, streams, canStream, supported: SUPPORTED, goLive, stop, watching, setWatching, muted, setMuted, volume, setVolume, quality, setQuality }),
-    [room, streams, canStream, goLive, stop, watching, setWatching, muted, setMuted, volume, setVolume, quality, setQuality],
+    () => ({ available: room?.state === ConnectionState.Connected, streams, canStream, supported: SUPPORTED, goLive, stop, watching, setWatching, muted, setMuted, volume, setVolume }),
+    [room, streams, canStream, goLive, stop, watching, setWatching, muted, setMuted, volume, setVolume],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -311,7 +293,7 @@ export function useCast() {
   return c;
 }
 
-/** A stream's picture. Which copy arrives is the viewer's quality choice (see setQuality). */
+/** A stream's picture, at the quality the streamer chose. */
 export function StreamVideo({ stream, className, stats }: { stream: Stream; className?: string; stats?: "full" | "compact" }) {
   const el = useRef<HTMLVideoElement>(null);
   const track = stream.video.track;
@@ -371,12 +353,12 @@ function useStreamStats(stream: Stream): [string, string][] {
       const pair = pairOf(v);
       const rtt = num(pair?.currentRoundTripTime);
       if (stream.local) {
-        // Sending: one line per simulcast layer, biggest first.
+        // Sending: one line per encoded copy, biggest first (one copy unless simulcast comes back).
         const layers = [...v.values()].filter((s) => s.type === "outbound-rtp" && s.kind === "video")
           .sort((x, y) => (num(y.frameWidth) ?? 0) - (num(x.frameWidth) ?? 0));
         for (const l of layers) {
           if (!num(l.frameWidth)) continue;
-          out.push([`Layer ${l.rid ?? ""}`.trim(), `${l.frameWidth}×${l.frameHeight} · ${Math.round(num(l.framesPerSecond) ?? 0)} fps · ${rate(kbps(l.id, l.bytesSent, l.timestamp))}`]);
+          out.push([layers.length > 1 ? `Layer ${l.rid ?? ""}`.trim() : "Sending", `${l.frameWidth}×${l.frameHeight} · ${Math.round(num(l.framesPerSecond) ?? 0)} fps · ${rate(kbps(l.id, l.bytesSent, l.timestamp))}`]);
         }
         const top = layers[0];
         if (top) {
@@ -423,7 +405,7 @@ function useStreamStats(stream: Stream): [string, string][] {
   return rows;
 }
 
-const COMPACT = new Set(["Resolution", "Frame rate", "Video", "Packet loss", "Audio"]);
+const COMPACT = new Set(["Sending", "Resolution", "Frame rate", "Video", "Packet loss", "Audio"]);
 
 /** Stats overlay for a stream: resolution, frame rate, bitrate, loss and sound. */
 function StreamStats({ stream, compact }: { stream: Stream; compact: boolean }) {
