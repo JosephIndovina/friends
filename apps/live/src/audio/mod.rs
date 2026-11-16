@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{capture, list_apps};
+pub use linux::{capture, list_apps, Capture};
 
 pub const SAMPLE_RATE: u32 = 48_000;
 pub const CHANNELS: u32 = 2;

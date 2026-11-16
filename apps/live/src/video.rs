@@ -37,6 +37,15 @@ pub fn needs_os_picker() -> bool {
     cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some()
 }
 
+/// The OS picker on Wayland, otherwise the whole screen.
+pub fn default_kind() -> Kind {
+    #[cfg(target_os = "linux")]
+    if needs_os_picker() {
+        return Kind::Picker;
+    }
+    Kind::Screen
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Source {
     pub id: u64,

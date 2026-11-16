@@ -1,6 +1,95 @@
 import { useEffect, useRef, useState } from "react";
-import { Radio } from "lucide-react";
+import { Download, MonitorUp, Radio } from "lucide-react";
+import { api } from "../../lib/api";
 import { STREAM_MODES, useCast, type StreamMode } from "../../lib/cast";
+
+/** Desktops the Friends Live app runs on. Everyone else streams from the browser. */
+const APP_OS: "windows" | "linux" | null =
+  typeof navigator === "undefined" || /Android|CrOS/i.test(navigator.userAgent) ? null
+  : /Windows/i.test(navigator.userAgent) ? "windows"
+  : /Linux/i.test(navigator.userAgent) ? "linux"
+  : null;
+
+type AppLinks = { linux: string | null; windows: string | null };
+type Launch = "idle" | "opening" | "opened" | "missing" | "error";
+
+/** Opens friends:// without leaving the page. A hidden frame fails quietly when nothing handles the link. */
+function openLink(url: string) {
+  const f = document.createElement("iframe");
+  f.style.display = "none";
+  f.src = url;
+  document.body.appendChild(f);
+  setTimeout(() => f.remove(), 3000);
+}
+
+/** Go live through the desktop app: make a one-time code, hand it over, and watch for the app to pick it up. */
+function AppLaunch({ onDone }: { onDone: () => void }) {
+  const [state, setState] = useState<Launch>("idle");
+  const [links, setLinks] = useState<AppLinks | null>(null);
+  const timer = useRef<number | null>(null);
+
+  useEffect(() => () => void (timer.current && clearInterval(timer.current)), []);
+  useEffect(() => {
+    api<AppLinks>("GET", "/api/cast/app").then(setLinks, () => setLinks({ linux: null, windows: null }));
+  }, []);
+
+  const launch = async () => {
+    if (timer.current) clearInterval(timer.current);
+    setState("opening");
+    let code: string;
+    try {
+      ({ code } = await api<{ code: string }>("POST", "/api/cast/launch"));
+    } catch {
+      setState("error");
+      return;
+    }
+    openLink(`friends://live?code=${encodeURIComponent(code)}&server=${encodeURIComponent(location.origin)}`);
+    const started = Date.now();
+    timer.current = window.setInterval(async () => {
+      const r = await api<{ opened: boolean }>("GET", `/api/cast/launch/${encodeURIComponent(code)}`).catch(() => null);
+      if (r?.opened) {
+        clearInterval(timer.current!);
+        setState("opened");
+        setTimeout(onDone, 1500);
+      } else if (Date.now() - started > 6000) {
+        clearInterval(timer.current!);
+        setState("missing");
+      }
+    }, 750);
+  };
+
+  const mine = APP_OS ? links?.[APP_OS] : null;
+  const other = APP_OS === "windows" ? { label: "Linux", url: links?.linux } : { label: "Windows", url: links?.windows };
+
+  return (
+    <div className="app-launch">
+      {state === "opened" ? (
+        <p role="status">Friends Live is open. Pick what to share there.</p>
+      ) : (
+        <>
+          <button className="btn btn-primary" disabled={state === "opening"} onClick={launch}>
+            <MonitorUp aria-hidden />{state === "opening" ? "Opening Friends Live…" : "Open Friends Live"}
+          </button>
+          <p className="block-note">
+            The Friends Live app streams a window with just that app's sound. Quality and sound are set in the app.
+          </p>
+        </>
+      )}
+      {state === "error" && <p className="field-error" role="alert">Couldn't start. Try again in a moment.</p>}
+      {state === "missing" && <p className="field-error" role="alert">Friends Live didn't open. Install it, then try again.</p>}
+      {state !== "opened" && (mine || other.url) && (
+        <div className="app-downloads">
+          {mine && (
+            <a className="btn btn-s btn-quiet" href={mine} download>
+              <Download aria-hidden />Download for {APP_OS === "windows" ? "Windows" : "Linux"}
+            </a>
+          )}
+          {other.url && <a className="quiet" href={other.url} download>{other.label} version</a>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function readMode(): StreamMode {
   try {
@@ -26,6 +115,7 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
   const [custom, setCustom] = useState(() => ({ res: 1, fps: 60, mbps: 6 }));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [inBrowser, setInBrowser] = useState(APP_OS === null);
   const root = useRef<HTMLDivElement>(null);
   const mine = cast.streams.filter((s) => s.local).length;
 
@@ -80,38 +170,51 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
       )}
       {open && (
         <div className="stack-panel golive-panel" role="dialog" aria-label="Go live">
-          <h2>Streaming mode</h2>
-          <div className="modes" role="radiogroup" aria-label="Streaming mode">
-            {[...STREAM_MODES, { id: "custom", label: "Custom", detail: customMode().detail } as StreamMode].map((m) => (
-              <label key={m.id} className={`mode${mode.id === m.id ? " is-on" : ""}`}>
-                <input type="radio" name="stream-mode" checked={mode.id === m.id} onChange={() => setMode(m.id === "custom" ? customMode() : m)} />
-                <span className="mode-label">{m.label}</span>
-                <span className="quiet">{m.detail}</span>
-              </label>
-            ))}
-          </div>
-          {mode.id === "custom" && (
-            <div className="custom-mode">
-              <label className="field"><span>Resolution</span>
-                <select className="select" value={custom.res} onChange={(e) => setCustom({ ...custom, res: Number(e.target.value) })}>
-                  {RES.map((r, i) => <option key={r.label} value={i}>{r.label}</option>)}
-                </select>
-              </label>
-              <label className="field"><span>Frame rate</span>
-                <select className="select" value={custom.fps} onChange={(e) => setCustom({ ...custom, fps: Number(e.target.value) })}>
-                  {[15, 24, 30, 60].map((f) => <option key={f} value={f}>{f} fps</option>)}
-                </select>
-              </label>
-              <label className="field grow"><span>Bitrate: {custom.mbps} Mbps <span className="quiet">· your upload speed needs to be higher</span></span>
-                <input type="range" className="range" min={1} max={15} step={0.5} value={custom.mbps}
-                  style={{ "--fill": `${((custom.mbps - 1) / 14) * 100}%` } as React.CSSProperties}
-                  onChange={(e) => setCustom({ ...custom, mbps: Number(e.target.value) })} />
-              </label>
-            </div>
+          {APP_OS && (
+            <>
+              <h2>Go live</h2>
+              <AppLaunch onDone={() => setOpen(false)} />
+              <button className="btn btn-s btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
+                {inBrowser ? "Hide browser streaming" : "Stream from this browser instead"}
+              </button>
+            </>
           )}
-          <p className="block-note">For sound, share a screen or tab and turn on audio in the picker. A single window, Firefox and Safari share no sound. Everyone watching gets the quality you pick.</p>
-          {error && <p className="field-error" role="alert">{error}</p>}
-          <button className="btn btn-primary" disabled={busy} onClick={start}><Radio aria-hidden />{busy ? "Choose what to share…" : "Choose screen and go live"}</button>
+          {inBrowser && (
+            <>
+            <h2>Streaming mode</h2>
+            <div className="modes" role="radiogroup" aria-label="Streaming mode">
+              {[...STREAM_MODES, { id: "custom", label: "Custom", detail: customMode().detail } as StreamMode].map((m) => (
+                <label key={m.id} className={`mode${mode.id === m.id ? " is-on" : ""}`}>
+                  <input type="radio" name="stream-mode" checked={mode.id === m.id} onChange={() => setMode(m.id === "custom" ? customMode() : m)} />
+                  <span className="mode-label">{m.label}</span>
+                  <span className="quiet">{m.detail}</span>
+                </label>
+              ))}
+            </div>
+            {mode.id === "custom" && (
+              <div className="custom-mode">
+                <label className="field"><span>Resolution</span>
+                  <select className="select" value={custom.res} onChange={(e) => setCustom({ ...custom, res: Number(e.target.value) })}>
+                    {RES.map((r, i) => <option key={r.label} value={i}>{r.label}</option>)}
+                  </select>
+                </label>
+                <label className="field"><span>Frame rate</span>
+                  <select className="select" value={custom.fps} onChange={(e) => setCustom({ ...custom, fps: Number(e.target.value) })}>
+                    {[15, 24, 30, 60].map((f) => <option key={f} value={f}>{f} fps</option>)}
+                  </select>
+                </label>
+                <label className="field grow"><span>Bitrate: {custom.mbps} Mbps <span className="quiet">· your upload speed needs to be higher</span></span>
+                  <input type="range" className="range" min={1} max={15} step={0.5} value={custom.mbps}
+                    style={{ "--fill": `${((custom.mbps - 1) / 14) * 100}%` } as React.CSSProperties}
+                    onChange={(e) => setCustom({ ...custom, mbps: Number(e.target.value) })} />
+                </label>
+              </div>
+            )}
+            <p className="block-note">For sound, share a screen or tab and turn on audio in the picker. A single window, Firefox and Safari share no sound. Everyone watching gets the quality you pick.</p>
+            {error && <p className="field-error" role="alert">{error}</p>}
+            <button className="btn btn-primary" disabled={busy} onClick={start}><Radio aria-hidden />{busy ? "Choose what to share…" : "Choose screen and go live"}</button>
+            </>
+          )}
         </div>
       )}
     </div>

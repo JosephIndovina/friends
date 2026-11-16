@@ -1,0 +1,97 @@
+/* Friends' Couch Glow tokens, trimmed to what this window uses. */
+:root {
+  --font: "Hanken Grotesk", system-ui, sans-serif;
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-2: 1.375rem;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --radius-s: 8px;
+  --radius-m: 14px;
+
+  --ground: #0a0c11;
+  --upholstery: #151a23;
+  --surface: color-mix(in oklab, #151a23 62%, transparent);
+  --line: color-mix(in oklab, #e6ecf5 10%, transparent);
+  --ink: #e6ecf5;
+  --mute: #95a0b2;
+  --on-ink: #0d1118;
+  --live: #7fe0d0;
+  --danger: #ff8f80;
+  --glow: #2a4f8f;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --ground: #eef1f6;
+    --upholstery: #fbfcfe;
+    --surface: color-mix(in oklab, #fbfcfe 70%, transparent);
+    --line: color-mix(in oklab, #141821 12%, transparent);
+    --ink: #141821;
+    --mute: #5a6475;
+    --on-ink: #f4f7fb;
+    --live: #1f7a6c;
+    --danger: #b3261e;
+    --glow: #8fb0e6;
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background:
+    radial-gradient(120% 60% at 50% -10%, color-mix(in oklab, var(--glow) 40%, transparent), transparent 70%),
+    var(--ground);
+  color: var(--ink);
+  font: 400 var(--step-0) / 1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+main { display: grid; gap: var(--space-4); padding: var(--space-5) var(--space-4); max-width: 30rem; margin: 0 auto; }
+h1 { margin: 0; font-size: var(--step-2); font-weight: 700; letter-spacing: -0.01em; }
+header p { margin: 0; }
+.quiet { color: var(--mute); }
+small.quiet { font-size: var(--step--1); line-height: 1.4; }
+
+.status {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--space-3); align-items: start;
+  padding: var(--space-4); border-radius: var(--radius-m); background: var(--surface); border: 1px solid var(--line);
+}
+.status p { margin: 2px 0 0; font-size: var(--step--1); }
+.dot { width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: var(--mute); }
+.status.is-live .dot { background: var(--live); box-shadow: 0 0 0 4px color-mix(in oklab, var(--live) 25%, transparent); }
+.status.is-busy .dot { background: var(--ink); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .status.is-busy .dot { animation: none; } }
+
+.error { margin: 0; color: var(--danger); font-size: var(--step--1); }
+
+.actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  min-height: 44px; padding: 0 var(--space-5); border-radius: 999px; border: 1px solid transparent;
+  font: inherit; font-weight: 650; color: inherit; cursor: pointer;
+}
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-primary { background: var(--ink); color: var(--on-ink); }
+.btn-primary.is-stop { background: var(--danger); color: var(--ground); }
+.btn-quiet { background: var(--surface); border-color: var(--line); }
+.btn-s { min-height: 36px; padding: 0 var(--space-4); font-size: var(--step--1); }
+
+.settings { display: grid; gap: var(--space-4); padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.field { display: grid; gap: var(--space-1); }
+.field > span { font-weight: 650; }
+.row { display: flex; gap: var(--space-2); }
+.row select { flex: 1; min-width: 0; }
+select {
+  min-height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-s);
+  background: var(--upholstery); color: var(--ink); border: 1px solid var(--line); font: inherit;
+}
+.check { display: flex; gap: var(--space-2); align-items: center; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--ink); }

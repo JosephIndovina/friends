@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Friends Live</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="main.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Friends Live</h1>
+        <p id="who" class="quiet"></p>
+      </header>
+
+      <section id="status" class="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span>
+        <div>
+          <strong id="status-title"></strong>
+          <p id="status-detail" class="quiet"></p>
+        </div>
+      </section>
+
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <div class="actions">
+        <button id="primary" class="btn btn-primary"></button>
+        <button id="site" class="btn btn-quiet">Open the site</button>
+      </div>
+
+      <section class="settings">
+        <label class="field">
+          <span>Sound</span>
+          <div class="row">
+            <select id="sound"></select>
+            <button id="refresh" class="btn btn-quiet btn-s" title="Look again for apps playing sound">Refresh</button>
+          </div>
+          <small class="quiet">Only this app's sound is streamed, never your voice chat. Apps show up here while they play something.</small>
+        </label>
+
+        <label class="field">
+          <span>Quality</span>
+          <select id="quality"></select>
+          <small class="quiet">Everyone watching gets this quality. Your upload speed needs to be higher than the bitrate.</small>
+        </label>
+
+        <label class="check">
+          <input id="auto" type="checkbox" />
+          <span>Go live as soon as the site opens this app</span>
+        </label>
+      </section>
+    </main>
+  </body>
+</html>
