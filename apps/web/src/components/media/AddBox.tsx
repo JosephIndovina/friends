@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ListPlus, Plus, Search, X } from "lucide-react";
+import { Columns2, ListPlus, Plus, Search, X } from "lucide-react";
 import type { YouTubeResult } from "@friends/shared";
 import { api, ApiError } from "../../lib/api";
 import { fmtTime, MEDIA_ERRORS } from "../../lib/media";
@@ -15,9 +15,15 @@ function playlistChoice(s: string) {
   }
 }
 
-export function AddBox({ onAdd, canPlayNext }: {
-  onAdd: (input: { url: string; playNext?: boolean; whole?: boolean }) => Promise<boolean>;
+/** Twitch and single YouTube videos can also play alongside the player, as their own screen. */
+const alongsideOk = (s: string) => !/spotify/i.test(s);
+
+export function AddBox({ onAdd, canPlayNext, canAlongside }: {
+  /** `alongside`: open it as its own screen beside the player instead of queueing it */
+  onAdd: (input: { url: string; playNext?: boolean; whole?: boolean; alongside?: boolean }) => Promise<boolean>;
   canPlayNext: boolean;
+  /** fewer than the maximum screens are open */
+  canAlongside: boolean;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,9 +32,9 @@ export function AddBox({ onAdd, canPlayNext }: {
   const [choose, setChoose] = useState<{ url: string; playNext: boolean } | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
 
-  async function add(url: string, playNext: boolean, whole?: boolean) {
+  async function add(url: string, playNext: boolean, whole?: boolean, alongside?: boolean) {
     setBusy(true);
-    const ok = await onAdd({ url, playNext, whole });
+    const ok = await onAdd({ url, playNext, whole, alongside });
     setBusy(false);
     return ok;
   }
@@ -71,6 +77,10 @@ export function AddBox({ onAdd, canPlayNext }: {
           <div className="add-actions">
             <button className="btn btn-primary btn-s" disabled={busy}><Plus aria-hidden />Add to queue</button>
             {canPlayNext && <button type="button" className="btn btn-quiet btn-s" disabled={busy} onClick={() => submit(true)}><ListPlus aria-hidden />Play next</button>}
+            {canAlongside && alongsideOk(text) && (
+              <button type="button" className="btn btn-quiet btn-s" disabled={busy}
+                onClick={async () => { setError(null); if (await add(text.trim(), false, false, true)) setText(""); }}><Columns2 aria-hidden />Watch alongside</button>
+            )}
           </div>
         )}
       </form>
@@ -103,6 +113,10 @@ export function AddBox({ onAdd, canPlayNext }: {
                       {canPlayNext && (
                         <button className="icon-btn" title="Play next" aria-label={`Play ${r.title} next`} disabled={busy}
                           onClick={async () => { if (await add(`https://youtu.be/${r.id}`, true)) setAdded(new Set(added).add(r.id)); }}><ListPlus aria-hidden /></button>
+                      )}
+                      {canAlongside && (
+                        <button className="icon-btn" title="Watch alongside" aria-label={`Watch ${r.title} alongside`} disabled={busy}
+                          onClick={async () => { if (await add(`https://youtu.be/${r.id}`, false, false, true)) setAdded(new Set(added).add(r.id)); }}><Columns2 aria-hidden /></button>
                       )}
                       <button className="icon-btn" title="Add to queue" aria-label={`Add ${r.title} to queue`} disabled={busy}
                         onClick={async () => { if (await add(`https://youtu.be/${r.id}`, false)) setAdded(new Set(added).add(r.id)); }}><Plus aria-hidden /></button>

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Server, Socket } from "socket.io";
-import { SEEKABLE, type Ack, type ClientToServer, type MediaItem, type MediaState, type Permission, type Playback, type ServerToClient, type Session } from "@friends/shared";
+import { SCREENS_MAX, SEEKABLE, type Ack, type ClientToServer, type MediaItem, type MediaState, type Permission, type Playback, type ServerToClient, type Session } from "@friends/shared";
 import { audit } from "./audit.js";
 import { db } from "./db.js";
 import { events } from "./events.js";
@@ -18,6 +18,7 @@ const HISTORY_SHOWN = 30;
 const END_SLACK_S = 5;
 const IDLE_NOTIFY_MS = 30 * 60 * 1000;
 const NOW_KEY = "media_now";
+const SCREENS_KEY = "media_screens";
 
 class ActionError extends Error {}
 const fail = (code: string): never => {
@@ -51,6 +52,13 @@ function loadNow(): Playback | null {
 function saveNow(now: Playback | null) {
   db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(NOW_KEY, JSON.stringify(now));
 }
+function loadScreens(): Playback[] {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(SCREENS_KEY) as { value: string } | undefined;
+  return row ? (JSON.parse(row.value) as Playback[]).map((p) => ({ ...p, item: withMode(p.item) })) : [];
+}
+function saveScreens(screens: Playback[]) {
+  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(SCREENS_KEY, JSON.stringify(screens));
+}
 
 // ---------- room ----------
 
@@ -58,6 +66,7 @@ export function createMediaRoom(io: IO) {
   let now = loadNow();
   let queue = loadQueue();
   let history = loadHistory();
+  let screens = loadScreens();
   let lastActiveAt = now?.playing ? Date.now() : 0;
   let endTimer: NodeJS.Timeout | null = null;
 
@@ -67,11 +76,12 @@ export function createMediaRoom(io: IO) {
     return p.item.duration ? Math.min(pos, p.item.duration) : pos;
   };
 
-  const snapshot = (): MediaState => ({ now, queue, history });
+  const snapshot = (): MediaState => ({ now, queue, history, screens });
 
   function commit() {
     saveNow(now);
     saveQueue(queue);
+    saveScreens(screens);
     io.emit("media:state", snapshot());
     scheduleEnd();
     prefetch();
@@ -174,9 +184,10 @@ export function createMediaRoom(io: IO) {
   }
 
   events.on("settings:changed", () => {
-    if (!getSettings().sections.player && now) {
-      toHistory(now.item);
+    if (!getSettings().sections.player && (now || screens.length)) {
+      if (now) toHistory(now.item);
       now = null;
+      screens = [];
       commit();
     }
   });
@@ -249,6 +260,32 @@ export function createMediaRoom(io: IO) {
       else queue.push(item);
       commit();
     }
+
+  // ---------- screens (watched alongside the player) ----------
+
+  /** Open a single video or stream as its own screen. Playlists and Spotify belong in the queue. */
+  async function addScreen(s: Session, input: { url: string }): Promise<void> {
+    if (typeof input?.url !== "string" || input.url.length > 500) fail("invalid");
+    if (screens.length >= SCREENS_MAX) fail("screens_full");
+    const link = parseLink(input.url);
+    if (!link) fail(youtubeListId(input.url) || parseSpotify(input.url) ? "screen_single" : "unsupported_link");
+    const meta = await fetchMeta(link!);
+    if (!meta) fail("video_unavailable");
+    if (screens.length >= SCREENS_MAX) fail("screens_full");
+    const item: MediaItem = { id: randomUUID(), ...link!, ...meta!, addedBy: who(s), addedAt: Date.now() };
+    screens = [...screens, { item, playing: true, position: item.startAt, updatedAt: Date.now(), startedBy: who(s) }];
+    lastActiveAt = Date.now();
+    audit({ actorId: s.user.id, action: "media.screen_added", target: ref(item), details: { kind: item.kind } });
+    commit();
+  }
+
+  const screenIndex = (id: unknown) => {
+    const i = screens.findIndex((x) => x.item.id === id);
+    return i < 0 ? fail("not_found") : i;
+  };
+  const setScreen = (i: number, next: Playback) => {
+    screens = screens.map((x, j) => (j === i ? next : x));
+  };
 
   // ---------- socket actions ----------
 
@@ -372,7 +409,60 @@ export function createMediaRoom(io: IO) {
       commit();
     }));
 
+    socket.on("media:screen:add", handle("player.queue", (s, input: { url: string }) => addScreen(s, input)));
+
+    socket.on("media:screen:play", handle("player.control", (s, input: { id: string }) => {
+      const i = screenIndex(input?.id);
+      const sc = screens[i]!;
+      if (sc.playing) return;
+      // Played again from the end: start over.
+      const atEnd = sc.item.duration && sc.position >= sc.item.duration - 1;
+      setScreen(i, { ...sc, playing: true, position: atEnd ? 0 : sc.position, updatedAt: Date.now() });
+      lastActiveAt = Date.now();
+      audit({ actorId: s.user.id, action: "media.played", target: ref(sc.item), details: { screen: true } });
+      commit();
+    }));
+
+    socket.on("media:screen:pause", handle("player.control", (s, input: { id: string }) => {
+      const i = screenIndex(input?.id);
+      const sc = screens[i]!;
+      if (!sc.playing) return;
+      setScreen(i, { ...sc, playing: false, position: position(sc), updatedAt: Date.now() });
+      audit({ actorId: s.user.id, action: "media.paused", target: ref(sc.item), details: { screen: true, at: Math.round(position(sc)) } });
+      commit();
+    }));
+
+    socket.on("media:screen:seek", handle("player.control", (s, input: { id: string; position: number }) => {
+      const i = screenIndex(input?.id);
+      const sc = screens[i]!;
+      if (!SEEKABLE[sc.item.kind]) fail("not_seekable");
+      const to = Math.max(0, Math.min(num(input.position), sc.item.duration ?? Number.MAX_SAFE_INTEGER));
+      const from = position(sc);
+      setScreen(i, { ...sc, position: to, updatedAt: Date.now() });
+      audit({ actorId: s.user.id, action: "media.seeked", target: ref(sc.item), details: { screen: true, from: Math.round(from), to: Math.round(to) } });
+      commit();
+    }));
+
+    // Whoever opened a screen can close it; closing someone else's takes player control.
+    socket.on("media:screen:close", handle(null, (s, input: { id: string }) => {
+      const sc = screens[screenIndex(input?.id)]!;
+      if (sc.startedBy.id !== s.user.id && !s.permissions.includes("player.control")) fail("missing_permission");
+      screens = screens.filter((x) => x !== sc);
+      toHistory(sc.item);
+      audit({ actorId: s.user.id, action: "media.screen_closed", target: ref(sc.item), details: { openedBy: sc.startedBy.name } });
+      commit();
+    }));
+
     socket.on("media:ended", (input) => {
+      // A screen that ends stays open, paused at the end.
+      const si = screens.findIndex((x) => x.item.id === input?.itemId);
+      if (si >= 0) {
+        const sc = screens[si]!;
+        if (!sc.playing || (sc.item.duration && position(sc) < sc.item.duration - END_SLACK_S)) return;
+        setScreen(si, { ...sc, playing: false, position: sc.item.duration ?? position(sc), updatedAt: Date.now() });
+        commit();
+        return;
+      }
       if (!now || now.item.id !== input?.itemId) return;
       // Ignore a client that finished early because it drifted or skipped locally.
       if (now.item.duration && position(now) < now.item.duration - END_SLACK_S) return;
@@ -380,6 +470,15 @@ export function createMediaRoom(io: IO) {
     });
 
     socket.on("media:duration", (input) => {
+      const si = screens.findIndex((x) => x.item.id === input?.itemId);
+      if (si >= 0) {
+        const sc = screens[si]!;
+        const d = Number(input.duration);
+        if (sc.item.duration || !Number.isFinite(d) || d <= 0 || d > 24 * 3600) return;
+        setScreen(si, { ...sc, item: { ...sc.item, duration: d } });
+        commit();
+        return;
+      }
       if (!now || now.item.id !== input?.itemId || now.item.duration) return;
       const d = Number(input.duration);
       if (!Number.isFinite(d) || d <= 0 || d > 24 * 3600) return;
@@ -405,6 +504,8 @@ export function createMediaRoom(io: IO) {
   /** Find an item anywhere the room knows about it. */
   function findItem(id: string): MediaItem | null {
     if (now?.item.id === id) return now.item;
+    const sc = screens.find((x) => x.item.id === id);
+    if (sc) return sc.item;
     return queue.find((q) => q.id === id) ?? history.find((h) => h.id === id) ?? null;
   }
 

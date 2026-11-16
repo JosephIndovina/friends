@@ -616,6 +616,14 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .media-room { grid-template-columns: minmax(0, 1fr) 380px; }
 @media (max-width: 1080px) { .media-room { grid-template-columns: minmax(0, 1fr) 320px; } }
 @media (max-width: 860px) { .media-room { grid-template-columns: minmax(0, 1fr); } }
+/* Beside the stage, the side column takes the stage's height rather than setting it, so a long
+   list scrolls in place instead of pushing the posts down and leaving a gap under the stage. */
+@media (min-width: 861px) {
+  .media-room:not(.is-theatre) { align-items: stretch; }
+  .media-room:not(.is-theatre) > .side { display: flex; flex-direction: column; height: 0; min-height: 100%; overflow-y: auto; }
+  .media-room:not(.is-theatre) > .side > * { flex: none; }
+  .media-room:not(.is-theatre) > .side > .side-panel { flex: 1 1 auto; min-height: 12rem; overflow-y: auto; overscroll-behavior: contain; }
+}
 
 .player-screen { position: relative; padding: 0; aspect-ratio: 16 / 9; background: #000; }
 /* Full screen: the shell goes full screen and the stage is pinned over it (see Home). */
@@ -855,6 +863,8 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .mv-viz .music-artist { color: rgb(255 255 255 / 0.75); }
 /* Admin option: the YouTube player keeps running (audio, sync) but isn't shown in music view. */
 .dock-hidden { opacity: 0; pointer-events: none; z-index: -1; }
+/* A screen between stage layouts: kept loaded at a size the embeds will play at. */
+.dock-hidden:not([style]) { top: 0; left: 0; width: 356px; height: 200px; }
 .mv-viz .music-text { padding-right: 0; }
 
 /* ---------- posts ---------- */

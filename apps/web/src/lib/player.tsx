@@ -16,6 +16,15 @@ interface PlayerCtx {
   /** element the player should cover; null = dock it */
   slot: HTMLElement | null;
   setSlot: (el: HTMLElement | null) => void;
+  /** Home's stage is on screen: screens only load while it is */
+  stageOpen: boolean;
+  setStageOpen: (v: boolean) => void;
+  /** element each screen should cover, by screen (item) id */
+  screenSlots: Readonly<Record<string, HTMLElement>>;
+  setScreenSlot: (id: string, el: HTMLElement | null) => void;
+  /** screens this viewer turned the sound on for; screens start muted */
+  screenSound: ReadonlySet<string>;
+  setScreenSound: (id: string, on: boolean) => void;
   /** viewer closed the docked mini player for this item */
   dismissedFor: string | null;
   setDismissedFor: (id: string | null) => void;
@@ -66,6 +75,26 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [syncing, setSyncing] = useState(false);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
+  const [stageOpen, setStageOpen] = useState(false);
+  const [screenSlots, setScreenSlots] = useState<Record<string, HTMLElement>>({});
+  const setScreenSlot = useCallback((id: string, el: HTMLElement | null) => {
+    setScreenSlots((prev) => {
+      if ((prev[id] ?? null) === el) return prev;
+      const next = { ...prev };
+      if (el) next[id] = el;
+      else delete next[id];
+      return next;
+    });
+  }, []);
+  const [screenSound, setScreenSoundSet] = useState<ReadonlySet<string>>(new Set());
+  const setScreenSound = useCallback((id: string, on: boolean) => {
+    setScreenSoundSet((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
   const [hidden, setHiddenSet] = useState<ReadonlySet<string>>(() => new Set(readJson<string[]>("stage.hidden", [])));
   // The source shown large. Not saved: each visit starts on the grid when there's more than one.
   const [focused, setFocused] = useState<string | null>(null);
@@ -131,8 +160,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [blocked]);
   const value = useMemo(
-    () => ({ audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, dismissedFor, setDismissedFor, hidden, setHidden, focused, setFocused, viewOverrides, setViewOverride, clearViewOverrides }),
-    [audible, blocked, volume, syncing, slot, dismissedFor, hidden, setHidden, focused, viewOverrides, setViewOverride, clearViewOverrides],
+    () => ({
+      audible, setAudible, blocked, setBlocked, volume, setVolume, syncing, setSyncing, slot, setSlot, stageOpen, setStageOpen, screenSlots, setScreenSlot,
+      screenSound, setScreenSound, dismissedFor, setDismissedFor, hidden, setHidden, focused, setFocused, viewOverrides, setViewOverride, clearViewOverrides,
+    }),
+    [audible, blocked, volume, syncing, slot, stageOpen, screenSlots, setScreenSlot, screenSound, setScreenSound, dismissedFor, hidden, setHidden, focused, viewOverrides, setViewOverride, clearViewOverrides],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -137,7 +137,12 @@ export interface MediaState {
   queue: MediaItem[];
   /** most recent first */
   history: Array<MediaItem & { playedAt: number }>;
+  /** videos and streams watched alongside the player, each synced on its own; no queue */
+  screens: Playback[];
 }
+
+/** How many screens can be open alongside the player. */
+export const SCREENS_MAX = 4;
 
 export interface YouTubeResult {
   id: string;
@@ -184,7 +189,13 @@ export interface ClientToServer {
   "media:remove": (input: { id: string }, ack: Ack) => void;
   "media:move": (input: { id: string; to: number }, ack: Ack) => void;
   "media:clear": (ack: Ack) => void;
-  /** a client's player reached the end of `itemId` */
+  /** watch a single video or stream alongside the player */
+  "media:screen:add": (input: { url: string }, ack: Ack) => void;
+  "media:screen:play": (input: { id: string }, ack: Ack) => void;
+  "media:screen:pause": (input: { id: string }, ack: Ack) => void;
+  "media:screen:seek": (input: { id: string; position: number }, ack: Ack) => void;
+  "media:screen:close": (input: { id: string }, ack: Ack) => void;
+  /** a client's player reached the end of `itemId` (the player's item or a screen's) */
   "media:ended": (input: { itemId: string }) => void;
   /** a client's player learned the duration of `itemId` */
   "media:duration": (input: { itemId: string; duration: number }) => void;

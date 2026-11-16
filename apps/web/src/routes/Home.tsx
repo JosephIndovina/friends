@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { Maximize, Minimize, RectangleHorizontal, Pause, Play, Square, SkipForward, Volume2, VolumeX } from "lucide-react";
-import { SEEKABLE, type Session } from "@friends/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Maximize, Minimize, RectangleHorizontal, Pause, Play, Square, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import { SCREENS_MAX, SEEKABLE, type Playback, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
 import { fitGrid, StageRail, StageTile, type StageSource } from "../components/stage/Sources";
@@ -86,6 +86,21 @@ export function Home({ session }: { session: Session }) {
   // Hand the persistent player our slot while we're mounted.
   const slotRef = useCallback((el: HTMLDivElement | null) => p.setSlot(el), [p.setSlot]);
   useEffect(() => () => p.setSlot(null), [p.setSlot]);
+  // Screens only load while the stage is on screen.
+  useEffect(() => {
+    p.setStageOpen(true);
+    return () => p.setStageOpen(false);
+  }, [p.setStageOpen]);
+  // One stable ref callback per screen, so re-renders don't detach and re-attach its slot.
+  const screenRefs = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const screenRef = (id: string) => {
+    let fn = screenRefs.current.get(id);
+    if (!fn) {
+      fn = (el) => p.setScreenSlot(id, el);
+      screenRefs.current.set(id, fn);
+    }
+    return fn;
+  };
   useEffect(() => {
     if (now) p.setDismissedFor(null);
   }, [now?.item.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -97,8 +112,21 @@ export function Home({ session }: { session: Session }) {
   // Your own shares get one name everywhere (source row, tile, Stop), numbered when there are several.
   const mineIds = cast.streams.filter((st) => st.mine).map((st) => st.id);
   const ownName = (id: string) => (mineIds.length > 1 ? `Your screen ${mineIds.indexOf(id) + 1}` : "Your screen");
+  const screens = state?.screens ?? [];
+  const canClose = (sc: Playback) => sc.startedBy.id === session.user.id || control;
+  const closeScreen = (sc: Playback) => void act(mediaAction("media:screen:close", { id: sc.item.id }));
   const sources: StageSource[] = [
     ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible }] : []),
+    ...screens.map((sc) => ({
+      id: sc.item.id,
+      live: sc.item.kind === "twitch-live",
+      label: sc.item.author ?? sc.item.title,
+      detail: sc.item.kind === "twitch-live" ? `Live · ${sc.item.title}` : sc.item.title,
+      thumbnail: sc.item.thumbnail,
+      audible: p.screenSound.has(sc.item.id),
+      setAudible: (v: boolean) => p.setScreenSound(sc.item.id, v),
+      onClose: canClose(sc) ? () => closeScreen(sc) : undefined,
+    })),
     ...cast.streams.map((st) => ({
       id: st.id,
       live: true,
@@ -118,6 +146,7 @@ export function Home({ session }: { session: Session }) {
   const playerFocused = focusId === "player";
   const playerOnStage = layout === "grid" ? visible.some((x) => x.id === "player") : playerFocused;
   const focusedStream = cast.streams.find((st) => st.id === focusId) ?? null;
+  const focusedScreen = screens.find((sc) => sc.item.id === focusId) ?? null;
   const canStopOthers = can(session, "playback.moderate");
   const hide = (id: string) => {
     p.setHidden(id, true);
@@ -157,7 +186,8 @@ export function Home({ session }: { session: Session }) {
   const gridH = full ? box.h - 2 * GRID_PAD : theatre === "on" ? Math.max(320, box.h - 250) : (box.w * 9) / 16;
   let grid = fitGrid(visible.length, box.w, gridH, GRID_GAP);
   // YouTube's player must stay at least 200px tall wherever it's visible.
-  if (layout === "grid" && playerOnStage && !hideVideo && grid.h < 200 && box.w >= 600) {
+  const youtubeInGrid = (playerOnStage && !hideVideo && now?.item.kind === "youtube") || screens.some((sc) => sc.item.kind === "youtube" && !p.hidden.has(sc.item.id));
+  if (layout === "grid" && youtubeInGrid && grid.h < 200 && box.w >= 600) {
     const cols = Math.max(1, Math.floor((box.w + GRID_GAP) / (356 + GRID_GAP)));
     const w = Math.floor((box.w - GRID_GAP * (cols - 1)) / cols);
     grid = { cols, w, h: Math.floor((w * 9) / 16) };
@@ -173,6 +203,7 @@ export function Home({ session }: { session: Session }) {
         </>
       );
     }
+    if (screens.some((sc) => sc.item.id === x.id)) return <div ref={screenRef(x.id)} className="player-slot player-slot-passive" />;
     const st = cast.streams.find((c) => c.id === x.id);
     return st ? <StreamVideo stream={st} className="stream-tile" /> : null;
   };
@@ -192,7 +223,7 @@ export function Home({ session }: { session: Session }) {
               {layout === "idle" && sources.length === 0 && (
                 <div className="stage-idle">
                   <h1>Nothing playing</h1>
-                  <p>Search YouTube, or paste a YouTube, Spotify or Twitch link. Or go live and share your screen.</p>
+                  <p>Search YouTube, or paste a YouTube, Spotify or Twitch link. Use Watch alongside to play several at once. Or go live and share your screen.</p>
                 </div>
               )}
               {layout === "idle" && sources.length > 0 && (
@@ -234,6 +265,7 @@ export function Home({ session }: { session: Session }) {
                 </div>
               )}
               {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" />}
+              {focusedScreen && <div key={focusedScreen.item.id} ref={screenRef(focusedScreen.item.id)} className="player-slot" />}
               {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
             </div>
 
@@ -260,12 +292,43 @@ export function Home({ session }: { session: Session }) {
               </div>
             )}
 
+            {focusedScreen && (
+              <div className="transport">
+                {focusedScreen.item.kind !== "twitch-live" && focusedScreen.item.kind !== "twitch-clip" && (
+                  <button className="icon-btn transport-main" disabled={!control}
+                    aria-label={focusedScreen.playing ? "Pause for everyone" : "Play for everyone"}
+                    onClick={() => void act(mediaAction(focusedScreen.playing ? "media:screen:pause" : "media:screen:play", { id: focusedScreen.item.id }))}>
+                    {focusedScreen.playing ? <Pause aria-hidden /> : <Play aria-hidden />}
+                  </button>
+                )}
+                {SEEKABLE[focusedScreen.item.kind] ? (
+                  <Seek position={expectedPosition(focusedScreen)} duration={focusedScreen.item.duration} disabled={!control}
+                    onSeek={(sec) => act(mediaAction("media:screen:seek", { id: focusedScreen.item.id, position: sec }))} />
+                ) : (
+                  <span className="live-badge">{focusedScreen.item.kind === "twitch-live" ? "Live" : "Clip"}</span>
+                )}
+                {p.blocked && p.screenSound.has(focusedScreen.item.id)
+                  ? <button className="btn btn-primary btn-s sound-on" onClick={() => p.setBlocked(false)}><Volume2 aria-hidden /><span className="sound-label">Click anywhere for sound</span></button>
+                  : <Volume volume={p.volume} muted={!p.screenSound.has(focusedScreen.item.id)}
+                      onChange={(v) => { p.setVolume(v); p.setScreenSound(focusedScreen.item.id, v > 0); }}
+                      onToggle={() => p.setScreenSound(focusedScreen.item.id, !p.screenSound.has(focusedScreen.item.id))} />}
+              </div>
+            )}
+
             {/* One bar for what's showing and for the stage itself. */}
             <div className="stage-info stage-bar">
               {focusedStream ? (
                 <div className="now-meta">
                   <strong className="now-title">{focusedStream.mine ? ownName(focusedStream.id) : focusedStream.label}</strong>
                   <span><span className="live-dot" aria-hidden />Live{focusedStream.mode ? ` · ${focusedStream.mode}` : ""}</span>
+                </div>
+              ) : focusedScreen ? (
+                <div className="now-meta">
+                  <strong className="now-title">{focusedScreen.item.title}</strong>
+                  <span>
+                    {focusedScreen.item.kind === "twitch-live" && <span className="live-dot" aria-hidden />}
+                    {[focusedScreen.item.author, KIND_LABEL[focusedScreen.item.kind], `opened by ${focusedScreen.startedBy.name}`].filter(Boolean).join(" · ")}
+                  </span>
                 </div>
               ) : now && playerOnStage ? (
                 <div className="now-meta">
@@ -297,6 +360,10 @@ export function Home({ session }: { session: Session }) {
                       </button>
                     )}
                   </>
+                ) : focusedScreen ? (
+                  canClose(focusedScreen) && (
+                    <button className="btn btn-quiet btn-s" onClick={() => closeScreen(focusedScreen)}><X aria-hidden />Close for everyone</button>
+                  )
                 ) : now && playerOnStage ? (
                   <>
                     {now.item.kind === "youtube" && <ModeToggle item={now.item} mode={music ? "music" : "video"} onChange={p.setViewOverride} />}
@@ -324,10 +391,10 @@ export function Home({ session }: { session: Session }) {
         <aside className="side">
           {error && <p className="flash flash-error" role="alert">{error}</p>}
           {can(session, "player.queue") && (
-            <AddBox canPlayNext={control} onAdd={async (input) => {
+            <AddBox canPlayNext={control} canAlongside={screens.length < SCREENS_MAX} onAdd={async ({ alongside, ...input }) => {
               setError(null);
               try {
-                await mediaAction("media:add", input);
+                await (alongside ? mediaAction("media:screen:add", { url: input.url }) : mediaAction("media:add", input));
                 return true;
               } catch (e) {
                 setError(mediaError(e));
@@ -340,9 +407,11 @@ export function Home({ session }: { session: Session }) {
               <button key={id} role="tab" aria-selected={tab === id} className="side-tab" onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
+          <div className="side-panel" role="tabpanel">
           {tab === "queue" && <Queue session={session} items={state?.queue ?? []} act={act} />}
           {tab === "recent" && <History items={state?.history ?? []} canReplay={can(session, "player.queue")} onReplay={(id) => act(mediaAction("media:replay", { id }))} />}
           {tab === "playlists" && <PlaylistsPanel session={session} queueCount={(state?.queue.length ?? 0) + (now ? 1 : 0)} />}
+          </div>
         </aside>
       </div>
 

@@ -19,11 +19,13 @@ function sectionFor(path: string): Section {
 
 /** Tell the room what we're doing: watching or listening only when the player is actually audible for us. */
 function ActivityReporter() {
-  const now = useMediaState()?.now ?? null;
+  const state = useMediaState();
+  const now = state?.now ?? null;
   const p = usePlayer();
   const cast = useCast();
   const visible = !p.hidden.has("player") && (Boolean(p.slot) || p.dismissedFor !== now?.item.id);
-  const watchingStream = cast.streams.some((st) => !st.local && !p.hidden.has(st.id));
+  const watchingStream = cast.streams.some((st) => !st.local && !p.hidden.has(st.id))
+    || (p.stageOpen && (state?.screens ?? []).some((sc) => sc.playing && p.screenSound.has(sc.item.id) && !p.hidden.has(sc.item.id)));
   const activity: Activity = cast.streams.some((st) => st.local)
     ? "casting"
     : now?.playing && p.audible && visible

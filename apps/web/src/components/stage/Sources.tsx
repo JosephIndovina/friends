@@ -1,4 +1,4 @@
-import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Square, Volume2, VolumeX } from "lucide-react";
+import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Square, Volume2, VolumeX, X } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { GoLive } from "./GoLive";
 
@@ -14,6 +14,8 @@ export interface StageSource {
   local?: boolean;
   audible: boolean;
   setAudible: (v: boolean) => void;
+  /** a screen you may close: closes it for everyone */
+  onClose?: () => void;
 }
 
 /** One of your own streams, listed with its Stop button at the foot of the rail. */
@@ -92,6 +94,9 @@ export function StageRail({ sources, hidden, setHidden, current, onShow, open, s
                     )}
                     <button className="icon-btn" aria-label={isHidden ? `Show ${s.label}` : `Hide ${s.label}`} title={isHidden ? "Show" : "Hide"}
                       onClick={() => setHidden(s.id, !isHidden)}>{isHidden ? <EyeOff aria-hidden /> : <Eye aria-hidden />}</button>
+                    {s.onClose && (
+                      <button className="icon-btn" aria-label={`Close ${s.label} for everyone`} title="Close for everyone" onClick={s.onClose}><X aria-hidden /></button>
+                    )}
                   </span>
                 )}
               </li>

@@ -64,6 +64,8 @@ export const MEDIA_ERRORS: Record<string, string> = {
   spotify_unavailable: "Spotify doesn’t let apps read its own playlists (like Today’s Top Hits). Playlists made by people, albums and tracks work.",
   spotify_error: "Spotify didn’t respond. Try again.",
   no_match: "Couldn’t find that track on YouTube.",
+  screens_full: "Up to 4 videos can play alongside the player. Close one first.",
+  screen_single: "Only single YouTube videos and Twitch links can play alongside. Add playlists and Spotify to the queue.",
 };
 export const mediaError = (e: unknown) => MEDIA_ERRORS[(e as Error)?.message] ?? "Something went wrong. Try again.";
 

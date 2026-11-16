@@ -1,27 +1,18 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Maximize2, Pause, Play, X } from "lucide-react";
-import type { Session } from "@friends/shared";
+import type { Playback, Session } from "@friends/shared";
 import { can } from "../../lib/api";
 import { mediaAction, useMediaState } from "../../lib/media";
 import { usePlayer } from "../../lib/player";
 import { SyncedPlayer } from "./SyncedPlayer";
 
-/**
- * The one player instance. It never unmounts while something is playing, so navigating doesn't
- * reload the video. On Home it sits exactly over the slot Home registers; elsewhere it docks to a corner.
- * The YouTube player stays at least 200px tall wherever it is shown.
- */
-export function PlayerDock({ session }: { session: Session }) {
-  const state = useMediaState();
-  const now = state?.now ?? null;
-  const p = usePlayer();
-  const box = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+type Rect = { top: number; left: number; width: number; height: number };
 
-  // Track the slot every frame: images loading and layout shifts move it without resizing it.
+/** Where `slot` sits inside the shell, tracked every frame: images loading and layout shifts move it without resizing it. */
+function useSlotRect(slot: HTMLElement | null): Rect | null {
+  const [rect, setRect] = useState<Rect | null>(null);
   useLayoutEffect(() => {
-    const slot = p.slot;
     if (!slot) return setRect(null);
     const shell = slot.closest(".shell") as HTMLElement;
     let raf = 0;
@@ -40,19 +31,64 @@ export function PlayerDock({ session }: { session: Session }) {
     };
     measure();
     return () => cancelAnimationFrame(raf);
-  }, [p.slot]);
+  }, [slot]);
+  return rect;
+}
+
+const slotClass = (slot: HTMLElement | null, docked: string) => {
+  if (!slot) return docked;
+  const c = slot.classList;
+  // In a stage tile, clicks belong to the tile (show large), not the embedded player.
+  const base = c.contains("player-slot-hidden") ? "dock dock-hidden" : c.contains("player-slot-mini") ? "dock dock-inset" : "dock";
+  return `${base}${c.contains("player-slot-passive") ? " dock-passive" : ""}`;
+};
+
+/**
+ * The player instances. They never unmount while something is playing, so navigating or changing the
+ * stage layout doesn't reload a video. Each sits exactly over the slot Home registers for it.
+ * Away from Home the shared player docks to a corner; screens are unloaded until you come back.
+ * The YouTube player stays at least 200px tall wherever it is shown.
+ */
+export function PlayerDock({ session }: { session: Session }) {
+  const state = useMediaState();
+  const p = usePlayer();
+  return (
+    <>
+      <MainPlayer session={session} />
+      {p.stageOpen && state?.screens.filter((sc) => !p.hidden.has(sc.item.id)).map((sc) => (
+        <ScreenPlayer key={sc.item.id} playback={sc} slot={p.screenSlots[sc.item.id] ?? null} />
+      ))}
+    </>
+  );
+}
+
+function ScreenPlayer({ playback, slot }: { playback: Playback; slot: HTMLElement | null }) {
+  const p = usePlayer();
+  const rect = useSlotRect(slot);
+  // Between layouts the slot is briefly gone: keep the player loaded, out of sight.
+  return (
+    <div className={slotClass(slot, "dock dock-hidden")} aria-hidden={!slot || undefined} style={rect ?? undefined}>
+      <div className="dock-video">
+        <SyncedPlayer playback={playback} audible={Boolean(slot) && p.screenSound.has(playback.item.id) && !p.blocked} volume={p.volume}
+          onBlocked={() => p.setBlocked(true)} />
+      </div>
+    </div>
+  );
+}
+
+function MainPlayer({ session }: { session: Session }) {
+  const state = useMediaState();
+  const now = state?.now ?? null;
+  const p = usePlayer();
+  const rect = useSlotRect(p.slot);
 
   if (!now || p.hidden.has("player")) return null;
   const docked = !p.slot;
-  const mini = p.slot?.classList.contains("player-slot-mini");
   const hidden = p.slot?.classList.contains("player-slot-hidden");
-  // In a stage tile, clicks belong to the tile (show large), not the embedded player.
-  const passive = p.slot?.classList.contains("player-slot-passive");
   if (docked && p.dismissedFor === now.item.id) return null;
 
   return (
-    <div ref={box} className={`${docked ? "dock dock-mini" : hidden ? "dock dock-hidden" : mini ? "dock dock-inset" : "dock"}${passive ? " dock-passive" : ""}`}
-      aria-hidden={hidden || undefined} style={rect && !docked ? rect : undefined}>
+    <div className={slotClass(p.slot, "dock dock-mini")} aria-hidden={hidden || undefined} style={rect && !docked ? rect : undefined}>
       <div className="dock-video">
         <SyncedPlayer playback={now} audible={p.audible && !p.blocked} volume={p.volume} onDrift={p.setSyncing} onBlocked={() => p.setBlocked(true)} />
       </div>
