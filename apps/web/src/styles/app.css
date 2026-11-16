@@ -654,6 +654,16 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .mixer-row .icon-btn { grid-row: 1 / 3; width: 34px; height: 34px; }
 .mixer-label { font-size: var(--step--1); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 4px; }
 .mixer-row .range { width: 100%; max-width: none; }
+/* One source's volume: hover the speaker for its slider (rail rows and tile controls). */
+.vol { display: inline-flex; }
+.vol-pop {
+  position: fixed; z-index: 80; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3) 0 4px;
+  border-radius: var(--radius-pill); background: var(--upholstery); border: 1px solid var(--line); box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.55);
+  color: var(--ink);
+}
+.vol-pop .icon-btn { width: 32px; height: 32px; flex: none; color: var(--ink); }
+.vol-pop .range { flex: 1; width: auto; min-width: 0; max-width: none; }
+.vol-value { min-width: 3ch; text-align: right; font-size: var(--step--1); font-variant-numeric: tabular-nums; color: var(--mute); }
 /* Sound blocked by the browser: one notice over the stage; any click clears it. */
 .stage-main { position: relative; }
 .sound-notice {
@@ -1018,6 +1028,9 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .tile-name svg { width: 14px; height: 14px; flex: none; opacity: 0.85; }
 .tile-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dock-passive { pointer-events: none; }
+/* Twitch stops playing when anything covers its player, so on the stage nothing does: above the tile's name, ring and
+   click layer (11–12), under the stage's own notices and menus. Clicks pass through to the tile or stage underneath. */
+.dock-uncovered:not(.dock-hidden) { z-index: 13; pointer-events: none; }
 /* Someone else's stream you aren't watching: their picture and a Watch button. */
 .tile-offer .tile-hit { cursor: pointer; }
 .tile-offer-body { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: var(--space-3); }
@@ -1037,6 +1050,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 }
 .tile-controls .icon-btn { color: #fff; width: 34px; height: 34px; flex: none; }
 .tile-controls .seek { gap: var(--space-2); }
+.tile-controls .vol { margin-left: auto; }
 .tile:hover .tile-controls, .tile-controls:focus-within { opacity: 1; }
 .tile.has-controls:hover .tile-name, .tile.has-controls:focus-within .tile-name { opacity: 0; }
 .tile-name { transition: opacity 0.15s var(--ease-out); }

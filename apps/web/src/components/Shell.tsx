@@ -6,7 +6,8 @@ import { usePendingCount } from "../lib/attention";
 import { useMediaState } from "../lib/media";
 import { PlayerProvider, usePlayer, viewModeOf } from "../lib/player";
 import { CastProvider, StreamAudio, useCast } from "../lib/cast";
-import { ToastProvider } from "../lib/toast";
+import { ToastProvider, useToast } from "../lib/toast";
+import { getSocket } from "../lib/socket";
 import { reportActivity, reportSection } from "../lib/presence";
 import { Avatar } from "./Avatar";
 import { PlayerDock } from "./media/PlayerDock";
@@ -66,6 +67,7 @@ export function Shell({ session }: { session: Session }) {
     <PlayerProvider>
      <CastProvider session={session}>
       <ToastProvider>
+      <StreamEndedNotice />
       <div className={`shell${showNav ? "" : " no-tabbar"}`}>
         <header className="topbar">
           <Link to="/" className="wordmark">friends</Link>
@@ -105,4 +107,17 @@ export function Shell({ session }: { session: Session }) {
      </CastProvider>
     </PlayerProvider>
   );
+}
+
+/** When a moderator ends your stream, say who: otherwise it just vanishes. Stays until dismissed, in case you weren't looking. */
+function StreamEndedNotice() {
+  const toast = useToast();
+  useEffect(() => {
+    const s = getSocket();
+    const on = ({ by, app }: { by: string; app: boolean }) =>
+      toast(`${by} ended your stream${app ? " from Friends Live" : ""}.`, { kind: "error" });
+    s.on("cast:ended", on);
+    return () => void s.off("cast:ended", on);
+  }, [toast]);
+  return null;
 }

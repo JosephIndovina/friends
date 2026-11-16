@@ -170,6 +170,8 @@ export interface ServerToClient {
   "posts:changed": (input: { id: string; deleted?: boolean }) => void;
   /** admins only: something that needs attention changed (access requests); refetch counts */
   "admin:attention": () => void;
+  /** someone else (a moderator) ended one of your streams; `app` when it was streaming from Friends Live */
+  "cast:ended": (input: { by: string; app: boolean }) => void;
 }
 
 export interface ClientToServer {

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Maximize2, Pause, Play, X } from "lucide-react";
-import type { Playback, Session } from "@friends/shared";
+import type { MediaKind, Playback, Session } from "@friends/shared";
 import { can } from "../../lib/api";
 import { mediaAction, useMediaState } from "../../lib/media";
 import { usePlayer } from "../../lib/player";
@@ -35,12 +35,14 @@ function useSlotRect(slot: HTMLElement | null): Rect | null {
   return rect;
 }
 
-const slotClass = (slot: HTMLElement | null, docked: string) => {
+const slotClass = (slot: HTMLElement | null, docked: string, kind: MediaKind) => {
   if (!slot) return docked;
   const c = slot.classList;
   // In a stage tile, clicks belong to the tile (show large), not the embedded player.
   const base = c.contains("player-slot-hidden") ? "dock dock-hidden" : c.contains("player-slot-mini") ? "dock dock-inset" : "dock";
-  return `${base}${c.contains("player-slot-passive") ? " dock-passive" : ""}`;
+  // Twitch pauses its player whenever anything is drawn over it, even a transparent click layer or a name label:
+  // its players sit above everything on the stage and let clicks through to the tile underneath.
+  return `${base}${c.contains("player-slot-passive") ? " dock-passive" : ""}${kind.startsWith("twitch") ? " dock-uncovered" : ""}`;
 };
 
 /**
@@ -67,7 +69,7 @@ function ScreenPlayer({ playback, slot }: { playback: Playback; slot: HTMLElemen
   const rect = useSlotRect(slot);
   // Between layouts the slot is briefly gone: keep the player loaded, out of sight.
   return (
-    <div className={slotClass(slot, "dock dock-hidden")} aria-hidden={!slot || undefined} style={rect ?? undefined}>
+    <div className={slotClass(slot, "dock dock-hidden", playback.item.kind)} aria-hidden={!slot || undefined} style={rect ?? undefined}>
       <div className="dock-video">
         <SyncedPlayer playback={playback} audible={Boolean(slot) && p.screenSound.has(playback.item.id) && !p.blocked} volume={p.screenVolume[playback.item.id] ?? p.volume}
           onBlocked={() => p.setBlocked(true)} />
@@ -88,7 +90,7 @@ function MainPlayer({ session }: { session: Session }) {
   if (docked && p.dismissedFor === now.item.id) return null;
 
   return (
-    <div className={slotClass(p.slot, "dock dock-mini")} aria-hidden={hidden || undefined} style={rect && !docked ? rect : undefined}>
+    <div className={slotClass(p.slot, "dock dock-mini", now.item.kind)} aria-hidden={hidden || undefined} style={rect && !docked ? rect : undefined}>
       <div className="dock-video">
         <SyncedPlayer playback={now} audible={p.audible && !p.blocked} volume={p.volume} onDrift={p.setSyncing} onBlocked={() => p.setBlocked(true)} />
       </div>

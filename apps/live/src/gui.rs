@@ -2,7 +2,7 @@
 //! and goes live with the saved sound and quality. Everything about the stream is controlled from here.
 
 use crate::session::{self, Quality, Session, QUALITIES};
-use livekit::prelude::RoomEvent;
+use livekit::prelude::{DisconnectReason, RoomEvent};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -328,10 +328,16 @@ async fn start_live_with(app: AppHandle, shared: Shared, ask: bool) {
             let (app2, shared2) = (app.clone(), shared.clone());
             tauri::async_runtime::spawn(async move {
                 let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
+                // Taken off the stage by the server: you ended it from the site, or a moderator did.
+                let mut removed = false;
                 loop {
                     tokio::select! {
                         ev = events.recv() => match ev {
-                            Some(RoomEvent::Disconnected { .. }) | None => break,
+                            Some(RoomEvent::Disconnected { reason }) => {
+                                removed = reason == DisconnectReason::ParticipantRemoved;
+                                break;
+                            }
+                            None => break,
                             _ => {}
                         },
                         _ = tick.tick() => {
@@ -343,7 +349,13 @@ async fn start_live_with(app: AppHandle, shared: Shared, ask: bool) {
                         }
                     }
                 }
-                let s = shared2.lock().await.live.take();
+                let s = {
+                    let mut i = shared2.lock().await;
+                    if removed {
+                        i.error = Some("Your stream was ended from the site.".into());
+                    }
+                    i.live.take()
+                };
                 if let Some(s) = s {
                     s.stop().await;
                 }

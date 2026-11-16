@@ -1,5 +1,6 @@
-import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Volume2, VolumeX, X } from "lucide-react";
+import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { VolumeHover } from "../media/parts";
 import { GoLive } from "./GoLive";
 
 /** Anything that can be on the stage: the shared player, and each person's cast stream. */
@@ -27,8 +28,8 @@ export interface StageSource {
   /** a live picture in place of the thumbnail: your own stream, so you can tell your streams apart */
   preview?: ReactNode;
   /** end it for everyone, when this viewer is allowed to: e.g. "Close for everyone". `confirm` asks first. No X without it.
-   * Your own streams have none: Stop is in the Go live panel with the rest of the streaming controls. */
-  end?: { label: string; run: () => void; confirm?: string };
+   * Streams show Stop (a square) instead of an X: yours, and anyone's for moderators. */
+  end?: { label: string; run: () => void; confirm?: string; stop?: boolean };
 }
 
 /**
@@ -105,10 +106,12 @@ export function StageRail({ sources, focused, all, onToggle, onAll, open: railOp
               </button>
               {open && (
                 <span className="rail-actions">
-                  {!(s.silent ?? s.local) && s.on && (
+                  {!(s.silent ?? s.local) && s.on && (s.setVolume ? (
+                    <VolumeHover label={s.label} volume={s.volume ?? 100} muted={!s.audible} setVolume={s.setVolume} setMuted={(m) => s.setAudible(!m)} align="end" />
+                  ) : (
                     <button className="icon-btn" aria-label={s.audible ? `Mute ${s.label}` : `Unmute ${s.label}`} title={s.audible ? "Mute" : "Unmute"}
                       onClick={() => s.setAudible(!s.audible)}>{s.audible ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}</button>
-                  )}
+                  ))}
                   {!(s.silent ?? s.local) && s.on && <span className="rail-sep" aria-hidden />}
                   <button className="icon-btn" aria-pressed={!s.on} aria-label={s.on ? `Hide ${s.label}` : `Show ${s.label}`} title={s.on ? "Hide for you" : "Show"}
                     onClick={() => s.setOn(!s.on)}>{s.on ? <Eye aria-hidden /> : <EyeOff aria-hidden />}</button>
@@ -135,11 +138,11 @@ export function StageRail({ sources, focused, all, onToggle, onAll, open: railOp
 }
 
 /**
- * The X on a source: ends it for everyone, and only shows when you're allowed to. Your own stream
- * has none (Stop is in the Go live panel). Ending someone else's asks first, in a small popover fixed to the window so the
+ * The X (Stop, for a stream) on a source: ends it for everyone, and only shows when you're allowed to. Your own stream
+ * stops straight away. Ending someone else's asks first, in a small popover fixed to the window so the
  * rail's scrolling list can't clip it.
  */
-function EndButton({ source, className }: { source: StageSource; className?: string }) {
+export function EndButton({ source, className }: { source: StageSource; className?: string }) {
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -172,12 +175,14 @@ function EndButton({ source, className }: { source: StageSource; className?: str
     if (at) return setAt(null);
     const r = btn.current!.getBoundingClientRect();
     const w = 224;
-    setAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) });
+    // Under the button, or above it when it sits low (the stage bar).
+    const h = 140;
+    setAt({ top: r.bottom + 6 + h > window.innerHeight ? r.top - 6 - h : r.bottom + 6, left: Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) });
   };
   return (
     <>
       <button ref={btn} className={`icon-btn${className ? ` ${className}` : ""}${at ? " is-open" : ""}`} aria-label={`${end.label}: ${source.label}`} title={end.label}
-        aria-haspopup={end.confirm ? "menu" : undefined} aria-expanded={end.confirm ? Boolean(at) : undefined} onClick={click}><X aria-hidden /></button>
+        aria-haspopup={end.confirm ? "menu" : undefined} aria-expanded={end.confirm ? Boolean(at) : undefined} onClick={click}>{end.stop ? <Square aria-hidden /> : <X aria-hidden />}</button>
       {at && end.confirm && (
         <div ref={menu} className="remove-menu" role="menu" aria-label={end.label} style={{ top: at.top, left: at.left }}>
           <p className="remove-ask">{end.confirm}</p>

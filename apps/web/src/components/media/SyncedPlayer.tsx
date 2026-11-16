@@ -9,6 +9,8 @@ const familyOf = (k: MediaKind): Family => (k === "youtube" ? "youtube" : k === 
 
 const HARD_DRIFT_S = 0.5;
 const SEEK_COOLDOWN_MS = 2500;
+/** seconds a self-paused embed waits before one try to resume it */
+const RESUME_AFTER_S = 8;
 
 /**
  * Drives an embedded player so it matches the room's playback: same item, same play/pause,
@@ -71,13 +73,30 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
     const e = engine.current?.e;
     if (!e) return;
     e.setMuted(!audible);
-    if (audible) {
-      e.setVolume(volume);
-      if (latest.current.playing) e.play();
-    }
+    if (audible) e.setVolume(volume);
   }, [audible, volume, ready]);
 
-  // Reconcile loop: nudge the local player back to the room.
+  // Play and pause when the room does (or a new item loads), once: never on a timer, so a playing video is left alone.
+  // Browsers refuse unmuted playback before any interaction: if it hasn't started a few seconds later with sound on,
+  // ask the caller to drop to muted (always allowed), which plays it again.
+  useEffect(() => {
+    const cur = engine.current;
+    if (!cur || cur.family === "clip" || cur.itemId !== playback.item.id) return;
+    const { e } = cur;
+    if (!playback.playing) {
+      if (e.playing()) e.pause();
+      return;
+    }
+    if (!e.playing()) e.play();
+    if (!audible) return;
+    const t = setTimeout(() => {
+      if (latest.current.playing && !e.playing()) onBlocked?.();
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [playback.playing, playback.item.id, audible, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reconcile loop: keep the position with the room. It doesn't press play: an embed that paused itself
+  // (Twitch pauses whenever anything covers it, even for a moment) gets one resume after it's been stopped a while.
   useEffect(() => {
     const tick = () => {
       const cur = engine.current;
@@ -85,16 +104,10 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
       if (!cur || cur.itemId !== p.item.id || cur.family === "clip") return;
       const { e } = cur;
       if (p.playing && !e.playing()) {
-        // Browsers refuse unmuted autoplay before any interaction: after a few failed
-        // attempts with sound on, ask the caller to drop to muted (which is always allowed).
-        if (audible && ++stalls.current >= 3) {
-          stalls.current = 0;
-          onBlocked?.();
-          return;
-        }
-        e.play();
-      } else stalls.current = 0;
-      if (!p.playing && e.playing()) e.pause();
+        if (++stalls.current % RESUME_AFTER_S === 0) e.play();
+        return;
+      }
+      stalls.current = 0;
       if (!SEEKABLE[p.item.kind] || Date.now() - lastSeek.current < SEEK_COOLDOWN_MS) return;
       const drift = expectedPosition(p) - e.time();
       const off = Math.abs(drift) > (p.playing ? HARD_DRIFT_S : 0.4);
@@ -107,7 +120,7 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, [playback, ready, onDrift, audible, onBlocked]);
+  }, [playback, ready, onDrift]);
 
   return <div ref={host} className="player-host" />;
 }

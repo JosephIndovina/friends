@@ -11,6 +11,8 @@ interface Events {
   "settings:changed": [];
   /** pending access requests changed */
   "admin:attention": [];
+  /** someone else ended this user's stream: tell them who */
+  "cast:ended": [{ userId: string; by: string; app: boolean }];
   "posts:changed": [{ id: string; deleted?: boolean }];
   "post:created": [string];
   /** post to the Discord notification channel; `url` is a site path */

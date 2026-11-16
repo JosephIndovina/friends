@@ -5,12 +5,12 @@ import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
 import { PresenceStack } from "../components/PresenceStack";
 import { MeLink } from "../components/Shell";
-import { fitGrid, StageRail, StageTile, type StageSource } from "../components/stage/Sources";
+import { EndButton, fitGrid, StageRail, StageTile, type StageSource } from "../components/stage/Sources";
 import { StreamVideo, useCast } from "../lib/cast";
 import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
 import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
-import { History, Mixer, Queue, Seek } from "../components/media/parts";
+import { History, Mixer, Queue, Seek, VolumeHover } from "../components/media/parts";
 import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
 import { expectedPosition, KIND_LABEL, mediaAction, mediaError, useMediaState } from "../lib/media";
@@ -154,7 +154,7 @@ export function Home({ session }: { session: Session }) {
       label: st.mine ? ownName(st.id) : st.label,
       detail: ["Live", st.mode, st.mine && !st.audio && "No sound"].filter(Boolean).join(" · "),
       thumbnail: st.avatarUrl,
-      // Your own stream: a live preview. Stop and Change window are in the Go live panel.
+      // Your own stream: a live preview, and Stop beside it. Change window is in the Go live panel.
       preview: st.mine ? <StreamVideo stream={st} className="rail-preview-video" /> : undefined,
       audible: st.local ? false : !cast.muted.has(st.id),
       silent: st.local,
@@ -164,7 +164,9 @@ export function Home({ session }: { session: Session }) {
       on: cast.watching.has(st.id),
       setOn: (on: boolean) => cast.setWatching(st.id, on),
       stream: !st.local,
-      end: !st.mine && canStopOthers ? { label: "End for everyone", run: () => void cast.stop(st.id), confirm: `End ${st.label}'s stream for everyone?` } : undefined,
+      // Stop beside every stream you may end: your own straight away, someone else's (moderators) after asking.
+      end: st.mine ? { label: "Stop streaming", run: (): void => void cast.stop(st.id), stop: true }
+        : canStopOthers ? { label: "Stop for everyone", run: (): void => void cast.stop(st.id), confirm: `Stop ${st.label}'s stream for everyone?`, stop: true } : undefined,
     })),
   ];
   // What's on is loaded and playing; off is unloaded for you only. Others' streams that are off
@@ -288,10 +290,18 @@ export function Home({ session }: { session: Session }) {
 
   // With several sources tiled, each video controls itself: play, skip and seek sit on its tile, shown on hover.
   // The bar under the stage only drives a source shown large on its own.
+  // Each tile's volume sits with its controls. Twitch's player is drawn over its whole tile (it stops whenever anything
+  // covers it), so a Twitch tile has nothing over it: its sound is in Sources and the volume button below the stage.
   const tileControls = (x: StageSource) => {
     const btn = (label: string, icon: React.ReactNode, run: () => void) => (
       <button className="icon-btn" disabled={!control} aria-label={label} title={label} onClick={run}>{icon}</button>
     );
+    const sc = screens.find((y) => y.item.id === x.id);
+    const kind = x.id === "player" ? now?.item.kind : sc?.item.kind;
+    if (kind?.startsWith("twitch")) return undefined;
+    const vol = !(x.silent ?? x.local) && x.setVolume
+      ? <VolumeHover label={x.label} volume={x.volume ?? 100} muted={!x.audible} setVolume={x.setVolume} setMuted={(m) => x.setAudible(!m)} />
+      : null;
     if (x.id === "player" && now) {
       return (
         <>
@@ -299,11 +309,11 @@ export function Home({ session }: { session: Session }) {
             () => void act(now.playing ? mediaAction("media:pause", { position: pos }) : mediaAction("media:play")))}
           {btn("Skip for everyone", <SkipForward aria-hidden />, () => void act(mediaAction("media:skip")))}
           {SEEKABLE[now.item.kind] && <Seek position={pos} duration={now.item.duration} disabled={!control} onSeek={(s) => act(mediaAction("media:seek", { position: s }))} />}
+          {vol}
         </>
       );
     }
-    const sc = screens.find((y) => y.item.id === x.id);
-    if (!sc || sc.item.kind === "twitch-live" || sc.item.kind === "twitch-clip") return undefined;
+    if (!sc) return vol ?? undefined; // a cast stream: just its sound
     const id = sc.item.id;
     return (
       <>
@@ -311,6 +321,7 @@ export function Home({ session }: { session: Session }) {
           () => void act(mediaAction(sc.playing ? "media:screen:pause" : "media:screen:play", { id })))}
         {SEEKABLE[sc.item.kind] && <Seek position={expectedPosition(sc)} duration={sc.item.duration} disabled={!control}
           onSeek={(s) => act(mediaAction("media:screen:seek", { id, position: s }))} />}
+        {vol}
       </>
     );
   };
@@ -459,6 +470,11 @@ export function Home({ session }: { session: Session }) {
                     </>
                   )}
                   <div className="stage-buttons">
+                    {/* Stop the stream you're watching: yours, or anyone's for moderators (asks first). */}
+                    {bar === "stream" && (() => {
+                      const x = sources.find((y) => y.id === focusId);
+                      return x?.end ? <EndButton source={x} /> : null;
+                    })()}
                     <Mixer channels={visible.filter((x) => !(x.silent ?? x.local) && x.setVolume).map((x) => ({
                       id: x.id, label: x.label, volume: x.volume ?? 100, muted: !x.audible, setMuted: (m) => x.setAudible(!m), setVolume: x.setVolume!,
                     }))} />

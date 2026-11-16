@@ -166,12 +166,15 @@ export async function castRoutes(app: FastifyInstance) {
     }
     const target = getUser(userId);
     // A bare user id ends every connection of theirs; "<user id>#<conn>" ends just that one.
-    if (req.params.id.includes("#")) await rooms().removeParticipant(ROOM, req.params.id).catch(() => {});
-    else {
-      const all = await rooms().listParticipants(ROOM).catch(() => [] as ParticipantInfo[]);
-      for (const p of all.filter((x) => userOf(x.identity) === userId)) await rooms().removeParticipant(ROOM, p.identity).catch(() => {});
+    const all = await rooms().listParticipants(ROOM).catch(() => [] as ParticipantInfo[]);
+    const ending = all.filter((x) => (req.params.id.includes("#") ? x.identity === req.params.id : userOf(x.identity) === userId));
+    for (const p of ending) await rooms().removeParticipant(ROOM, p.identity).catch(() => {});
+    // Tell the streamer who ended it, on every tab they have open (the app shows its own note).
+    if (!own && ending.length) {
+      const app = ending.some((p) => p.metadata.includes('"app":true'));
+      events.emit("cast:ended", { userId, by: req.session!.user.name, app });
     }
-    audit({ actorId: req.session!.user.id, action: "cast.stopped", target: { type: "user", id: userId, name: target?.name ?? null }, req });
+    audit({ actorId: req.session!.user.id, action: "cast.stopped", target: { type: "user", id: userId, name: target?.name ?? null }, details: { own }, req });
     return { ok: true };
   });
 

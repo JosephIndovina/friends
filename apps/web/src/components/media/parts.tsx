@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { GripVertical, Music2, Play, RotateCcw, Trash2, Volume2, VolumeX } from "lucide-react";
 import type { MediaItem, Session } from "@friends/shared";
 import { can } from "../../lib/api";
@@ -20,6 +21,99 @@ export function Seek({ position, duration, disabled, onSeek }: { position: numbe
         onKeyUp={(e) => { if (drag != null && e.key.startsWith("Arrow")) { onSeek(drag); setDrag(null); } }} />
       <span className="time">{fmtTime(duration)}</span>
     </div>
+  );
+}
+
+/**
+ * One source's sound: the speaker mutes it, and hovering it (or focusing it, or tapping it on touch) shows its volume slider.
+ * The slider sits in a small popover fixed to the window (in the shell, so it shows in full screen too), so the rail's
+ * scrolling list and a tile's edges can't clip it.
+ * `align` lines its edge up with the button's: "end" keeps it over the rail rather than the stage, "center" suits a tile.
+ */
+export function VolumeHover({ label, volume, muted, setVolume, setMuted, align = "center", className }: {
+  label: string;
+  volume: number;
+  muted: boolean;
+  setVolume: (v: number) => void;
+  setMuted: (m: boolean) => void;
+  align?: "center" | "end";
+  className?: string;
+}) {
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLSpanElement>(null);
+  const closing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touch = useRef(false);
+  const W = 200;
+  const H = 44;
+  const open = () => {
+    if (closing.current) clearTimeout(closing.current);
+    closing.current = null;
+    const r = btn.current?.getBoundingClientRect();
+    if (!r) return;
+    const left = align === "end" ? r.right - W : r.left + r.width / 2 - W / 2;
+    const above = r.top - H - 6 >= 8;
+    setAt({ top: above ? r.top - H - 6 : r.bottom + 6, left: Math.max(8, Math.min(left, window.innerWidth - W - 8)) });
+  };
+  const close = (soon = true) => {
+    if (closing.current) clearTimeout(closing.current);
+    if (!soon) return setAt(null);
+    closing.current = setTimeout(() => setAt(null), 200);
+  };
+  useEffect(() => () => void (closing.current && clearTimeout(closing.current)), []);
+  // Opened by a tap: a tap anywhere else, scrolling or Escape closes it.
+  useEffect(() => {
+    if (!at) return;
+    const away = (e: Event) => {
+      if (e instanceof KeyboardEvent) {
+        if (e.key !== "Escape") return;
+        btn.current?.focus();
+      } else if (e.type === "pointerdown" && (wrap.current?.contains(e.target as Node) || pop.current?.contains(e.target as Node))) return;
+      close(false);
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", away);
+    window.addEventListener("scroll", away, true);
+    window.addEventListener("resize", away);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", away);
+      window.removeEventListener("scroll", away, true);
+      window.removeEventListener("resize", away);
+    };
+  }, [at]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const v = muted ? 0 : volume;
+  const mute = (
+    <>{muted || volume === 0 ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}</>
+  );
+  return (
+    <span ref={wrap} className={`vol${className ? ` ${className}` : ""}`}
+      onPointerEnter={(e) => e.pointerType === "mouse" && open()}
+      onPointerLeave={(e) => e.pointerType === "mouse" && close()}
+      onBlur={(e) => !wrap.current?.contains(e.relatedTarget as Node) && !pop.current?.contains(e.relatedTarget as Node) && close(false)}>
+      <button ref={btn} className="icon-btn" aria-label={muted ? `Unmute ${label}` : `Mute ${label}`} aria-expanded={Boolean(at)}
+        onPointerDown={(e) => (touch.current = e.pointerType !== "mouse")}
+        onFocus={(e) => e.currentTarget.matches(":focus-visible") && open()}
+        onClick={() => {
+          // Touch has no hover: a tap opens the slider, which has its own mute.
+          if (touch.current) return at ? close(false) : open();
+          setMuted(!muted);
+        }}>{mute}</button>
+      {at && createPortal(
+        <span ref={pop} className="vol-pop" role="group" aria-label={`${label} volume`} style={{ top: at.top, left: at.left, width: W, height: H }}
+          onPointerEnter={() => closing.current && clearTimeout(closing.current)}
+          onPointerLeave={(e) => e.pointerType === "mouse" && close()}
+          onBlur={(e) => !wrap.current?.contains(e.relatedTarget as Node) && !pop.current?.contains(e.relatedTarget as Node) && close(false)}>
+          <button className="icon-btn" aria-label={muted ? `Unmute ${label}` : `Mute ${label}`} onClick={() => setMuted(!muted)}>{mute}</button>
+          <input type="range" className="range" min={0} max={100} value={v} aria-label={`${label} volume`}
+            style={{ "--fill": `${v}%` } as React.CSSProperties} onChange={(e) => setVolume(Number(e.target.value))} />
+          <span className="vol-value">{v}</span>
+        </span>,
+        btn.current?.closest(".shell") ?? document.body,
+      )}
+    </span>
   );
 }
 
