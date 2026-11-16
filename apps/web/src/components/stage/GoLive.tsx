@@ -23,15 +23,11 @@ function openLink(url: string) {
 }
 
 /** Go live through the desktop app: make a one-time code, hand it over, and watch for the app to pick it up. */
-function AppLaunch({ onDone }: { onDone: () => void }) {
+function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
   const [state, setState] = useState<Launch>("idle");
-  const [links, setLinks] = useState<AppLinks | null>(null);
   const timer = useRef<number | null>(null);
 
   useEffect(() => () => void (timer.current && clearInterval(timer.current)), []);
-  useEffect(() => {
-    api<AppLinks>("GET", "/api/cast/app").then(setLinks, () => setLinks({ linux: null, windows: null }));
-  }, []);
 
   const launch = async () => {
     if (timer.current) clearInterval(timer.current);
@@ -58,8 +54,8 @@ function AppLaunch({ onDone }: { onDone: () => void }) {
     }, 750);
   };
 
-  const mine = APP_OS ? links?.[APP_OS] : null;
-  const other = APP_OS === "windows" ? { label: "Linux", url: links?.linux } : { label: "Windows", url: links?.windows };
+  const mine = APP_OS ? links[APP_OS] : null;
+  const other = APP_OS === "windows" ? { label: "Linux", url: links.linux } : { label: "Windows", url: links.windows };
 
   return (
     <div className="app-launch">
@@ -116,6 +112,13 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [inBrowser, setInBrowser] = useState(APP_OS === null);
+  // The app is offered only where this server has an installer for this OS; everywhere else Go live is the browser's.
+  const [links, setLinks] = useState<AppLinks | null>(null);
+  const appReady = Boolean(APP_OS && links?.[APP_OS]);
+  useEffect(() => {
+    if (!open || !APP_OS || links) return;
+    api<AppLinks>("GET", "/api/cast/app").then(setLinks, () => setLinks({ linux: null, windows: null }));
+  }, [open, links]);
   const root = useRef<HTMLDivElement>(null);
   const mine = cast.streams.filter((s) => s.local).length;
 
@@ -170,16 +173,16 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
       )}
       {open && (
         <div className="stack-panel golive-panel" role="dialog" aria-label="Go live">
-          {APP_OS && (
+          {appReady && (
             <>
               <h2>Go live</h2>
-              <AppLaunch onDone={() => setOpen(false)} />
+              <AppLaunch links={links!} onDone={() => setOpen(false)} />
               <button className="btn btn-s btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
                 {inBrowser ? "Hide browser streaming" : "Stream from this browser instead"}
               </button>
             </>
           )}
-          {inBrowser && (
+          {(inBrowser || !appReady) && (
             <>
             <h2>Streaming mode</h2>
             <div className="modes" role="radiogroup" aria-label="Streaming mode">
