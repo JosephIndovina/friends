@@ -1,0 +1,4 @@
+# LiveKit's prebuilt libwebrtc for Windows uses the static C runtime (/MT); Rust must match or link.exe refuses
+# to mix them (LNK2038 RuntimeLibrary mismatch).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
