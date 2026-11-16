@@ -99,9 +99,10 @@
   color-scheme: light;
 }
 
-/* Theatre forces the dark room on a black ground, whatever the theme. */
+/* Theatre and full screen force the dark room on a black ground, whatever the theme. */
 @media (min-width: 861px) {
-  :root:has(.media-room.is-theatre) {
+  :root:has(.media-room.is-theatre),
+  :root:has(.rail.is-full) {
     --ground: #000;
     --upholstery: #151a23;
     --surface: color-mix(in oklab, #151a23 62%, transparent);

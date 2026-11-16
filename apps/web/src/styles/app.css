@@ -1046,8 +1046,9 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .stage.has-rail:has(> .rail.is-open) { --rail-w: 272px; }
 .stage-main { flex: 1; min-width: 0; }
 .rail {
+  --rail-bg: var(--upholstery);
   flex: none; width: var(--rail-w); position: relative; z-index: 20; display: flex; flex-direction: column;
-  background: var(--upholstery); border-right: 1px solid var(--line);
+  background: var(--rail-bg); border-right: 1px solid var(--line);
 }
 .rail-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; position: sticky; top: 0; max-height: 100dvh; }
 .rail-head { display: flex; align-items: center; gap: var(--space-2); padding: 10px 12px 6px; }
@@ -1068,7 +1069,7 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
   background: var(--surface-strong); color: var(--mute); font-weight: 700; font-size: var(--step--1);
 }
 .rail-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
-.rail-thumb.is-live { border-radius: 50%; box-shadow: 0 0 0 2px var(--upholstery), 0 0 0 4px #ff4d5e; }
+.rail-thumb.is-live { border-radius: 50%; box-shadow: 0 0 0 2px var(--rail-bg), 0 0 0 4px #ff4d5e; }
 .rail-thumb-icon { color: var(--ink); }
 .rail-thumb-icon svg { width: 18px; height: 18px; }
 .rail-badge { position: absolute; right: -5px; bottom: -5px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--ground); color: var(--ink); }
@@ -1115,6 +1116,8 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 /* Full screen: the rail is pinned down the left of the window and the stage fills the rest. */
 .rail.is-full { position: fixed; inset: 0 auto 0 0; z-index: 63; border-radius: 0; }
 .stage.has-rail .player-screen.is-full { left: var(--rail-w); width: calc(100vw - var(--rail-w)); }
+/* Theatre and full screen: the rail goes black with the stage; its edge line stays. */
+@media (min-width: 861px) { .is-theatre .rail, .rail.is-full { --rail-bg: #000; } }
 @media (hover: hover) {
   .rail [data-tip]::after { bottom: auto; top: 50%; left: calc(100% + 10px); translate: 4px -50%; }
   .rail [data-tip]:hover::after, .rail [data-tip]:focus-visible::after { translate: 0 -50%; }
