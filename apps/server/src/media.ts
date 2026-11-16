@@ -357,6 +357,19 @@ export function createMediaRoom(io: IO) {
       await advance(s.user);
     }));
 
+    // Close the player for everyone, like closing a screen: the item goes to Recent and the queue
+    // waits for Play. Whoever started it can close it; closing someone else's takes player control.
+    socket.on("media:stop", handle(null, async (s, input: { id: string }) => {
+      await advancing;
+      if (!now || now.item.id !== input?.id) fail("nothing_playing");
+      if (now!.startedBy.id !== s.user.id && !s.permissions.includes("player.control")) fail("missing_permission");
+      const { item, startedBy } = now!;
+      toHistory(item);
+      now = null;
+      audit({ actorId: s.user.id, action: "media.stopped", target: ref(item), details: { startedBy: startedBy.name } });
+      commit();
+    }));
+
     socket.on("media:playNow", handle("player.control", async (s, input: { id: string }) => {
       const i = queue.findIndex((q) => q.id === input?.id);
       if (i < 0) fail("not_found");

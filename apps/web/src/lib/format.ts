@@ -66,6 +66,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "media.added_playlist": "Queued playlist",
   "media.screen_added": "Opened a screen",
   "media.screen_closed": "Closed a screen",
+  "media.stopped": "Closed the player",
   "media.searched": "Searched YouTube",
   "media.mode_changed": "Changed view",
   "media.unmatched": "No YouTube match",

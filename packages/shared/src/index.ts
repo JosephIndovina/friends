@@ -184,6 +184,7 @@ export interface ClientToServer {
   "media:pause": (input: { position: number }, ack: Ack) => void;
   "media:seek": (input: { position: number }, ack: Ack) => void;
   "media:skip": (ack: Ack) => void;
+  "media:stop": (input: { id: string }, ack: Ack) => void;
   "media:playNow": (input: { id: string }, ack: Ack) => void;
   "media:replay": (input: { id: string }, ack: Ack) => void;
   "media:remove": (input: { id: string }, ack: Ack) => void;

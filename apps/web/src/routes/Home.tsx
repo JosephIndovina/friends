@@ -125,10 +125,12 @@ export function Home({ session }: { session: Session }) {
   const setMediaOn = (id: string) => (on: boolean) => p.setHidden(id, !on);
   const canStopOthers = can(session, "playback.moderate");
   // Every source is listed for everyone. The eye hides one just for you; the X ends it for everyone,
-  // and only shows when you're allowed to. Ending someone else's asks first. The player has no X: Skip is in the transport.
+  // and only shows when you're allowed to. Ending someone else's asks first. Closing the player keeps the queue for Play.
   const sources: StageSource[] = [
     ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible,
-      on: !p.hidden.has("player"), setOn: setMediaOn("player") }] : []),
+      on: !p.hidden.has("player"), setOn: setMediaOn("player"),
+      end: canClose(now) ? { label: "Close for everyone", run: () => void act(mediaAction("media:stop", { id: now.item.id })),
+        confirm: now.startedBy.id === session.user.id ? undefined : `Close ${now.item.title} for everyone?` } : undefined }] : []),
     ...screens.map((sc) => ({
       id: sc.item.id,
       live: sc.item.kind === "twitch-live",
