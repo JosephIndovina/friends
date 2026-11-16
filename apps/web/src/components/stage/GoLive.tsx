@@ -10,7 +10,7 @@ const APP_OS: "windows" | "linux" | null =
   : /Linux/i.test(navigator.userAgent) ? "linux"
   : null;
 
-type AppLinks = { linux: string | null; windows: string | null };
+type AppLinks = { linux: string | null; windows: string | null; installed?: string[] };
 type Launch = "idle" | "opening" | "opened" | "missing" | "error";
 
 /** Opens friends:// without leaving the page. A hidden frame fails quietly when nothing handles the link. */
@@ -56,7 +56,10 @@ function rememberInstalled(on: boolean) {
  * not), which then asks what to stream; Download gets the app. */
 function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
   const [state, setState] = useState<Launch>("idle");
-  const [installed, setInstalled] = useState(knownInstalled);
+  // Installed if this person's app has answered before (the server saw it), or this browser saw it answer.
+  const [installed, setInstalled] = useState(
+    () => knownInstalled() || Boolean(APP_OS && links.installed?.some((os) => os === APP_OS || os === "any")),
+  );
   const timer = useRef<number | null>(null);
 
   useEffect(() => () => void (timer.current && clearInterval(timer.current)), []);
@@ -87,8 +90,9 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
     }, 750);
   };
 
-  // Only the installer for this computer's system, and only until the app has answered from this browser.
-  const download = APP_OS && !installed ? links[APP_OS] : null;
+  // Only the installer for this computer's system: a button until the app is known to be installed, then a
+  // small link for reinstalling.
+  const download = APP_OS ? links[APP_OS] : null;
 
   return (
     <div className="app-launch">
@@ -98,11 +102,13 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
       {state === "opened" && <p className="block-note" role="status">Choose a window in Friends Live.</p>}
       {state === "error" && <p className="field-error" role="alert">Couldn't start. Try again.</p>}
       {state === "missing" && <p className="field-error" role="alert">Friends Live didn't open. Install it, then try again.</p>}
-      {download && (
+      {download && (installed ? (
+        <a className="app-redownload" href={download} download>Download Friends Live again</a>
+      ) : (
         <a className="btn btn-quiet" href={download} download>
           <Download aria-hidden />Download Friends Live
         </a>
-      )}
+      ))}
     </div>
   );
 }

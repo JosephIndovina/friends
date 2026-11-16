@@ -1037,6 +1037,8 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .app-launch { display: grid; gap: var(--space-2); }
 .app-launch > .btn, .golive-panel .browser-toggle { width: 100%; }
 .app-launch .block-note, .app-launch .field-error { margin: 0; font-size: var(--step--1); }
+.app-redownload { justify-self: center; font-size: 12px; color: var(--mute); text-decoration: underline; text-underline-offset: 2px; }
+.app-redownload:hover { color: var(--ink); }
 .or-sep { display: flex; align-items: center; gap: var(--space-3); color: var(--mute); font-size: var(--step--1); }
 .or-sep::before, .or-sep::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 .modes { display: grid; gap: 4px; }

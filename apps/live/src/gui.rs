@@ -405,7 +405,7 @@ async fn handle_link(app: AppHandle, shared: Shared, link: url::Url) {
     let res = async {
         let r = reqwest::Client::new()
             .post(format!("{base}/api/cast/launch/redeem"))
-            .json(&serde_json::json!({ "code": code, "version": env!("CARGO_PKG_VERSION") }))
+            .json(&serde_json::json!({ "code": code, "version": env!("CARGO_PKG_VERSION"), "os": std::env::consts::OS }))
             .send()
             .await?;
         anyhow::Ok((r.status(), r.text().await?))
