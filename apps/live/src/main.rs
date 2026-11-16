@@ -8,6 +8,7 @@ mod gui;
 #[cfg(target_os = "linux")]
 mod portal;
 mod session;
+mod tray;
 mod video;
 
 use anyhow::{bail, Context, Result};

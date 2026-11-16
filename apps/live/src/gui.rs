@@ -61,7 +61,7 @@ struct Link {
 }
 
 #[derive(Default)]
-struct Inner {
+pub(crate) struct Inner {
     link: Option<Link>,
     live: Option<Session>,
     starting: bool,
@@ -69,7 +69,7 @@ struct Inner {
     settings: Settings,
 }
 
-type Shared = Arc<Mutex<Inner>>;
+pub(crate) type Shared = Arc<Mutex<Inner>>;
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -92,6 +92,12 @@ struct LiveView {
     sound: Option<String>,
 }
 
+impl Inner {
+    pub(crate) fn settings_auto_start(&self) -> bool {
+        self.settings.auto_start
+    }
+}
+
 fn view(i: &Inner) -> View {
     View {
         name: i.link.as_ref().map(|l| l.name.clone()),
@@ -105,9 +111,39 @@ fn view(i: &Inner) -> View {
     }
 }
 
+/// Push the current state to the window and the tray.
 async fn emit(app: &AppHandle, shared: &Shared) {
-    let v = view(&*shared.lock().await);
-    let _ = app.emit("state", v);
+    let i = shared.lock().await;
+    let _ = app.emit("state", view(&i));
+    crate::tray::update(app, &tray_state(&i));
+}
+
+fn tray_state(i: &Inner) -> crate::tray::TrayState {
+    let status = if let Some(s) = &i.live {
+        let what = s.window.clone().unwrap_or_else(|| "whole screen".into());
+        let sound = match (s.sound_from(), &s.window) {
+            (Some(app), _) => format!("sound from {app}"),
+            (None, Some(_)) => "no sound yet".into(),
+            (None, None) => "no sound".into(),
+        };
+        format!("Live: {what} · {sound}")
+    } else if i.starting {
+        "Starting…".into()
+    } else if i.link.is_some() {
+        "Ready, not streaming".into()
+    } else {
+        "Not connected: press Go live on the site".into()
+    };
+    crate::tray::TrayState {
+        status,
+        error: i.error.clone(),
+        live: i.live.is_some(),
+        starting: i.starting,
+        connected: i.link.is_some(),
+        has_window: i.settings.restore_token.is_some(),
+        quality: i.settings.quality.clone(),
+        auto_start: i.settings.auto_start,
+    }
 }
 
 #[tauri::command]
@@ -118,19 +154,32 @@ async fn get_state(shared: State<'_, Shared>) -> Result<View, ()> {
 /// The window only changes quality and auto-start; the window choice is kept by the app itself.
 #[tauri::command]
 async fn save_settings(app: AppHandle, shared: State<'_, Shared>, quality: String, auto_start: bool) -> Result<(), ()> {
+    set_settings(app, shared.inner().clone(), Some(quality), Some(auto_start)).await;
+    Ok(())
+}
+
+pub(crate) async fn set_settings(app: AppHandle, shared: Shared, quality: Option<String>, auto_start: Option<bool>) {
     {
         let mut i = shared.lock().await;
-        i.settings.quality = quality;
-        i.settings.auto_start = auto_start;
+        if let Some(q) = quality {
+            i.settings.quality = q;
+        }
+        if let Some(a) = auto_start {
+            i.settings.auto_start = a;
+        }
         save_settings_file(&i.settings);
     }
     emit(&app, &shared).await;
+}
+
+#[tauri::command]
+async fn change_window(app: AppHandle, shared: State<'_, Shared>) -> Result<(), ()> {
+    change_window_now(app, shared.inner().clone()).await;
     Ok(())
 }
 
 /// Forget the remembered window and ask again; restarts the stream if it's live.
-#[tauri::command]
-async fn change_window(app: AppHandle, shared: State<'_, Shared>) -> Result<(), ()> {
+pub(crate) async fn change_window_now(app: AppHandle, shared: Shared) {
     let live = {
         let mut i = shared.lock().await;
         i.settings.restore_token = None;
@@ -144,9 +193,8 @@ async fn change_window(app: AppHandle, shared: State<'_, Shared>) -> Result<(), 
     }
     emit(&app, &shared).await;
     if was_live {
-        start_live(app, shared.inner().clone()).await;
+        start_live(app, shared).await;
     }
-    Ok(())
 }
 
 #[tauri::command]
@@ -157,19 +205,27 @@ async fn go_live(app: AppHandle, shared: State<'_, Shared>) -> Result<(), ()> {
 
 #[tauri::command]
 async fn stop(app: AppHandle, shared: State<'_, Shared>) -> Result<(), ()> {
+    stop_now(app, shared.inner().clone()).await;
+    Ok(())
+}
+
+pub(crate) async fn stop_now(app: AppHandle, shared: Shared) {
     let s = shared.lock().await.live.take();
     if let Some(s) = s {
         s.stop().await;
     }
     emit(&app, &shared).await;
-    Ok(())
 }
 
 #[tauri::command]
 async fn open_site(shared: State<'_, Shared>) -> Result<(), ()> {
+    open_site_now(shared.inner().clone()).await;
+    Ok(())
+}
+
+pub(crate) async fn open_site_now(shared: Shared) {
     let url = shared.lock().await.link.as_ref().map(|l| l.server.clone()).unwrap_or_else(|| DEFAULT_SERVER.into());
     open_url(&url);
-    Ok(())
 }
 
 fn open_url(url: &str) {
@@ -179,7 +235,7 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
-async fn start_live(app: AppHandle, shared: Shared) {
+pub(crate) async fn start_live(app: AppHandle, shared: Shared) {
     let (url, token, settings) = {
         let mut i = shared.lock().await;
         if i.live.is_some() || i.starting {
@@ -334,7 +390,7 @@ async fn handle_link(app: AppHandle, shared: Shared, link: url::Url) {
     }
 }
 
-fn focus(app: &AppHandle) {
+pub(crate) fn focus(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
         let _ = w.show();
@@ -346,7 +402,12 @@ pub fn run() {
     let shared: Shared = Arc::new(Mutex::new(Inner { settings: load_settings(), ..Default::default() }));
     tauri::Builder::default()
         // A second launch (another Go live click) hands its link to the running app instead.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| focus(app)))
+        // Opened again from the app grid (no link): show the window. With a link, the deep-link plugin handles it.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if !argv.iter().any(|a| a.starts_with("friends://")) {
+                focus(app);
+            }
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .manage(shared.clone())
         .invoke_handler(tauri::generate_handler![get_state, save_settings, change_window, go_live, stop, open_site])
@@ -366,7 +427,6 @@ pub fn run() {
             let handle = app.handle().clone();
             let s = shared.clone();
             app.deep_link().on_open_url(move |event| {
-                focus(&handle);
                 for url in event.urls() {
                     tauri::async_runtime::spawn(handle_link(handle.clone(), s.clone(), url));
                 }
@@ -382,12 +442,30 @@ pub fn run() {
                     h.exit(0);
                 });
             }
-            if let Ok(Some(urls)) = app.deep_link().get_current() {
-                for url in urls {
-                    tauri::async_runtime::spawn(handle_link(app.handle().clone(), shared.clone(), url));
+            // Lives in the tray; the window opens from there (or when the tray isn't available).
+            let has_tray = crate::tray::create(app.handle(), &tray_state(&shared.blocking_lock())).is_ok();
+            let launched_by_link = match app.deep_link().get_current() {
+                Ok(Some(urls)) if !urls.is_empty() => {
+                    for url in urls {
+                        tauri::async_runtime::spawn(handle_link(app.handle().clone(), shared.clone(), url));
+                    }
+                    true
                 }
+                _ => false,
+            };
+            if !has_tray || !launched_by_link {
+                focus(app.handle());
             }
             Ok(())
+        })
+        // Closing the window keeps the app (and any stream) running in the tray; Quit is in the tray menu.
+        .on_window_event(|w, e| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                if w.app_handle().tray_by_id(crate::tray::ID).is_some() {
+                    api.prevent_close();
+                    let _ = w.hide();
+                }
+            }
         })
         .build(tauri::generate_context!())
         .expect("couldn't start the app window")
