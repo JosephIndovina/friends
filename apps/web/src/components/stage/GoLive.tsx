@@ -185,9 +185,6 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
   const root = useRef<HTMLDivElement>(null);
   // Your streams, from this browser or Friends Live: the panel lists them with Change window and Stop.
   const mine = cast.streams.filter((s) => s.mine).length;
-  // Friends Live streams one window at a time, so while it's live the panel offers Change window instead of Start.
-  const appLive = cast.streams.some((s) => s.mine && s.fromApp);
-
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent | KeyboardEvent) => {
@@ -224,8 +221,8 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
     else setOpen(false);
   };
 
-  // Go live always opens the panel, the one place for streaming: your streams (Change window, Stop), Start streaming
-  // (the app), Download Friends Live, or stream from this browser.
+  // Go live always opens the panel, the one place for streaming: while live, your streams (Change window, Stop);
+  // otherwise Start streaming (the app), Download Friends Live, or stream from this browser.
   const label = mine ? "Streaming" : "Go live";
   const toggle = () => setOpen(!open);
 
@@ -244,22 +241,19 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
       )}
       {open && (
         <div className={`stack-panel golive-panel${appReady && !inBrowser ? " is-compact" : ""}${mine ? " has-streams" : ""}`} role="dialog" aria-label="Go live">
-          {mine > 0 && <><MyStreams cast={cast} /><div className="panel-rule" role="separator" /></>}
-          {appReady && (
+          {/* While you're live the panel is just your streams; starting is offered again once they've stopped. */}
+          {mine > 0 && <MyStreams cast={cast} />}
+          {mine === 0 && appReady && (
             <>
-              {mine === 0 && <h2>Go live</h2>}
-              {!appLive && (
-                <>
-                  <AppLaunch links={links!} onDone={() => setOpen(false)} />
-                  <div className="or-sep" role="separator"><span>or</span></div>
-                </>
-              )}
+              <h2>Go live</h2>
+              <AppLaunch links={links!} onDone={() => setOpen(false)} />
+              <div className="or-sep" role="separator"><span>or</span></div>
               <button className="btn btn-quiet browser-toggle" aria-expanded={inBrowser} onClick={() => setInBrowser(!inBrowser)}>
                 {inBrowser ? "Hide browser streaming" : "Stream from this browser"}
               </button>
             </>
           )}
-          {(inBrowser || !appReady) && (
+          {mine === 0 && (inBrowser || !appReady) && (
             <>
             <h2>Streaming mode</h2>
             <div className="modes" role="radiogroup" aria-label="Streaming mode">
