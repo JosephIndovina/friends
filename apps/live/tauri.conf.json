@@ -25,13 +25,28 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png", "icons/icon.ico"],
+    "targets": [
+      "deb",
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
     "category": "Video",
-    "shortDescription": "Stream a window and one app's sound to Friends",
+    "shortDescription": "Stream a window and its sound to Friends",
     "linux": {
       "deb": {
-        "depends": ["libpipewire-0.3-0", "libwebkit2gtk-4.1-0", "xdg-desktop-portal"]
+        "depends": [
+          "libpipewire-0.3-0",
+          "libwebkit2gtk-4.1-0",
+          "xdg-desktop-portal",
+          "xdg-desktop-portal-gnome | xdg-desktop-portal-backend"
+        ],
+        "desktopTemplate": "linux/friends-live.desktop"
       }
     },
     "windows": {
@@ -43,7 +58,9 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["friends"]
+        "schemes": [
+          "friends"
+        ]
       }
     }
   }

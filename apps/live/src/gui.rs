@@ -351,10 +351,17 @@ pub fn run() {
         .manage(shared.clone())
         .invoke_handler(tauri::generate_handler![get_state, save_settings, change_window, go_live, stop, open_site])
         .setup(move |app| {
-            // Installed builds register friends:// at install time; this covers running a bare binary.
+            // Installed builds register friends:// at install time (the .deb's desktop entry, the Windows
+            // installer). A bare binary run from elsewhere registers itself, but never on top of an installed copy:
+            // its per-user entry would outrank the package's.
             #[cfg(any(target_os = "linux", target_os = "windows"))]
-            if let Err(e) = app.deep_link().register_all() {
-                log::warn!("couldn't register friends:// links: {e}");
+            {
+                let installed = std::env::current_exe().is_ok_and(|p| p.starts_with("/usr/"));
+                if !installed {
+                    if let Err(e) = app.deep_link().register_all() {
+                        log::warn!("couldn't register friends:// links: {e}");
+                    }
+                }
             }
             let handle = app.handle().clone();
             let s = shared.clone();

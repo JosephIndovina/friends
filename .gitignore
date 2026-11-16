@@ -12,4 +12,6 @@ uploads/
 .impeccable/review/
 .impeccable/mocks/
 .impeccable/config.local.json
-downloads/
+/downloads/*
+!/downloads/.gitkeep
+apps/server/downloads/
