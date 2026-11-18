@@ -9,7 +9,8 @@ const familyOf = (k: MediaKind): Family => (k === "youtube" ? "youtube" : k === 
 
 const HARD_DRIFT_S = 0.5;
 const SEEK_COOLDOWN_MS = 2500;
-/** seconds a self-paused embed waits before one try to resume it */
+/** a self-paused embed is resumed after a second (Twitch pauses itself when its player is moved or resized,
+ * e.g. focusing it), then every RESUME_AFTER_S while it keeps stopping, so it never fights in a tight loop */
 const RESUME_AFTER_S = 8;
 
 /**
@@ -104,7 +105,8 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
       if (!cur || cur.itemId !== p.item.id || cur.family === "clip") return;
       const { e } = cur;
       if (p.playing && !e.playing()) {
-        if (++stalls.current % RESUME_AFTER_S === 0) e.play();
+        const n = ++stalls.current;
+        if (n === 1 || n % RESUME_AFTER_S === 0) e.play();
         return;
       }
       stalls.current = 0;

@@ -118,13 +118,13 @@ export function createMediaRoom(io: IO) {
   }
 
   /** Start an item, matching it first if needed. False when it can't be played (logged and skipped). */
-  async function begin(item: MediaItem, by: { id: string; name: string }): Promise<boolean> {
+  async function begin(item: MediaItem, by: { id: string; name: string }, announce = true): Promise<boolean> {
     const p = await playable(item);
     if (!p) {
       audit({ actorId: null, action: "media.unmatched", target: { type: "media", id: item.ref, name: item.title }, details: { author: item.author } });
       return false;
     }
-    start(p, by);
+    start(p, by, announce);
     return true;
   }
 
@@ -147,7 +147,13 @@ export function createMediaRoom(io: IO) {
     history = [{ ...item, playedAt }, ...history].slice(0, HISTORY_SHOWN);
   }
 
-  function start(item: MediaItem, by: { id: string; name: string }) {
+  /** Tell everyone else who started or stopped something. */
+  const notice = (by: { id: string; name: string }, verb: string, item: MediaItem) =>
+    events.emit("notice", { by: by.id, text: `${by.name} ${verb} ${item.title}` });
+
+  /** `announce` is false when the room moves on by itself (the next queued item). */
+  function start(item: MediaItem, by: { id: string; name: string }, announce = true) {
+    if (announce) notice(by, "started", item);
     const wasIdle = !now?.playing && Date.now() - lastActiveAt > IDLE_NOTIFY_MS;
     now = { item, playing: true, position: item.startAt, updatedAt: Date.now(), startedBy: by };
     lastActiveAt = Date.now();
@@ -175,7 +181,7 @@ export function createMediaRoom(io: IO) {
       now = null;
       while (queue.length) {
         const next = queue.shift()!;
-        if (await begin(next, by ? { id: by.id, name: by.name } : next.addedBy)) break;
+        if (await begin(next, by ? { id: by.id, name: by.name } : next.addedBy, Boolean(by))) break;
       }
       commit();
     };
@@ -275,6 +281,7 @@ export function createMediaRoom(io: IO) {
     const item: MediaItem = { id: randomUUID(), ...link!, ...meta!, addedBy: who(s), addedAt: Date.now() };
     screens = [...screens, { item, playing: true, position: item.startAt, updatedAt: Date.now(), startedBy: who(s) }];
     lastActiveAt = Date.now();
+    notice(who(s), "opened", item);
     audit({ actorId: s.user.id, action: "media.screen_added", target: ref(item), details: { kind: item.kind } });
     commit();
   }
@@ -366,6 +373,7 @@ export function createMediaRoom(io: IO) {
       const { item, startedBy } = now!;
       toHistory(item);
       now = null;
+      notice(who(s), "stopped", item);
       audit({ actorId: s.user.id, action: "media.stopped", target: ref(item), details: { startedBy: startedBy.name } });
       commit();
     }));
@@ -462,6 +470,7 @@ export function createMediaRoom(io: IO) {
       if (sc.startedBy.id !== s.user.id && !s.permissions.includes("player.control")) fail("missing_permission");
       screens = screens.filter((x) => x !== sc);
       toHistory(sc.item);
+      notice(who(s), "closed", sc.item);
       audit({ actorId: s.user.id, action: "media.screen_closed", target: ref(sc.item), details: { openedBy: sc.startedBy.name } });
       commit();
     }));

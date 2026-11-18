@@ -68,6 +68,7 @@ export function Shell({ session }: { session: Session }) {
      <CastProvider session={session}>
       <ToastProvider>
       <StreamEndedNotice />
+      <OthersNotice me={me.id} />
       <div className={`shell${showNav ? "" : " no-tabbar"}`}>
         <header className="topbar">
           <Link to="/" className="wordmark">friends</Link>
@@ -107,6 +108,20 @@ export function Shell({ session }: { session: Session }) {
      </CastProvider>
     </PlayerProvider>
   );
+}
+
+/** Who started or stopped something on the stage (the player, a screen, a stream), unless it was you. */
+function OthersNotice({ me }: { me: string }) {
+  const toast = useToast();
+  useEffect(() => {
+    const s = getSocket();
+    const on = ({ by, text }: { by: string; text: string }) => {
+      if (by !== me) toast(text);
+    };
+    s.on("notice", on);
+    return () => void s.off("notice", on);
+  }, [toast, me]);
+  return null;
 }
 
 /** When a moderator ends your stream, say who: otherwise it just vanishes. Stays until dismissed, in case you weren't looking. */

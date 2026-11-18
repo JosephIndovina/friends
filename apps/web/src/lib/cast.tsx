@@ -561,6 +561,7 @@ export function StreamVideo({ stream, className, stats, camera = "none" }: {
     const v = el.current;
     return () => void track.detach(v);
   }, [track]);
+  const picture = usePicture(el, Boolean(track) && camera !== "none" && Boolean(stream.camera));
   if (!track) return <div className={`${className ?? ""} stream-waiting`}>Connecting…</div>;
   // Your own camera reads like a mirror, as in every video call; everyone else sees it the right way round.
   const mirrored = stream.kind === "camera" && stream.local;
@@ -568,9 +569,51 @@ export function StreamVideo({ stream, className, stats, camera = "none" }: {
     <>
       <video ref={el} className={`${className ?? ""}${mirrored ? " is-mirrored" : ""}`} autoPlay playsInline muted />
       {stats && <StreamStats stream={stream} compact={stats === "compact"} />}
-      {camera !== "none" && stream.camera && <CameraOverlay stream={stream} controls={camera === "full"} />}
+      {camera !== "none" && stream.camera && (
+        // The camera sits inside the picture itself, not in the black bars around a stream of another shape.
+        <div className="cam-frame" style={picture ?? undefined}>
+          <CameraOverlay stream={stream} controls={camera === "full"} />
+        </div>
+      )}
     </>
   );
+}
+
+type Box = { top: number; left: number; width: number; height: number };
+
+/** Where the picture is drawn inside a letterboxed (object-fit: contain) video, relative to the video's positioned parent. */
+function usePicture(video: React.RefObject<HTMLVideoElement | null>, on: boolean): Box | null {
+  const [box, setBox] = useState<Box | null>(null);
+  useEffect(() => {
+    const v = video.current;
+    if (!on || !v) return setBox(null);
+    let last = "";
+    const measure = () => {
+      const cw = v.clientWidth;
+      const ch = v.clientHeight;
+      const scale = v.videoWidth && v.videoHeight ? Math.min(cw / v.videoWidth, ch / v.videoHeight) : 0;
+      const width = scale ? v.videoWidth * scale : cw;
+      const height = scale ? v.videoHeight * scale : ch;
+      const next = { top: v.offsetTop + (ch - height) / 2, left: v.offsetLeft + (cw - width) / 2, width, height };
+      const key = `${next.top}|${next.left}|${next.width}|${next.height}`;
+      if (key !== last) {
+        last = key;
+        setBox(next);
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(v);
+    // The stream's own shape arrives with its first frame and changes if they share another window.
+    v.addEventListener("resize", measure);
+    v.addEventListener("loadedmetadata", measure);
+    return () => {
+      ro.disconnect();
+      v.removeEventListener("resize", measure);
+      v.removeEventListener("loadedmetadata", measure);
+    };
+  }, [video, on]);
+  return box;
 }
 
 /** The streamer's camera over their stream, where they put it: everyone sees the same layout. The owner, shown it
@@ -622,10 +665,11 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
     const startW = box.current!.getBoundingClientRect().width;
     const full = parent.getBoundingClientRect().width;
     let next = layout;
+    // While dragging, the size goes straight onto the element (no re-render per move), and into state at the end.
     const move = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) * (fromRight ? -1 : 1);
       next = { corner: at, size: clampSize((startW + dx) / full) };
-      setDraft(next);
+      box.current?.style.setProperty("--cam-size", `${next.size * 100}%`);
     };
     const done = () => {
       handle.removeEventListener("pointermove", move);

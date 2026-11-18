@@ -246,6 +246,8 @@ export async function castRoutes(app: FastifyInstance) {
   // Watch who is live, for the audit log and "went live" posts. Polling keeps LiveKit unreachable from outside.
   const live = new Map<string, { identity: string; name: string; since: number }>();
   const lastNotified = new Map<string, number>();
+  // The first look after a restart only learns who is already live; nobody is told they just started.
+  let primed = false;
   setInterval(async () => {
     let participants: ParticipantInfo[];
     try {
@@ -262,6 +264,7 @@ export async function castRoutes(app: FastifyInstance) {
         const userId = userOf(p.identity);
         live.set(key, { identity: userId, name: p.name, since: Date.now() });
         audit({ actorId: userId, action: "cast.started", details: { track: t.name, width: t.width, height: t.height } });
+        if (primed) events.emit("notice", { by: userId, text: `${p.name} went live` });
         const last = lastNotified.get(userId) ?? 0;
         if (getSettings().notify.goLive && Date.now() - last > GO_LIVE_NOTIFY_GAP_MS) {
           lastNotified.set(userId, Date.now());
@@ -273,7 +276,9 @@ export async function castRoutes(app: FastifyInstance) {
       if (seen.has(key)) continue;
       live.delete(key);
       audit({ actorId: v.identity, action: "cast.ended", details: { minutes: Math.round((Date.now() - v.since) / 60000) } });
+      events.emit("notice", { by: v.identity, text: `${v.name} stopped streaming` });
     }
+    primed = true;
   }, WATCH_MS).unref();
 
 }

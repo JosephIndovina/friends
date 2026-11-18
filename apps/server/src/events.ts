@@ -13,6 +13,8 @@ interface Events {
   "admin:attention": [];
   /** someone else ended this user's stream: tell them who */
   "cast:ended": [{ userId: string; by: string; app: boolean }];
+  /** someone started or stopped something everyone sees; `by` is their user id (they aren't told) */
+  notice: [{ by: string; text: string }];
   "posts:changed": [{ id: string; deleted?: boolean }];
   "post:created": [string];
   /** post to the Discord notification channel; `url` is a site path */

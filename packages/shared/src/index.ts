@@ -174,6 +174,8 @@ export interface ServerToClient {
   "admin:attention": () => void;
   /** someone else (a moderator) ended one of your streams; `app` when it was streaming from Friends Live */
   "cast:ended": (input: { by: string; app: boolean }) => void;
+  /** someone started or stopped something everyone sees (the player, a screen, a stream); shown to everyone else */
+  notice: (input: { by: string; text: string }) => void;
 }
 
 export interface ClientToServer {
