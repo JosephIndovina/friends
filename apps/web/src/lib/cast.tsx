@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Move, VideoOff } from "lucide-react";
 import {
   ConnectionState, createLocalScreenTracks, createLocalVideoTrack, LocalTrack, Room, RoomEvent, Track, VideoPresets,
@@ -57,6 +57,57 @@ export interface Stream {
   camera: TrackPublication | null;
   /** that camera is this tab's own */
   cameraLocal: boolean;
+  /** the connection sending the camera */
+  cameraIdentity: string | null;
+  /** where the camera sits and how big, as its owner set it (everyone sees the same) */
+  cameraLayout: CameraLayout;
+}
+
+/** Where a camera sits over its owner's stream, and its width as a share of the stream's width. */
+export type Corner = "br" | "bl" | "tl" | "tr";
+export interface CameraLayout {
+  corner: Corner;
+  size: number;
+}
+const CORNERS: Corner[] = ["br", "bl", "tl", "tr"];
+const SIZE_MIN = 0.1;
+const SIZE_MAX = 0.5;
+const DEFAULT_LAYOUT: CameraLayout = { corner: "br", size: 0.22 };
+const clampSize = (v: number) => Math.min(SIZE_MAX, Math.max(SIZE_MIN, v));
+const sameLayout = (a: CameraLayout, b: CameraLayout) => a.corner === b.corner && Math.abs(a.size - b.size) < 0.001;
+
+/** The layout the server set on the camera's connection ("br:0.220"). */
+function layoutOf(p: Participant): CameraLayout {
+  const [corner, size] = (p.attributes?.camera ?? "").split(":");
+  const n = Number(size);
+  return CORNERS.includes(corner as Corner) && Number.isFinite(n) ? { corner: corner as Corner, size: clampSize(n) } : DEFAULT_LAYOUT;
+}
+
+/** Your last layout, sent with your camera each time you turn it on. */
+const LAYOUT_KEY = "cameraLayout";
+function savedLayout(): CameraLayout {
+  try {
+    const l = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "null") as CameraLayout | null;
+    if (l && CORNERS.includes(l.corner) && Number.isFinite(l.size)) return { corner: l.corner, size: clampSize(l.size) };
+  } catch {
+    /* default */
+  }
+  return DEFAULT_LAYOUT;
+}
+
+/** Set where your camera sits, for everyone. Only works for your own camera (the server checks). */
+export async function setCameraLayout(identity: string, layout: CameraLayout): Promise<boolean> {
+  try {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+  } catch {
+    /* this visit only */
+  }
+  try {
+    await api("POST", "/api/cast/camera/layout", { identity, corner: layout.corner, size: layout.size });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Your camera, from this tab. */
@@ -140,6 +191,8 @@ function streamsOf(p: Participant, local: boolean, selfId: string): Stream[] {
       audio,
       camera: null,
       cameraLocal: false,
+      cameraIdentity: null,
+      cameraLayout: DEFAULT_LAYOUT,
     };
   });
 }
@@ -156,7 +209,7 @@ function allStreams(room: Room, selfId: string): Stream[] {
     const userId = userOf(p.identity);
     const host = screens.find((s) => s.userId === userId);
     if (host) {
-      if (!host.camera) Object.assign(host, { camera: cam, cameraLocal: local });
+      if (!host.camera) Object.assign(host, { camera: cam, cameraLocal: local, cameraIdentity: p.identity, cameraLayout: layoutOf(p) });
       continue;
     }
     out.push({
@@ -175,6 +228,8 @@ function allStreams(room: Room, selfId: string): Stream[] {
       audio: null,
       camera: null,
       cameraLocal: false,
+      cameraIdentity: null,
+      cameraLayout: DEFAULT_LAYOUT,
     });
   }
   return out;
@@ -239,6 +294,7 @@ export function CastProvider({ session, children }: { session: Session; children
           .on(RoomEvent.ParticipantDisconnected, refresh)
           .on(RoomEvent.TrackSubscribed, refresh)
           .on(RoomEvent.TrackUnsubscribed, refresh)
+          .on(RoomEvent.ParticipantAttributesChanged, refresh) // a camera moved
           .on(RoomEvent.Disconnected, () => {
             if (current !== room) return;
             current = null;
@@ -356,6 +412,7 @@ export function CastProvider({ session, children }: { session: Session; children
     camTrack.current = t;
     setCamOn(true);
     setCamBusy(false);
+    void setCameraLayout(room.localParticipant.identity, savedLayout()); // where you left it last time
     // Unplugged, or taken by another app.
     t.mediaStreamTrack.addEventListener("ended", () => {
       if (camTrack.current === t) void stopCamera();
@@ -468,7 +525,7 @@ export function CastProvider({ session, children }: { session: Session; children
 
   // With cameras turned off, any camera still arriving is left out.
   const shown = useMemo(
-    () => camerasAllowed ? streams : streams.filter((s) => s.kind === "screen").map((s) => (s.camera ? { ...s, camera: null, cameraLocal: false } : s)),
+    () => camerasAllowed ? streams : streams.filter((s) => s.kind === "screen").map((s) => (s.camera ? { ...s, camera: null, cameraLocal: false, cameraIdentity: null } : s)),
     [streams, camerasAllowed],
   );
   const camera = useMemo<CameraCtl>(
@@ -516,51 +573,16 @@ export function StreamVideo({ stream, className, stats, camera = "none" }: {
   );
 }
 
-/** Where the camera sits over a stream and how big it is: one choice per viewer, for every stream, kept in this browser. */
-type Corner = "br" | "bl" | "tl" | "tr";
-const CORNERS: Corner[] = ["br", "bl", "tl", "tr"];
-/** Width as a share of the stream's width. */
-const SIZE_MIN = 0.1;
-const SIZE_MAX = 0.5;
-const SIZE_DEFAULT = 0.22;
-const clampSize = (v: number) => Math.min(SIZE_MAX, Math.max(SIZE_MIN, v));
-
-function pref<T>(key: string, fallback: T, parse: (raw: string) => T | null) {
-  const subs = new Set<() => void>();
-  let value = fallback;
-  try {
-    const raw = typeof window === "undefined" ? null : localStorage.getItem(key);
-    value = (raw !== null ? parse(raw) : null) ?? fallback;
-  } catch {
-    /* default */
-  }
-  return {
-    get: () => value,
-    set(v: T, save = true) {
-      value = v;
-      if (save) {
-        try {
-          localStorage.setItem(key, String(v));
-        } catch {
-          /* this visit only */
-        }
-      }
-      subs.forEach((f) => f());
-    },
-    subscribe: (f: () => void) => (subs.add(f), () => void subs.delete(f)),
-  };
-}
-const cornerPref = pref<Corner>("cameraCorner", "br", (r) => (CORNERS.includes(r as Corner) ? (r as Corner) : null));
-const sizePref = pref<number>("cameraSize", SIZE_DEFAULT, (r) => (Number.isFinite(Number(r)) ? clampSize(Number(r)) : null));
-
-/** The streamer's camera in a corner of their stream. Shown large it can be resized (drag the inner corner, or arrow
- * keys on it), moved to the next corner, or hidden (for you only; the camera button in Sources brings it back). */
+/** The streamer's camera over their stream, where they put it: everyone sees the same layout. The owner, shown it
+ * large, can resize it (drag the inner corner, or arrow keys on it) and move it to the next corner. Anyone can hide
+ * it for themselves (the camera button in Sources brings it back). */
 function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean }) {
   const cast = useCast();
-  const at = useSyncExternalStore(cornerPref.subscribe, cornerPref.get);
-  const size = useSyncExternalStore(sizePref.subscribe, sizePref.get);
   const box = useRef<HTMLDivElement>(null);
   const el = useRef<HTMLVideoElement>(null);
+  const keyTimer = useRef<number | null>(null);
+  // While you move or resize yours, the change shows at once; it's dropped once everyone's copy matches.
+  const [draft, setDraft] = useState<CameraLayout | null>(null);
   const pub = stream.camera;
   const track = pub?.track;
   useEffect(() => {
@@ -569,8 +591,24 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
     const v = el.current;
     return () => void track.detach(v);
   }, [track]);
+  useEffect(() => {
+    if (draft && sameLayout(draft, stream.cameraLayout)) setDraft(null);
+  }, [draft, stream.cameraLayout]);
+  // In case the update never comes back (the camera went off), don't hold the draft for ever.
+  useEffect(() => {
+    if (!draft) return;
+    const t = setTimeout(() => setDraft(null), 4000);
+    return () => clearTimeout(t);
+  }, [draft]);
   if (!pub || cast.hiddenCameras.has(stream.userId)) return null;
+  const layout = draft ?? stream.cameraLayout;
+  const { corner: at, size } = layout;
+  const own = stream.mine && Boolean(stream.cameraIdentity);
   const who = stream.mine ? "your camera" : `${stream.name}'s camera`;
+  const commit = (next: CameraLayout) => {
+    setDraft(next);
+    void setCameraLayout(stream.cameraIdentity!, next);
+  };
   // The handle is on the corner facing into the stream: dragging it away from the anchored corner makes it bigger.
   const fromRight = at === "br" || at === "tr";
   const resize = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -583,38 +621,47 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
     const startX = e.clientX;
     const startW = box.current!.getBoundingClientRect().width;
     const full = parent.getBoundingClientRect().width;
+    let next = layout;
     const move = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) * (fromRight ? -1 : 1);
-      sizePref.set(clampSize((startW + dx) / full), false);
+      next = { corner: at, size: clampSize((startW + dx) / full) };
+      setDraft(next);
     };
     const done = () => {
       handle.removeEventListener("pointermove", move);
-      sizePref.set(sizePref.get()); // save once, at the end
+      commit(next); // sent once, at the end
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", done, { once: true });
     handle.addEventListener("pointercancel", done, { once: true });
   };
+  // Keys apply at once and are sent once they settle.
   const keys = (e: React.KeyboardEvent) => {
-    const step = { ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02, PageUp: 0.1, PageDown: -0.1 }[e.key];
-    if (e.key === "Home") sizePref.set(SIZE_MIN);
-    else if (e.key === "End") sizePref.set(SIZE_MAX);
-    else if (step) sizePref.set(clampSize(size + step));
-    else return;
+    const step = ({ ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02, PageUp: 0.1, PageDown: -0.1 } as Record<string, number>)[e.key];
+    const to = e.key === "Home" ? SIZE_MIN : e.key === "End" ? SIZE_MAX : step ? clampSize(size + step) : null;
+    if (to === null) return;
     e.preventDefault();
+    const next = { corner: at, size: to };
+    setDraft(next);
+    if (keyTimer.current) clearTimeout(keyTimer.current);
+    keyTimer.current = window.setTimeout(() => commit(next), 300);
   };
   return (
     <div ref={box} className={`cam-overlay at-${at}${controls ? " has-controls" : ""}`} style={{ "--cam-size": `${size * 100}%` } as React.CSSProperties}>
       {track ? <video ref={el} className={stream.cameraLocal ? "is-mirrored" : undefined} autoPlay playsInline muted /> : <span className="cam-overlay-wait" />}
       {controls && (
         <>
-          <div className="cam-overlay-resize" role="slider" tabIndex={0} aria-label={`Size of ${who}`} data-tip="Drag to resize"
-            aria-valuemin={SIZE_MIN * 100} aria-valuemax={SIZE_MAX * 100} aria-valuenow={Math.round(size * 100)} aria-valuetext={`${Math.round(size * 100)}% of the stream's width`}
-            onPointerDown={resize} onKeyDown={keys} onDoubleClick={() => sizePref.set(SIZE_DEFAULT)} />
+          {own && (
+            <div className="cam-overlay-resize" role="slider" tabIndex={0} aria-label="Size of your camera, for everyone" data-tip="Drag to resize"
+              aria-valuemin={SIZE_MIN * 100} aria-valuemax={SIZE_MAX * 100} aria-valuenow={Math.round(size * 100)} aria-valuetext={`${Math.round(size * 100)}% of the stream's width`}
+              onPointerDown={resize} onKeyDown={keys} onDoubleClick={() => commit({ corner: at, size: DEFAULT_LAYOUT.size })} />
+          )}
           <div className="cam-overlay-actions">
-            <button className="icon-btn" aria-label={`Move ${who} to the next corner`} data-tip="Move"
-              onClick={() => cornerPref.set(CORNERS[(CORNERS.indexOf(at) + 1) % CORNERS.length]!)}><Move aria-hidden /></button>
-            <button className="icon-btn" aria-label={`Hide ${who}`} data-tip="Hide camera"
+            {own && (
+              <button className="icon-btn" aria-label="Move your camera to the next corner, for everyone" data-tip="Move"
+                onClick={() => commit({ corner: CORNERS[(CORNERS.indexOf(at) + 1) % CORNERS.length]!, size })}><Move aria-hidden /></button>
+            )}
+            <button className="icon-btn" aria-label={`Hide ${who}`} data-tip={own ? "Hide camera for you" : "Hide camera"}
               onClick={() => cast.setCameraHidden(stream.userId, true)}><VideoOff aria-hidden /></button>
           </div>
         </>

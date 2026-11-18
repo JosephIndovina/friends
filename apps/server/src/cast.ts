@@ -160,6 +160,26 @@ export async function castRoutes(app: FastifyInstance) {
     };
   });
 
+  // Where your camera sits over your stream, for everyone watching: only you can move or resize it. The server sets it
+  // as a participant attribute (connections can't change their own), on the connection that sends the camera.
+  app.post<{ Body: { identity?: unknown; corner?: unknown; size?: unknown } }>(
+    "/api/cast/camera/layout",
+    { config: { permission: "cast.stream", rateLimit: { max: 120, timeWindow: "1 minute" } } },
+    async (req, reply) => {
+      const { identity, corner, size } = req.body ?? {};
+      if (typeof identity !== "string" || typeof corner !== "string" || !["br", "bl", "tl", "tr"].includes(corner)
+        || typeof size !== "number" || !Number.isFinite(size)) return reply.code(400).send({ error: "invalid_body" });
+      if (userOf(identity) !== req.session!.user.id) return reply.code(403).send({ error: "not_yours" });
+      const share = Math.min(0.5, Math.max(0.1, size));
+      try {
+        await rooms().updateParticipant(ROOM, identity, { attributes: { camera: `${corner}:${share.toFixed(3)}` } });
+      } catch {
+        return reply.code(404).send({ error: "not_found" });
+      }
+      return { ok: true };
+    },
+  );
+
   // Moderators can end someone's stream: that connection leaves the room and can rejoin without it.
   // Anyone can also end their own stream from another of their tabs or devices.
   app.post<{ Params: { id: string } }>("/api/cast/:id/stop", { config: { permission: "cast.watch" } }, async (req, reply) => {
