@@ -1258,7 +1258,7 @@ main.page:has(.media-room) { max-width: 1920px; }
 /* A corner of the stream, above the picture and the stats, below a tile's click area. */
 .is-mirrored { transform: scaleX(-1); }
 .cam-overlay {
-  position: absolute; z-index: 3; width: clamp(96px, 22%, 360px); aspect-ratio: 16 / 9;
+  position: absolute; z-index: 3; width: max(96px, var(--cam-size, 22%)); aspect-ratio: 16 / 9;
   border-radius: 8px; background: #111;
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14), 0 6px 20px rgb(0 0 0 / 0.45);
   --cam-gap: 12px;
@@ -1269,18 +1269,40 @@ main.page:has(.media-room) { max-width: 1920px; }
 .cam-overlay.at-bl { left: var(--cam-gap); bottom: var(--cam-gap); }
 .cam-overlay.at-tl { left: var(--cam-gap); top: var(--cam-gap); }
 .cam-overlay.at-tr { right: var(--cam-gap); top: var(--cam-gap); }
-.stage-grid .cam-overlay { --cam-gap: 8px; width: clamp(64px, 24%, 220px); border-radius: 6px; }
+.stage-grid .cam-overlay { --cam-gap: 8px; width: max(64px, var(--cam-size, 22%)); border-radius: 6px; }
 /* A tile's name sits bottom-left; keep a camera there clear of it. */
 .stage-grid .cam-overlay.at-bl { bottom: 40px; }
 .cam-overlay video, .cam-overlay-wait { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+/* The resize grip sits on the corner facing into the stream; the buttons on the outer side, at the same edge. */
+.cam-overlay .cam-overlay-resize {
+  position: absolute; width: 22px; height: 22px; touch-action: none; border-radius: 4px;
+  opacity: 0; transition: opacity 0.15s var(--ease-out);
+}
+.cam-overlay .cam-overlay-resize::before {
+  content: ""; position: absolute; inset: 5px; border: 0 solid #fff; filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.8));
+}
+.cam-overlay.at-br .cam-overlay-resize { top: 0; left: 0; cursor: nwse-resize; }
+.cam-overlay.at-br .cam-overlay-resize::before { border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 3px; }
+.cam-overlay.at-bl .cam-overlay-resize { top: 0; right: 0; cursor: nesw-resize; }
+.cam-overlay.at-bl .cam-overlay-resize::before { border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 3px; }
+.cam-overlay.at-tl .cam-overlay-resize { bottom: 0; right: 0; cursor: nwse-resize; }
+.cam-overlay.at-tl .cam-overlay-resize::before { border-bottom-width: 2px; border-right-width: 2px; border-bottom-right-radius: 3px; }
+.cam-overlay.at-tr .cam-overlay-resize { bottom: 0; left: 0; cursor: nesw-resize; }
+.cam-overlay.at-tr .cam-overlay-resize::before { border-bottom-width: 2px; border-left-width: 2px; border-bottom-left-radius: 3px; }
+.cam-overlay-resize:focus-visible { outline: 2px solid #fff; outline-offset: -2px; opacity: 1; }
+.cam-overlay:hover .cam-overlay-resize { opacity: 1; }
 .cam-overlay-actions {
-  position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; padding: 2px; border-radius: var(--radius-s);
+  position: absolute; display: flex; gap: 2px; padding: 2px; border-radius: var(--radius-s);
   background: rgb(0 0 0 / 0.6); opacity: 0; transition: opacity 0.15s var(--ease-out);
 }
+.cam-overlay.at-br .cam-overlay-actions { top: 4px; right: 4px; }
+.cam-overlay.at-bl .cam-overlay-actions { top: 4px; left: 4px; }
+.cam-overlay.at-tl .cam-overlay-actions { bottom: 4px; left: 4px; }
+.cam-overlay.at-tr .cam-overlay-actions { bottom: 4px; right: 4px; }
 .cam-overlay-actions .icon-btn { width: 30px; height: 30px; color: #fff; }
 .cam-overlay-actions .icon-btn svg { width: 16px; height: 16px; }
 .cam-overlay:hover .cam-overlay-actions, .cam-overlay:focus-within .cam-overlay-actions { opacity: 1; }
-@media (hover: none) { .cam-overlay-actions { opacity: 1; } }
+@media (hover: none) { .cam-overlay-actions, .cam-overlay .cam-overlay-resize { opacity: 1; } }
 .camera-ctl { display: grid; gap: var(--space-2); justify-items: center; }
 .rail.is-open .camera-ctl { justify-items: stretch; }
 .rail.is-open .camera-ctl .btn { width: 100%; justify-content: center; }

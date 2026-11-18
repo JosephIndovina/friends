@@ -516,35 +516,50 @@ export function StreamVideo({ stream, className, stats, camera = "none" }: {
   );
 }
 
-/** Which corner of a stream the camera sits in: one choice per viewer, for every stream. */
+/** Where the camera sits over a stream and how big it is: one choice per viewer, for every stream, kept in this browser. */
 type Corner = "br" | "bl" | "tl" | "tr";
 const CORNERS: Corner[] = ["br", "bl", "tl", "tr"];
-const cornerSubs = new Set<() => void>();
-function readCorner(): Corner {
-  try {
-    const c = localStorage.getItem("cameraCorner") as Corner | null;
-    return c && CORNERS.includes(c) ? c : "br";
-  } catch {
-    return "br";
-  }
-}
-let corner: Corner = typeof window === "undefined" ? "br" : readCorner();
-function setCorner(c: Corner) {
-  corner = c;
-  try {
-    localStorage.setItem("cameraCorner", c);
-  } catch {
-    /* this visit only */
-  }
-  cornerSubs.forEach((f) => f());
-}
-const subscribeCorner = (f: () => void) => (cornerSubs.add(f), () => void cornerSubs.delete(f));
+/** Width as a share of the stream's width. */
+const SIZE_MIN = 0.1;
+const SIZE_MAX = 0.5;
+const SIZE_DEFAULT = 0.22;
+const clampSize = (v: number) => Math.min(SIZE_MAX, Math.max(SIZE_MIN, v));
 
-/** The streamer's camera in a corner of their stream. Shown large it can move to the next corner or be hidden
- * (for you only; the camera button in Sources brings it back). */
+function pref<T>(key: string, fallback: T, parse: (raw: string) => T | null) {
+  const subs = new Set<() => void>();
+  let value = fallback;
+  try {
+    const raw = typeof window === "undefined" ? null : localStorage.getItem(key);
+    value = (raw !== null ? parse(raw) : null) ?? fallback;
+  } catch {
+    /* default */
+  }
+  return {
+    get: () => value,
+    set(v: T, save = true) {
+      value = v;
+      if (save) {
+        try {
+          localStorage.setItem(key, String(v));
+        } catch {
+          /* this visit only */
+        }
+      }
+      subs.forEach((f) => f());
+    },
+    subscribe: (f: () => void) => (subs.add(f), () => void subs.delete(f)),
+  };
+}
+const cornerPref = pref<Corner>("cameraCorner", "br", (r) => (CORNERS.includes(r as Corner) ? (r as Corner) : null));
+const sizePref = pref<number>("cameraSize", SIZE_DEFAULT, (r) => (Number.isFinite(Number(r)) ? clampSize(Number(r)) : null));
+
+/** The streamer's camera in a corner of their stream. Shown large it can be resized (drag the inner corner, or arrow
+ * keys on it), moved to the next corner, or hidden (for you only; the camera button in Sources brings it back). */
 function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean }) {
   const cast = useCast();
-  const at = useSyncExternalStore(subscribeCorner, () => corner);
+  const at = useSyncExternalStore(cornerPref.subscribe, cornerPref.get);
+  const size = useSyncExternalStore(sizePref.subscribe, sizePref.get);
+  const box = useRef<HTMLDivElement>(null);
   const el = useRef<HTMLVideoElement>(null);
   const pub = stream.camera;
   const track = pub?.track;
@@ -556,16 +571,53 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
   }, [track]);
   if (!pub || cast.hiddenCameras.has(stream.userId)) return null;
   const who = stream.mine ? "your camera" : `${stream.name}'s camera`;
+  // The handle is on the corner facing into the stream: dragging it away from the anchored corner makes it bigger.
+  const fromRight = at === "br" || at === "tr";
+  const resize = (e: React.PointerEvent<HTMLDivElement>) => {
+    const parent = box.current?.offsetParent as HTMLElement | null;
+    if (!parent || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startW = box.current!.getBoundingClientRect().width;
+    const full = parent.getBoundingClientRect().width;
+    const move = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) * (fromRight ? -1 : 1);
+      sizePref.set(clampSize((startW + dx) / full), false);
+    };
+    const done = () => {
+      handle.removeEventListener("pointermove", move);
+      sizePref.set(sizePref.get()); // save once, at the end
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", done, { once: true });
+    handle.addEventListener("pointercancel", done, { once: true });
+  };
+  const keys = (e: React.KeyboardEvent) => {
+    const step = { ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02, PageUp: 0.1, PageDown: -0.1 }[e.key];
+    if (e.key === "Home") sizePref.set(SIZE_MIN);
+    else if (e.key === "End") sizePref.set(SIZE_MAX);
+    else if (step) sizePref.set(clampSize(size + step));
+    else return;
+    e.preventDefault();
+  };
   return (
-    <div className={`cam-overlay at-${at}${controls ? " has-controls" : ""}`}>
+    <div ref={box} className={`cam-overlay at-${at}${controls ? " has-controls" : ""}`} style={{ "--cam-size": `${size * 100}%` } as React.CSSProperties}>
       {track ? <video ref={el} className={stream.cameraLocal ? "is-mirrored" : undefined} autoPlay playsInline muted /> : <span className="cam-overlay-wait" />}
       {controls && (
-        <div className="cam-overlay-actions">
-          <button className="icon-btn" aria-label={`Move ${who} to the next corner`} data-tip="Move"
-            onClick={() => setCorner(CORNERS[(CORNERS.indexOf(at) + 1) % CORNERS.length]!)}><Move aria-hidden /></button>
-          <button className="icon-btn" aria-label={`Hide ${who}`} data-tip="Hide camera"
-            onClick={() => cast.setCameraHidden(stream.userId, true)}><VideoOff aria-hidden /></button>
-        </div>
+        <>
+          <div className="cam-overlay-resize" role="slider" tabIndex={0} aria-label={`Size of ${who}`} data-tip="Drag to resize"
+            aria-valuemin={SIZE_MIN * 100} aria-valuemax={SIZE_MAX * 100} aria-valuenow={Math.round(size * 100)} aria-valuetext={`${Math.round(size * 100)}% of the stream's width`}
+            onPointerDown={resize} onKeyDown={keys} onDoubleClick={() => sizePref.set(SIZE_DEFAULT)} />
+          <div className="cam-overlay-actions">
+            <button className="icon-btn" aria-label={`Move ${who} to the next corner`} data-tip="Move"
+              onClick={() => cornerPref.set(CORNERS[(CORNERS.indexOf(at) + 1) % CORNERS.length]!)}><Move aria-hidden /></button>
+            <button className="icon-btn" aria-label={`Hide ${who}`} data-tip="Hide camera"
+              onClick={() => cast.setCameraHidden(stream.userId, true)}><VideoOff aria-hidden /></button>
+          </div>
+        </>
       )}
     </div>
   );
