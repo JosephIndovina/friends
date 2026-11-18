@@ -49,6 +49,11 @@ export function SiteSettings() {
     await update({ ...s!, sections: { ...s!.sections, [key]: on } }, `${key === "player" ? "Player" : "Cast"} is ${on ? "on" : "off"}.`);
   }
 
+  async function setCameras(on: boolean) {
+    if (!on && (await ask({ title: "Turn off cameras?", body: "Every camera that's on turns off, and no one can turn one on until you turn this back on.", confirm: "Turn off", danger: true })) === null) return;
+    await update({ ...s!, cameras: on }, `Cameras are ${on ? "on" : "off"}.`);
+  }
+
   const notify = (patch: Partial<Settings["notify"]>, ok?: string) => update({ ...s, notify: { ...s.notify, ...patch } }, ok);
 
   async function sendTest() {
@@ -88,6 +93,12 @@ export function SiteSettings() {
         <Toggle label="Hide the YouTube player in music view"
           hint="Shows only the visualizer, lyrics or artwork while audio keeps playing. YouTube’s API terms require the player to stay visible, so turn this off if Google flags the API key."
           checked={s.hideVideoInMusic} disabled={busy} onChange={(v) => void update({ ...s, hideVideoInMusic: v })} />
+      </section>
+
+      <section className="panel" aria-labelledby="cast-title">
+        <h2 id="cast-title">Cast</h2>
+        <Toggle label="Cameras" hint="People who can stream can turn on a camera. It shows over their stream, or on its own when they aren't streaming."
+          checked={s.cameras} disabled={busy || !s.sections.cast} onChange={(v) => void setCameras(v)} />
       </section>
 
       <section className="panel" aria-labelledby="notify-title">

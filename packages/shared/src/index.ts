@@ -76,6 +76,8 @@ export interface SiteSettings {
   lockdown: boolean;
   /** hide the YouTube player in music view (against YouTube's API terms; admin's call) */
   hideVideoInMusic: boolean;
+  /** people who can stream can also turn on a camera */
+  cameras: boolean;
   sections: { player: boolean; cast: boolean };
   notify: { channelId: string | null; accessRequests: boolean; nowPlaying: boolean; goLive: boolean; posts: boolean };
 }

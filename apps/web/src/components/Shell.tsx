@@ -28,7 +28,7 @@ function ActivityReporter() {
   const visible = !p.hidden.has("player") && (Boolean(p.slot) || p.dismissedFor !== now?.item.id);
   const watchingStream = cast.streams.some((st) => !st.local && cast.watching.has(st.id))
     || (p.stageOpen && (state?.screens ?? []).some((sc) => sc.playing && p.screenSound.has(sc.item.id) && !p.hidden.has(sc.item.id)));
-  const activity: Activity = cast.streams.some((st) => st.local)
+  const activity: Activity = cast.streams.some((st) => st.local && st.kind === "screen")
     ? "casting"
     : now?.playing && p.audible && visible
       ? viewModeOf(now.item, p.viewOverrides) === "music" ? "listening" : "watching"

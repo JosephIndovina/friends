@@ -116,7 +116,7 @@ type CastState = ReturnType<typeof useCast>;
 /** Your live streams, at the top of the Go live panel: Change window (Friends Live streams) and Stop for each, and
  * Add a stream, which opens the ways to start another below. */
 function MyStreams({ cast, adding, setAdding }: { cast: CastState; adding: boolean; setAdding: (on: boolean) => void }) {
-  const mine = cast.streams.filter((s) => s.mine);
+  const mine = cast.streams.filter((s) => s.mine && s.kind === "screen");
   const [asked, setAsked] = useState(false);
   const [stopping, setStopping] = useState<string | null>(null);
   const changeWindow = async () => {
@@ -199,7 +199,7 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
 
   const root = useRef<HTMLDivElement>(null);
   // Your streams, from this browser or Friends Live: the panel lists them with Change window and Stop.
-  const mine = cast.streams.filter((s) => s.mine).length;
+  const mine = cast.streams.filter((s) => s.mine && s.kind === "screen").length;
   // Friends Live streams one window at a time, so Add a stream only offers it while it isn't live (Change window
   // covers the rest).
   const appLive = cast.streams.some((s) => s.mine && s.fromApp);

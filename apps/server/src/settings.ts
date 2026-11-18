@@ -5,6 +5,7 @@ import { env } from "./env.js";
 const defaults = (): SiteSettings => ({
   lockdown: false,
   hideVideoInMusic: true,
+  cameras: true,
   sections: { player: true, cast: true },
   notify: { channelId: env.DISCORD_NOTIFY_CHANNEL_ID ?? null, accessRequests: true, nowPlaying: true, goLive: true, posts: false },
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, Maximize, Minimize, RectangleHorizontal, Pause, Play, SkipForward, Volume2 } from "lucide-react";
+import { Activity, Maximize, Minimize, RectangleHorizontal, Pause, Play, SkipForward, Video, VideoOff, Volume2 } from "lucide-react";
 import { SCREENS_MAX, SEEKABLE, type Playback, type Session } from "@friends/shared";
 import { AddBox } from "../components/media/AddBox";
 import { Feed } from "../components/posts/Feed";
@@ -117,8 +117,10 @@ export function Home({ session }: { session: Session }) {
   // Stage sources: the shared player plus everyone's live streams.
   const cast = useCast();
   // Your own shares get one name everywhere (source row, tile, Stop), numbered when there are several.
-  const mineIds = cast.streams.filter((st) => st.mine).map((st) => st.id);
-  const ownName = (id: string) => (mineIds.length > 1 ? `Your screen ${mineIds.indexOf(id) + 1}` : "Your screen");
+  const mineIds = cast.streams.filter((st) => st.mine && st.kind === "screen").map((st) => st.id);
+  const ownName = (id: string) => (!mineIds.includes(id) ? "Your camera" : mineIds.length > 1 ? `Your screen ${mineIds.indexOf(id) + 1}` : "Your screen");
+  const streamDetail = (st: (typeof cast.streams)[number], own: boolean) =>
+    st.kind === "camera" ? "Camera" : ["Live", st.mode, own && !st.audio && "No sound"].filter(Boolean).join(" · ");
   const screens = state?.screens ?? [];
   const canClose = (sc: Playback) => sc.startedBy.id === session.user.id || control;
   const closeScreen = (sc: Playback) => void act(mediaAction("media:screen:close", { id: sc.item.id }));
@@ -152,20 +154,21 @@ export function Home({ session }: { session: Session }) {
       live: true,
       local: st.mine,
       label: st.mine ? ownName(st.id) : st.label,
-      detail: ["Live", st.mode, st.mine && !st.audio && "No sound"].filter(Boolean).join(" · "),
+      detail: streamDetail(st, st.mine),
       thumbnail: st.avatarUrl,
       // Your own stream: a live preview, and Stop beside it. Change window is in the Go live panel.
       preview: st.mine ? <StreamVideo stream={st} className="rail-preview-video" /> : undefined,
       audible: st.local ? false : !cast.muted.has(st.id),
-      silent: st.local,
+      silent: st.local || st.kind === "camera", // a camera has no sound
       setAudible: (v: boolean) => cast.setMuted(st.id, !v),
       volume: cast.volume[st.id] ?? 100,
       setVolume: (v: number) => { cast.setVolume(st.id, v); cast.setMuted(st.id, v === 0); },
       on: cast.watching.has(st.id),
       setOn: (on: boolean) => cast.setWatching(st.id, on),
       stream: !st.local,
+      camera: st.camera ? { shown: !cast.hiddenCameras.has(st.userId), set: (v: boolean) => cast.setCameraHidden(st.userId, !v) } : undefined,
       // Stop beside every stream you may end: your own straight away, someone else's (moderators) after asking.
-      end: st.mine ? { label: "Stop streaming", run: (): void => void cast.stop(st.id), stop: true }
+      end: st.mine ? { label: st.kind === "camera" ? "Turn off camera" : "Stop streaming", run: (): void => void cast.stop(st.id), stop: true }
         : canStopOthers ? { label: "Stop for everyone", run: (): void => void cast.stop(st.id), confirm: `Stop ${st.label}'s stream for everyone?`, stop: true } : undefined,
     })),
   ];
@@ -285,7 +288,7 @@ export function Home({ session }: { session: Session }) {
     }
     if (screens.some((sc) => sc.item.id === x.id)) return <div ref={screenRef(x.id)} className="player-slot player-slot-passive" />;
     const st = cast.streams.find((c) => c.id === x.id);
-    return st ? <StreamVideo stream={st} className="stream-tile" stats={showStats ? "compact" : undefined} /> : null;
+    return st ? <StreamVideo stream={st} className="stream-tile" stats={showStats ? "compact" : undefined} camera="small" /> : null;
   };
 
   // With several sources tiled, each video controls itself: play, skip and seek sit on its tile, shown on hover.
@@ -390,7 +393,7 @@ export function Home({ session }: { session: Session }) {
                   {musicView === "lyrics" && <div className="lyrics-col"><LyricsView playback={now} /></div>}
                 </div>
               )}
-              {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" stats={showStats ? "full" : undefined} />}
+              {focusedStream && <StreamVideo stream={focusedStream} className="stream-main" stats={showStats ? "full" : undefined} camera="full" />}
               {focusedScreen && <div key={focusedScreen.item.id} ref={screenRef(focusedScreen.item.id)} className="player-slot" />}
               {now && playerFocused && <div ref={slotRef} className={hideVideo ? "player-slot player-slot-mini player-slot-hidden" : music ? "player-slot player-slot-mini" : "player-slot"} />}
               {/* The one focused source: clicking it unfocuses it. Music view keeps its own clicks (lyrics scroll). */}
@@ -430,7 +433,7 @@ export function Home({ session }: { session: Session }) {
                   {bar === "stream" && focusedStream ? (
                     <>
                       <strong className="now-title">{focusedStream.mine ? ownName(focusedStream.id) : focusedStream.label}</strong>
-                      <span><span className="live-dot" aria-hidden />{["Live", focusedStream.mode, !focusedStream.audio && "No sound"].filter(Boolean).join(" · ")}</span>
+                      <span><span className="live-dot" aria-hidden />{streamDetail(focusedStream, true)}</span>
                     </>
                   ) : bar === "screen" && focusedScreen ? (
                     <>
@@ -474,6 +477,13 @@ export function Home({ session }: { session: Session }) {
                     {bar === "stream" && (() => {
                       const x = sources.find((y) => y.id === focusId);
                       return x?.end ? <EndButton source={x} /> : null;
+                    })()}
+                    {bar === "stream" && focusedStream?.camera && (() => {
+                      const shown = !cast.hiddenCameras.has(focusedStream.userId);
+                      return (
+                        <button className="icon-btn" aria-label="Camera" aria-pressed={shown} data-tip={shown ? "Hide camera" : "Show camera"}
+                          onClick={() => cast.setCameraHidden(focusedStream.userId, shown)}>{shown ? <Video aria-hidden /> : <VideoOff aria-hidden />}</button>
+                      );
                     })()}
                     <Mixer channels={visible.filter((x) => !(x.silent ?? x.local) && x.setVolume).map((x) => ({
                       id: x.id, label: x.label, volume: x.volume ?? 100, muted: !x.audible, setMuted: (m) => x.setAudible(!m), setVolume: x.setVolume!,

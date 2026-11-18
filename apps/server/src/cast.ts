@@ -24,6 +24,11 @@ export const castEnabled = () => Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY 
 const rooms = () => new RoomServiceClient(env.LIVEKIT_URL!, env.LIVEKIT_API_KEY!, env.LIVEKIT_API_SECRET!);
 
 const screens = (p: ParticipantInfo) => p.tracks.filter((t) => t.source === TrackSource.SCREEN_SHARE);
+const cameras = (p: ParticipantInfo) => p.tracks.filter((t) => t.source === TrackSource.CAMERA);
+
+/** What a connection may publish: the site's own connection may also send a camera, while the admin allows it. */
+const publishSources = (canStream: boolean, site: boolean) =>
+  !canStream ? [] : [TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO, ...(site && getSettings().cameras ? [TrackSource.CAMERA] : [])];
 
 /** Each tab or device joins as "<user id>#<random>", so one person can have the site open in several places. */
 const userOf = (identity: string) => identity.split("#")[0]!;
@@ -72,7 +77,7 @@ async function stageToken(user: { id: string; name: string; avatarUrl: string | 
     canPublish: canStream,
     canPublishData: false,
     canUpdateOwnMetadata: false,
-    canPublishSources: canStream ? [TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [],
+    canPublishSources: publishSources(canStream, canSubscribe),
   });
   return at.toJwt();
 }
@@ -199,8 +204,21 @@ export async function castRoutes(app: FastifyInstance) {
       const s = row ? sessionFor(row) : null;
       if (!castOn) await out(p, "section_disabled");
       else if (gate(s) || !s!.permissions.includes("cast.watch")) await out(p, "access_revoked");
-      else if (screens(p).length && !s!.permissions.includes("cast.stream")) await out(p, "stream_permission_revoked");
+      else if ((screens(p).length || cameras(p).length) && !s!.permissions.includes("cast.stream")) await out(p, "stream_permission_revoked");
+      else if (p.permission?.canSubscribe && s!.permissions.includes("cast.stream")) await syncCamera(p);
     }
+  };
+  // Cameras turned off or back on: already-connected site tabs get the new publish rights without reconnecting,
+  // and any camera still on is muted (the site also turns its own off when it hears the setting changed).
+  const syncCamera = async (p: ParticipantInfo) => {
+    const want = publishSources(true, true);
+    const have = p.permission?.canPublishSources ?? [];
+    if (want.length !== have.length || want.some((x) => !have.includes(x))) {
+      await rooms()
+        .updateParticipant(ROOM, p.identity, undefined, { canSubscribe: true, canPublish: true, canPublishData: false, canUpdateMetadata: false, canPublishSources: want })
+        .catch(() => {});
+    }
+    if (!getSettings().cameras) for (const t of cameras(p)) await rooms().mutePublishedTrack(ROOM, p.identity, t.sid, true).catch(() => {});
   };
   events.on("session:changed", (id) => void recheck(id));
   events.on("settings:changed", () => void recheck(null));

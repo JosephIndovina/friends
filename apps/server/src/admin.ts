@@ -77,6 +77,7 @@ const permissionList = z.array(z.enum(ALL_PERMISSIONS as [Permission, ...Permiss
 const settingsSchema = z.object({
   lockdown: z.boolean(),
   hideVideoInMusic: z.boolean(),
+  cameras: z.boolean(),
   sections: z.object({ player: z.boolean(), cast: z.boolean() }),
   notify: z.object({
     channelId: z.string().regex(/^\d{15,22}$/).nullable(),
@@ -128,7 +129,7 @@ export async function adminRoutes(app: FastifyInstance) {
   // ---------- site info for every active user ----------
   app.get("/api/site", { config: { anyActive: true } }, async () => {
     const s = getSettings();
-    return { sections: s.sections, lockdown: s.lockdown, hideVideoInMusic: s.hideVideoInMusic };
+    return { sections: s.sections, lockdown: s.lockdown, hideVideoInMusic: s.hideVideoInMusic, cameras: s.cameras };
   });
 
   // ---------- people ----------

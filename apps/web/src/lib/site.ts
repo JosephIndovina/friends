@@ -6,6 +6,7 @@ export interface SiteInfo {
   sections: { player: boolean; cast: boolean };
   lockdown: boolean;
   hideVideoInMusic: boolean;
+  cameras: boolean;
 }
 
 let cached: SiteInfo | null = null;

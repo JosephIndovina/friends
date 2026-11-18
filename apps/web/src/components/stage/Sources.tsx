@@ -1,6 +1,7 @@
-import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Volume2, VolumeX, X } from "lucide-react";
+import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Video, VideoOff, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { useCast } from "../../lib/cast";
 import { VolumeHover } from "../media/parts";
 import { GoLive } from "./GoLive";
 
@@ -26,6 +27,8 @@ export interface StageSource {
   setOn: (on: boolean) => void;
   /** a cast stream from someone else: while off it shows on the stage as a card to watch */
   stream?: boolean;
+  /** the streamer's camera over their stream: shown or hidden for this viewer */
+  camera?: { shown: boolean; set: (shown: boolean) => void };
   /** a live picture in place of the thumbnail: your own stream, so you can tell your streams apart */
   preview?: ReactNode;
   /** end it for everyone, when this viewer is allowed to: e.g. "Close for everyone". `confirm` asks first. No X without it.
@@ -118,7 +121,13 @@ export function StageRail({ sources, focused, all, onToggle, onAll, open: railOp
                     <button className="icon-btn" aria-label={s.audible ? `Mute ${s.label}` : `Unmute ${s.label}`} title={s.audible ? "Mute" : "Unmute"}
                       onClick={() => s.setAudible(!s.audible)}>{s.audible ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}</button>
                   ))}
-                  {!(s.silent ?? s.local) && s.on && <span className="rail-sep" aria-hidden />}
+                  {s.camera && s.on && (
+                    <button className="icon-btn" aria-pressed={s.camera.shown} aria-label={s.camera.shown ? `Hide ${s.label}'s camera` : `Show ${s.label}'s camera`}
+                      title={s.camera.shown ? "Hide camera" : "Show camera"} onClick={() => s.camera!.set(!s.camera!.shown)}>
+                      {s.camera.shown ? <Video aria-hidden /> : <VideoOff aria-hidden />}
+                    </button>
+                  )}
+                  {(!(s.silent ?? s.local) || s.camera) && s.on && <span className="rail-sep" aria-hidden />}
                   <button className="icon-btn" aria-pressed={!s.on} aria-label={s.on ? `Hide ${s.label}` : `Show ${s.label}`} title={s.on ? "Hide for you" : "Show"}
                     onClick={() => s.setOn(!s.on)}>{s.on ? <Eye aria-hidden /> : <EyeOff aria-hidden />}</button>
                   {s.end && <span className="rail-sep" aria-hidden />}
@@ -136,10 +145,42 @@ export function StageRail({ sources, focused, all, onToggle, onAll, open: railOp
         )}
 
         <div className="rail-foot">
+          <CameraButton icon={!open} />
           <GoLive icon={!open} />
         </div>
       </div>
     </nav>
+  );
+}
+
+/**
+ * Your camera on or off, beside Go live. It shows over your stream, or on its own when you aren't streaming.
+ * Expanded, a camera picker shows while it's on, when there's more than one.
+ */
+function CameraButton({ icon }: { icon: boolean }) {
+  const { camera, available } = useCast();
+  if (!camera.allowed) return null;
+  const label = camera.on ? "Turn off camera" : "Turn on camera";
+  const tip = !available ? "Connecting to the stage…" : camera.busy ? "Starting camera…" : camera.error ?? label;
+  const toggle = () => void camera.set(!camera.on);
+  return (
+    <div className="camera-ctl">
+      {icon ? (
+        <button className={`icon-btn${camera.on ? " is-live" : ""}`} aria-pressed={camera.on} aria-label="Camera" data-tip={tip}
+          disabled={!available || camera.busy} onClick={toggle}>{camera.on ? <Video aria-hidden /> : <VideoOff aria-hidden />}</button>
+      ) : (
+        <button className="btn btn-s btn-quiet" aria-pressed={camera.on} disabled={!available || camera.busy} onClick={toggle}>
+          {camera.on ? <VideoOff aria-hidden /> : <Video aria-hidden />}{camera.busy ? "Starting camera…" : label}
+        </button>
+      )}
+      {!icon && camera.on && camera.devices.length > 1 && (
+        <select className="select select-s" aria-label="Camera" value={camera.deviceId ?? camera.devices[0]!.deviceId}
+          onChange={(e) => camera.setDevice(e.target.value)}>
+          {camera.devices.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${i + 1}`}</option>)}
+        </select>
+      )}
+      {camera.error && !icon && <p className="field-error" role="alert">{camera.error}</p>}
+    </div>
   );
 }
 
