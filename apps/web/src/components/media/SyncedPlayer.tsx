@@ -1,3 +1,4 @@
+import { tlog } from "../../lib/twitchDebug";
 import { useEffect, useRef, useState } from "react";
 import { SEEKABLE, type MediaKind, type Playback } from "@friends/shared";
 import { expectedPosition } from "../../lib/media";
@@ -54,6 +55,7 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
         if (item.duration && e.time() >= item.duration - 2) return; // a video that reached its end
 
         lastResume.current = Date.now();
+        tlog("paused by itself while the room plays: resuming");
         e.play();
       },
     };

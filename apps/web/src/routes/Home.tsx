@@ -1,3 +1,4 @@
+import { tlog } from "../lib/twitchDebug";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, Maximize, Minimize, RectangleHorizontal, Pause, Play, SkipForward, Video, VideoOff, Volume2 } from "lucide-react";
 import { SCREENS_MAX, SEEKABLE, type Playback, type Session } from "@friends/shared";
@@ -201,6 +202,7 @@ export function Home({ session }: { session: Session }) {
     p.setFocused([...stage].every((s) => next.has(s)) ? new Set() : next);
   };
   const clearFocus = () => p.setFocused(new Set());
+  useEffect(() => tlog("stage focus", [...p.focused]), [p.focused]);
   // Stopping your stream with the camera on leaves the camera where the stream was (shown large if it was), and
   // going live with the camera on puts the stream where the camera was.
   useStreamHandoff((from, to) => p.setFocused((prev) => (prev.has(from) ? new Set([...[...prev].filter((x) => x !== from), to]) : prev)));

@@ -1,4 +1,5 @@
 import type { MediaItem } from "@friends/shared";
+import { tlog, tsnapshot, twatch, twitchDebug } from "../../lib/twitchDebug";
 
 /** The minimal surface the sync loop needs from any embedded player. */
 export interface Engine {
@@ -127,6 +128,18 @@ export async function twitchEngine(host: HTMLElement, ev: EngineEvents, initial:
   });
   let isPlaying = false;
   let reported = false;
+  // Temporary debugging (off unless localStorage.debugTwitch = "1").
+  const unwatch = twatch(host);
+  if (twitchDebug) {
+    for (const name of ["READY", "PLAY", "PLAYING", "PAUSE", "ENDED", "PLAYBACK_BLOCKED", "ONLINE", "OFFLINE", "SEEK"]) {
+      const evName = Twitch.Player[name];
+      if (!evName) continue;
+      player.addEventListener(evName, () => {
+        tlog(`twitch event ${name}`, { muted: player.getMuted?.(), volume: player.getVolume?.(), quality: player.getQuality?.() });
+        if (name === "PAUSE" || name === "PLAYBACK_BLOCKED") tsnapshot(host, `at ${name}`);
+      });
+    }
+  }
   player.addEventListener(Twitch.Player.PLAYING, () => {
     isPlaying = true;
     const d = player.getDuration?.();
@@ -154,17 +167,34 @@ export async function twitchEngine(host: HTMLElement, ev: EngineEvents, initial:
       if (item.kind === "twitch-live") player.setChannel(item.ref);
       else player.setVideo(`v${item.ref}`, at);
     },
-    play: () => player.play(),
+    play: () => {
+      tlog("we call play()");
+      player.play();
+    },
     pause: () => {
+      tlog("we call pause()");
       pausing = true;
       player.pause();
     },
-    seek: (s) => player.seek(s),
+    seek: (s) => {
+      tlog("we call seek()", s);
+      player.seek(s);
+    },
     time: () => player.getCurrentTime?.() ?? 0,
     playing: () => isPlaying,
-    setVolume: (v) => player.setVolume(v / 100),
-    setMuted: (m) => player.setMuted(m),
-    destroy: () => host.replaceChildren(),
+    setVolume: (v) => {
+      tlog("we call setVolume()", v);
+      player.setVolume(v / 100);
+    },
+    setMuted: (m) => {
+      tlog("we call setMuted()", m);
+      player.setMuted(m);
+    },
+    destroy: () => {
+      tlog("player destroyed");
+      unwatch();
+      host.replaceChildren();
+    },
   };
 }
 
