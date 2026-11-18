@@ -9,9 +9,10 @@ const familyOf = (k: MediaKind): Family => (k === "youtube" ? "youtube" : k === 
 
 const HARD_DRIFT_S = 0.5;
 const SEEK_COOLDOWN_MS = 2500;
-/** a self-paused embed is resumed after a second (Twitch pauses itself when its player is moved or resized,
- * e.g. focusing it), then every RESUME_AFTER_S while it keeps stopping, so it never fights in a tight loop */
+/** a self-paused embed that didn't say so gets one try to resume it after this long */
 const RESUME_AFTER_S = 8;
+/** a self-paused Twitch player is resumed at once, but no more often than this, so it never fights in a loop */
+const SELF_PAUSE_GAP_MS = 3000;
 
 /**
  * Drives an embedded player so it matches the room's playback: same item, same play/pause,
@@ -32,6 +33,7 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
   latest.current = playback;
   const lastSeek = useRef(0);
   const stalls = useRef(0);
+  const lastResume = useRef(0);
   const [ready, setReady] = useState(0);
 
   const family = familyOf(playback.item.kind);
@@ -44,6 +46,16 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
     const events = {
       onEnded: () => getSocket().emit("media:ended", { itemId: latest.current.item.id }),
       onDuration: (d: number) => getSocket().emit("media:duration", { itemId: latest.current.item.id, duration: d }),
+      // Twitch pauses itself when its player is moved or resized (shown large): play on straight away while the room is.
+      onSelfPause: () => {
+        const e = engine.current?.e;
+        const { playing, item } = latest.current;
+        if (!e || !playing || Date.now() - lastResume.current < SELF_PAUSE_GAP_MS) return;
+        if (item.duration && e.time() >= item.duration - 2) return; // a video that reached its end
+
+        lastResume.current = Date.now();
+        e.play();
+      },
     };
     const init = { item: p.item, at: expectedPosition(p), play: p.playing };
     const make = family === "youtube" ? youtubeEngine(el, events, init) : family === "twitch" ? twitchEngine(el, events, init) : Promise.resolve(clipEngine(el));
@@ -105,8 +117,7 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
       if (!cur || cur.itemId !== p.item.id || cur.family === "clip") return;
       const { e } = cur;
       if (p.playing && !e.playing()) {
-        const n = ++stalls.current;
-        if (n === 1 || n % RESUME_AFTER_S === 0) e.play();
+        if (++stalls.current % RESUME_AFTER_S === 0) e.play();
         return;
       }
       stalls.current = 0;

@@ -16,6 +16,8 @@ export interface Engine {
 export interface EngineEvents {
   onEnded: () => void;
   onDuration: (sec: number) => void;
+  /** the player paused without being asked to (Twitch does when its player is moved or resized) */
+  onSelfPause?: () => void;
 }
 
 const scripts = new Map<string, Promise<void>>();
@@ -133,7 +135,13 @@ export async function twitchEngine(host: HTMLElement, ev: EngineEvents, initial:
       ev.onDuration(d);
     }
   });
-  player.addEventListener(Twitch.Player.PAUSE, () => (isPlaying = false));
+  // Pauses we asked for, so the ones Twitch makes itself can be told apart.
+  let pausing = false;
+  player.addEventListener(Twitch.Player.PAUSE, () => {
+    isPlaying = false;
+    if (pausing) pausing = false;
+    else ev.onSelfPause?.();
+  });
   player.addEventListener(Twitch.Player.ENDED, () => {
     isPlaying = false;
     ev.onEnded();
@@ -147,7 +155,10 @@ export async function twitchEngine(host: HTMLElement, ev: EngineEvents, initial:
       else player.setVideo(`v${item.ref}`, at);
     },
     play: () => player.play(),
-    pause: () => player.pause(),
+    pause: () => {
+      pausing = true;
+      player.pause();
+    },
     seek: (s) => player.seek(s),
     time: () => player.getCurrentTime?.() ?? 0,
     playing: () => isPlaying,

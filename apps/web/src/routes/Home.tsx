@@ -91,7 +91,12 @@ export function Home({ session }: { session: Session }) {
   }, [now?.playing]);
 
   // Hand the persistent player our slot while we're mounted.
-  const slotRef = useCallback((el: HTMLDivElement | null) => p.setSlot(el), [p.setSlot]);
+  // The cleanup clears only the element that left, so moving the slot (tile to shown large) never loses it.
+  const slotRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    p.setSlot(el);
+    return () => p.setSlot((cur) => (cur === el ? null : cur));
+  }, [p.setSlot]);
   useEffect(() => () => p.setSlot(null), [p.setSlot]);
   // Screens only load while the stage is on screen.
   useEffect(() => {
@@ -99,11 +104,15 @@ export function Home({ session }: { session: Session }) {
     return () => p.setStageOpen(false);
   }, [p.setStageOpen]);
   // One stable ref callback per screen, so re-renders don't detach and re-attach its slot.
-  const screenRefs = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const screenRefs = useRef(new Map<string, (el: HTMLDivElement | null) => (() => void) | undefined>());
   const screenRef = (id: string) => {
     let fn = screenRefs.current.get(id);
     if (!fn) {
-      fn = (el) => p.setScreenSlot(id, el);
+      fn = (el) => {
+        if (!el) return;
+        p.setScreenSlot(id, el);
+        return () => p.setScreenSlot(id, null, el);
+      };
       screenRefs.current.set(id, fn);
     }
     return fn;

@@ -15,13 +15,13 @@ interface PlayerCtx {
   setSyncing: (v: boolean) => void;
   /** element the player should cover; null = dock it */
   slot: HTMLElement | null;
-  setSlot: (el: HTMLElement | null) => void;
+  setSlot: React.Dispatch<React.SetStateAction<HTMLElement | null>>;
   /** Home's stage is on screen: screens only load while it is */
   stageOpen: boolean;
   setStageOpen: (v: boolean) => void;
   /** element each screen should cover, by screen (item) id */
   screenSlots: Readonly<Record<string, HTMLElement>>;
-  setScreenSlot: (id: string, el: HTMLElement | null) => void;
+  setScreenSlot: (id: string, el: HTMLElement | null, gone?: HTMLElement) => void;
   /** screens this viewer turned the sound on for; screens start muted */
   screenSound: ReadonlySet<string>;
   setScreenSound: (id: string, on: boolean) => void;
@@ -80,8 +80,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
   const [stageOpen, setStageOpen] = useState(false);
   const [screenSlots, setScreenSlots] = useState<Record<string, HTMLElement>>({});
-  const setScreenSlot = useCallback((id: string, el: HTMLElement | null) => {
+  // `gone`: that element left the page. Only it is cleared, so a slot that moved (the old element leaving after the
+  // new one arrived) isn't lost, and a removed element is never kept.
+  const setScreenSlot = useCallback((id: string, el: HTMLElement | null, gone?: HTMLElement) => {
     setScreenSlots((prev) => {
+      if (gone) {
+        if (prev[id] !== gone) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
       if ((prev[id] ?? null) === el) return prev;
       const next = { ...prev };
       if (el) next[id] = el;

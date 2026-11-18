@@ -14,10 +14,13 @@ function useSlotRect(slot: HTMLElement | null): Rect | null {
   const [rect, setRect] = useState<Rect | null>(null);
   useLayoutEffect(() => {
     if (!slot) return setRect(null);
-    const shell = slot.closest(".shell") as HTMLElement;
     let raf = 0;
     let last = "";
     const measure = () => {
+      raf = requestAnimationFrame(measure);
+      // A slot that has just left the page (it's about to be replaced) has nothing to follow.
+      const shell = slot.closest(".shell");
+      if (!shell) return;
       const a = slot.getBoundingClientRect();
       const b = shell.getBoundingClientRect();
       const next = { top: a.top - b.top, left: a.left - b.left, width: a.width, height: a.height };
@@ -27,7 +30,6 @@ function useSlotRect(slot: HTMLElement | null): Rect | null {
         last = key;
         setRect({ ...next });
       }
-      raf = requestAnimationFrame(measure);
     };
     measure();
     return () => cancelAnimationFrame(raf);
