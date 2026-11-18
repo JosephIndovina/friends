@@ -110,6 +110,20 @@ export async function setCameraLayout(identity: string, layout: CameraLayout): P
   }
 }
 
+/** A source's id changed: someone's camera moved between their screen stream and a source of its own. */
+type Handoff = (from: string, to: string) => void;
+const handoffListeners = new Set<Handoff>();
+/** Follow a camera across that move, e.g. to keep it shown large. */
+export function useStreamHandoff(fn: Handoff) {
+  const latest = useRef(fn);
+  latest.current = fn;
+  useEffect(() => {
+    const f: Handoff = (from, to) => latest.current(from, to);
+    handoffListeners.add(f);
+    return () => void handoffListeners.delete(f);
+  }, []);
+}
+
 /** Your camera, from this tab. */
 export interface CameraCtl {
   /** you can stream and the admin allows cameras */
@@ -335,16 +349,29 @@ export function CastProvider({ session, children }: { session: Session; children
   // Your own stream from elsewhere (the app, another tab or device) starts muted: on the computer that's
   // streaming it would echo, but on your phone you'll want it, so it's one tap to turn on.
   const seen = useRef(new Set<string>());
+  const before = useRef<Stream[]>([]);
   useEffect(() => {
     const ids = new Set(streams.map((s) => s.id));
+    // Someone's camera moving between their screen stream and a source of its own (they stopped streaming with the
+    // camera on, or went live with it on) is the same thing to watch: whoever was watching keeps watching it.
+    const was = new Set(before.current.map((s) => s.id));
+    const handoffs: [string, string][] = [];
+    for (const old of before.current) {
+      if (ids.has(old.id) || !(old.kind === "camera" || old.camera)) continue;
+      const to = streams.find((s) => !was.has(s.id) && s.userId === old.userId && (s.kind === "camera" || s.camera));
+      if (to) handoffs.push([old.id, to.id]);
+    }
+    before.current = streams;
     const fresh = streams.filter((s) => s.local && !seen.current.has(s.id)).map((s) => s.id);
     const ownElsewhere = streams.filter((s) => s.mine && !s.local && !seen.current.has(s.id)).map((s) => s.id);
     if (ownElsewhere.length) setMutedSet((prev) => new Set([...prev, ...ownElsewhere]));
     for (const s of streams) seen.current.add(s.id);
     for (const id of seen.current) if (!ids.has(id)) seen.current.delete(id);
+    for (const [from, to] of handoffs) handoffListeners.forEach((f) => f(from, to));
     setWatchingSet((prev) => {
       const next = new Set([...prev].filter((id) => ids.has(id)));
       for (const id of fresh) next.add(id);
+      for (const [from, to] of handoffs) if (prev.has(from)) next.add(to);
       return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
     });
   }, [streams]);

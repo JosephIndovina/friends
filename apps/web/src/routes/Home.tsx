@@ -6,7 +6,7 @@ import { Feed } from "../components/posts/Feed";
 import { PresenceStack } from "../components/PresenceStack";
 import { MeLink } from "../components/Shell";
 import { EndButton, fitGrid, StageRail, StageTile, type StageSource } from "../components/stage/Sources";
-import { StreamVideo, useCast } from "../lib/cast";
+import { StreamVideo, useCast, useStreamHandoff } from "../lib/cast";
 import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
 import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
@@ -192,6 +192,9 @@ export function Home({ session }: { session: Session }) {
     p.setFocused([...stage].every((s) => next.has(s)) ? new Set() : next);
   };
   const clearFocus = () => p.setFocused(new Set());
+  // Stopping your stream with the camera on leaves the camera where the stream was (shown large if it was), and
+  // going live with the camera on puts the stream where the camera was.
+  useStreamHandoff((from, to) => p.setFocused((prev) => (prev.has(from) ? new Set([...[...prev].filter((x) => x !== from), to]) : prev)));
   const layout: "idle" | "single" | "focus" | "grid" = onStage.length === 0 ? "idle" : onStage.length === 1 ? "single" : picked.length ? "focus" : "grid";
   const single = layout === "single" ? onStage[0]! : null;
   const offer = single && !single.on ? single : null;

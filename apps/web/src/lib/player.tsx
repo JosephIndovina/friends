@@ -36,7 +36,7 @@ interface PlayerCtx {
   setHidden: (id: string, hide: boolean) => void;
   /** sources this viewer focused: shown large, with the rest in the strip below; empty = the grid */
   focused: ReadonlySet<string>;
-  setFocused: (ids: ReadonlySet<string>) => void;
+  setFocused: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>;
   /** this viewer's music/video view choice per track (keyed by source ref); overrides the room's default */
   viewOverrides: Readonly<Record<string, MediaMode>>;
   setViewOverride: (item: MediaItem, mode: MediaMode) => void;
