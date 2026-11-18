@@ -1267,8 +1267,11 @@ main.page:has(.media-room) { max-width: 1920px; }
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14), 0 6px 20px rgb(0 0 0 / 0.45);
   --cam-gap: 12px;
 }
-/* Its controls stay above the focused stage's click-to-unfocus area. */
+/* Its controls stay above the tile's click-to-focus and the focused stage's click-to-unfocus areas (11): your own
+   camera is moved and resized wherever it shows, before any click reaches the stream under it. */
 .cam-overlay.has-controls { z-index: 12; }
+.cam-overlay.is-own { cursor: grab; touch-action: none; }
+.cam-overlay.is-dragging { cursor: grabbing; z-index: 14; box-shadow: 0 0 0 2px #fff, 0 12px 30px rgb(0 0 0 / 0.55); }
 .cam-overlay.at-br { right: var(--cam-gap); bottom: var(--cam-gap); }
 .cam-overlay.at-bl { left: var(--cam-gap); bottom: var(--cam-gap); }
 .cam-overlay.at-tl { left: var(--cam-gap); top: var(--cam-gap); }

@@ -679,6 +679,43 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
     handle.addEventListener("pointerup", done, { once: true });
     handle.addEventListener("pointercancel", done, { once: true });
   };
+  // Drag your camera anywhere over the stream and it settles in the nearest corner. It's above the tile's and the
+  // stage's click-to-focus layers, so pressing on it never focuses or unfocuses the stream.
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const b = box.current;
+    const frame = b?.offsetParent as HTMLElement | null;
+    if (!own || !b || !frame || e.button !== 0 || (e.target as HTMLElement).closest(".cam-overlay-resize, .cam-overlay-actions")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    b.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dx = 0;
+    let dy = 0;
+    const move = (ev: PointerEvent) => {
+      dx = ev.clientX - startX;
+      dy = ev.clientY - startY;
+      b.style.translate = `${dx}px ${dy}px`;
+      b.classList.add("is-dragging");
+    };
+    const done = () => {
+      b.removeEventListener("pointermove", move);
+      b.removeEventListener("pointerup", done);
+      b.removeEventListener("pointercancel", done);
+      const r = b.getBoundingClientRect();
+      const f = frame.getBoundingClientRect();
+      b.style.translate = "";
+      b.classList.remove("is-dragging");
+      if (Math.hypot(dx, dy) < 4) return; // a press, not a drag
+      const cx = r.left + r.width / 2 - f.left;
+      const cy = r.top + r.height / 2 - f.top;
+      const corner = `${cy < f.height / 2 ? "t" : "b"}${cx < f.width / 2 ? "l" : "r"}` as Corner;
+      if (corner !== at) commit({ corner, size });
+    };
+    b.addEventListener("pointermove", move);
+    b.addEventListener("pointerup", done);
+    b.addEventListener("pointercancel", done);
+  };
   // Keys apply at once and are sent once they settle.
   const keys = (e: React.KeyboardEvent) => {
     const step = ({ ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02, PageUp: 0.1, PageDown: -0.1 } as Record<string, number>)[e.key];
@@ -691,9 +728,10 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
     keyTimer.current = window.setTimeout(() => commit(next), 300);
   };
   return (
-    <div ref={box} className={`cam-overlay at-${at}${controls ? " has-controls" : ""}`} style={{ "--cam-size": `${size * 100}%` } as React.CSSProperties}>
+    <div ref={box} className={`cam-overlay at-${at}${controls || own ? " has-controls" : ""}${own ? " is-own" : ""}`} style={{ "--cam-size": `${size * 100}%` } as React.CSSProperties}
+      onPointerDown={own ? drag : undefined} title={own ? "Drag to move" : undefined}>
       {track ? <video ref={el} className={stream.cameraLocal ? "is-mirrored" : undefined} autoPlay playsInline muted /> : <span className="cam-overlay-wait" />}
-      {controls && (
+      {(controls || own) && (
         <>
           {own && (
             <div className="cam-overlay-resize" role="slider" tabIndex={0} aria-label="Size of your camera, for everyone" data-tip="Drag to resize"
