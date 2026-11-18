@@ -162,17 +162,22 @@ export async function castRoutes(app: FastifyInstance) {
 
   // Where your camera sits over your stream, for everyone watching: only you can move or resize it. The server sets it
   // as a participant attribute (connections can't change their own), on the connection that sends the camera.
-  app.post<{ Body: { identity?: unknown; corner?: unknown; size?: unknown } }>(
+  app.post<{ Body: { identity?: unknown; x?: unknown; y?: unknown; corner?: unknown; size?: unknown } }>(
     "/api/cast/camera/layout",
     { config: { permission: "cast.stream", rateLimit: { max: 120, timeWindow: "1 minute" } } },
     async (req, reply) => {
-      const { identity, corner, size } = req.body ?? {};
-      if (typeof identity !== "string" || typeof corner !== "string" || !["br", "bl", "tl", "tr"].includes(corner)
-        || typeof size !== "number" || !Number.isFinite(size)) return reply.code(400).send({ error: "invalid_body" });
+      const { identity, size } = req.body ?? {};
+      let { x, y } = req.body ?? {};
+      // A page from before free placement sends a corner.
+      const corner = ({ tl: [0, 0], tr: [1, 0], bl: [0, 1], br: [1, 1] } as Record<string, [number, number]>)[String(req.body?.corner)];
+      if (corner) [x, y] = corner;
+      const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+      if (typeof identity !== "string" || !num(x) || !num(y) || !num(size)) return reply.code(400).send({ error: "invalid_body" });
       if (userOf(identity) !== req.session!.user.id) return reply.code(403).send({ error: "not_yours" });
+      const unit = (v: number) => Math.min(1, Math.max(0, v)).toFixed(3);
       const share = Math.min(0.5, Math.max(0.1, size));
       try {
-        await rooms().updateParticipant(ROOM, identity, { attributes: { camera: `${corner}:${share.toFixed(3)}` } });
+        await rooms().updateParticipant(ROOM, identity, { attributes: { camera: `${unit(x)}:${unit(y)}:${share.toFixed(3)}` } });
       } catch {
         return reply.code(404).send({ error: "not_found" });
       }

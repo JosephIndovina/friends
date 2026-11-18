@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Move, VideoOff } from "lucide-react";
+import { VideoOff } from "lucide-react";
 import {
   ConnectionState, createLocalScreenTracks, createLocalVideoTrack, LocalTrack, Room, RoomEvent, Track, VideoPresets,
   type LocalTrackPublication, type LocalVideoTrack, type Participant, type RemoteTrackPublication, type TrackPublication,
@@ -63,32 +63,53 @@ export interface Stream {
   cameraLayout: CameraLayout;
 }
 
-/** Where a camera sits over its owner's stream, and its width as a share of the stream's width. */
-export type Corner = "br" | "bl" | "tl" | "tr";
+/** Where a camera sits over its owner's stream: x and y place it within the room it has to move in (0 = left/top
+ * edge, 1 = right/bottom edge), so it's always inside the picture whatever its shape; size is its width as a share
+ * of the picture's width. */
 export interface CameraLayout {
-  corner: Corner;
+  x: number;
+  y: number;
   size: number;
 }
-const CORNERS: Corner[] = ["br", "bl", "tl", "tr"];
 const SIZE_MIN = 0.1;
 const SIZE_MAX = 0.5;
-const DEFAULT_LAYOUT: CameraLayout = { corner: "br", size: 0.22 };
+const DEFAULT_LAYOUT: CameraLayout = { x: 1, y: 1, size: 0.22 };
 const clampSize = (v: number) => Math.min(SIZE_MAX, Math.max(SIZE_MIN, v));
-const sameLayout = (a: CameraLayout, b: CameraLayout) => a.corner === b.corner && Math.abs(a.size - b.size) < 0.001;
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const sameLayout = (a: CameraLayout, b: CameraLayout) =>
+  Math.abs(a.x - b.x) < 0.001 && Math.abs(a.y - b.y) < 0.001 && Math.abs(a.size - b.size) < 0.001;
+/** Layouts from before free placement were a corner. */
+const CORNER_AT: Record<string, [number, number]> = { tl: [0, 0], tr: [1, 0], bl: [0, 1], br: [1, 1] };
 
-/** The layout the server set on the camera's connection ("br:0.220"). */
+/** A layout from the camera's attribute ("0.950:0.900:0.220", or the older "br:0.220") or a saved one. */
+function parseLayout(raw: unknown): CameraLayout | null {
+  if (typeof raw === "string") {
+    const parts = raw.split(":");
+    if (parts.length === 2 && CORNER_AT[parts[0]!]) raw = { corner: parts[0], size: Number(parts[1]) };
+    else if (parts.length === 3) raw = { x: Number(parts[0]), y: Number(parts[1]), size: Number(parts[2]) };
+    else return null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const l = raw as { x?: unknown; y?: unknown; size?: unknown; corner?: unknown };
+  const size = Number(l.size);
+  if (!Number.isFinite(size)) return null;
+  const at = typeof l.corner === "string" ? CORNER_AT[l.corner] : null;
+  const x = at ? at[0] : Number(l.x);
+  const y = at ? at[1] : Number(l.y);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x: clamp01(x), y: clamp01(y), size: clampSize(size) } : null;
+}
+
+/** The layout the server set on the camera's connection. */
 function layoutOf(p: Participant): CameraLayout {
-  const [corner, size] = (p.attributes?.camera ?? "").split(":");
-  const n = Number(size);
-  return CORNERS.includes(corner as Corner) && Number.isFinite(n) ? { corner: corner as Corner, size: clampSize(n) } : DEFAULT_LAYOUT;
+  return parseLayout(p.attributes?.camera) ?? DEFAULT_LAYOUT;
 }
 
 /** Your last layout, sent with your camera each time you turn it on. */
 const LAYOUT_KEY = "cameraLayout";
 function savedLayout(): CameraLayout {
   try {
-    const l = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "null") as CameraLayout | null;
-    if (l && CORNERS.includes(l.corner) && Number.isFinite(l.size)) return { corner: l.corner, size: clampSize(l.size) };
+    const l = parseLayout(JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "null"));
+    if (l) return l;
   } catch {
     /* default */
   }
@@ -103,7 +124,7 @@ export async function setCameraLayout(identity: string, layout: CameraLayout): P
     /* this visit only */
   }
   try {
-    await api("POST", "/api/cast/camera/layout", { identity, corner: layout.corner, size: layout.size });
+    await api("POST", "/api/cast/camera/layout", { identity, x: layout.x, y: layout.y, size: layout.size });
     return true;
   } catch {
     return false;
@@ -644,7 +665,7 @@ function usePicture(video: React.RefObject<HTMLVideoElement | null>, on: boolean
 }
 
 /** The streamer's camera over their stream, where they put it: everyone sees the same layout. The owner, shown it
- * large, can resize it (drag the inner corner, or arrow keys on it) and move it to the next corner. Anyone can hide
+ * large, can drag it anywhere inside the picture (or arrow keys on it) and resize it (drag the inner corner, or arrow keys on it). Anyone can hide
  * it for themselves (the camera button in Sources brings it back). */
 function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean }) {
   const cast = useCast();
@@ -672,31 +693,62 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
   }, [draft]);
   if (!pub || cast.hiddenCameras.has(stream.userId)) return null;
   const layout = draft ?? stream.cameraLayout;
-  const { corner: at, size } = layout;
+  const { x, y, size } = layout;
   const own = stream.mine && Boolean(stream.cameraIdentity);
   const who = stream.mine ? "your camera" : `${stream.name}'s camera`;
   const commit = (next: CameraLayout) => {
     setDraft(next);
     void setCameraLayout(stream.cameraIdentity!, next);
   };
-  // The handle is on the corner facing into the stream: dragging it away from the anchored corner makes it bigger.
-  const fromRight = at === "br" || at === "tr";
+  // The corner nearest the picture's edges: the camera grows from there, and the grip sits on the opposite corner,
+  // facing into the stream (a camera on the right grows to the left).
+  const right = x > 0.5;
+  const bottom = y > 0.5;
+  const at = `${bottom ? "b" : "t"}${right ? "r" : "l"}`;
+
+  /** The camera's box and the picture's, and the margin it keeps from the picture's edges. */
+  const measure = () => {
+    const b = box.current;
+    const frame = b?.offsetParent as HTMLElement | null;
+    if (!b || !frame) return null;
+    const gap = parseFloat(getComputedStyle(b).getPropertyValue("--cam-gap")) || 0;
+    return { b, f: frame.getBoundingClientRect(), r: b.getBoundingClientRect(), gap };
+  };
+  /** A box in px (relative to the picture) as the shares that are sent. */
+  const toLayout = (f: DOMRect, gap: number, left: number, top: number, w: number, h: number): CameraLayout => {
+    const roomX = f.width - 2 * gap - w;
+    const roomY = f.height - 2 * gap - h;
+    return { x: roomX > 0 ? clamp01((left - gap) / roomX) : 0.5, y: roomY > 0 ? clamp01((top - gap) / roomY) : 0.5, size: clampSize(w / f.width) };
+  };
+  // While dragging, the change goes straight onto the element (no re-render per move), and into state at the end.
+  const show = (b: HTMLElement, l: CameraLayout) => {
+    b.style.setProperty("--cam-x", String(l.x));
+    b.style.setProperty("--cam-y", String(l.y));
+    b.style.setProperty("--cam-size", String(l.size));
+  };
+
+  // Drag the grip away from the anchored corner to make it bigger; that corner stays where it is.
   const resize = (e: React.PointerEvent<HTMLDivElement>) => {
-    const parent = box.current?.offsetParent as HTMLElement | null;
-    if (!parent || e.button !== 0) return;
+    const m = measure();
+    if (!m || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    const { b, f, r, gap } = m;
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
     const startX = e.clientX;
-    const startW = box.current!.getBoundingClientRect().width;
-    const full = parent.getBoundingClientRect().width;
+    const startY = e.clientY;
+    // The anchored corner, relative to the picture, and the most room there is to grow from it.
+    const ax = (right ? r.right : r.left) - f.left;
+    const ay = (bottom ? r.bottom : r.top) - f.top;
+    const maxW = Math.min(SIZE_MAX * f.width, right ? ax - gap : f.width - gap - ax, ((bottom ? ay - gap : f.height - gap - ay) * 16) / 9);
     let next = layout;
-    // While dragging, the size goes straight onto the element (no re-render per move), and into state at the end.
     const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - startX) * (fromRight ? -1 : 1);
-      next = { corner: at, size: clampSize((startW + dx) / full) };
-      box.current?.style.setProperty("--cam-size", `${next.size * 100}%`);
+      const grow = Math.max((ev.clientX - startX) * (right ? -1 : 1), ((ev.clientY - startY) * (bottom ? -1 : 1) * 16) / 9);
+      const w = Math.max(SIZE_MIN * f.width, Math.min(maxW, r.width + grow));
+      const h = (w * 9) / 16;
+      next = toLayout(f, gap, right ? ax - w : ax, bottom ? ay - h : ay, w, h);
+      show(b, next);
     };
     const done = () => {
       handle.removeEventListener("pointermove", move);
@@ -706,22 +758,25 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
     handle.addEventListener("pointerup", done, { once: true });
     handle.addEventListener("pointercancel", done, { once: true });
   };
-  // Drag your camera anywhere over the stream and it settles in the nearest corner. It's above the tile's and the
-  // stage's click-to-focus layers, so pressing on it never focuses or unfocuses the stream.
+  // Drag your camera anywhere inside the picture. It's above the tile's and the stage's click-to-focus layers, so
+  // pressing on it never focuses or unfocuses the stream.
   const drag = (e: React.PointerEvent<HTMLDivElement>) => {
-    const b = box.current;
-    const frame = b?.offsetParent as HTMLElement | null;
-    if (!own || !b || !frame || e.button !== 0 || (e.target as HTMLElement).closest(".cam-overlay-resize, .cam-overlay-actions")) return;
+    const m = measure();
+    if (!own || !m || e.button !== 0 || (e.target as HTMLElement).closest(".cam-overlay-resize, .cam-overlay-actions")) return;
     e.preventDefault();
     e.stopPropagation();
+    const { b, f, r, gap } = m;
     b.setPointerCapture(e.pointerId);
     const startX = e.clientX;
     const startY = e.clientY;
+    // How far it can go each way before it would leave the picture.
+    const clampX = (d: number) => Math.min(f.right - gap - r.right, Math.max(f.left + gap - r.left, d));
+    const clampY = (d: number) => Math.min(f.bottom - gap - r.bottom, Math.max(f.top + gap - r.top, d));
     let dx = 0;
     let dy = 0;
     const move = (ev: PointerEvent) => {
-      dx = ev.clientX - startX;
-      dy = ev.clientY - startY;
+      dx = clampX(ev.clientX - startX);
+      dy = clampY(ev.clientY - startY);
       b.style.translate = `${dx}px ${dy}px`;
       b.classList.add("is-dragging");
     };
@@ -729,47 +784,56 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
       b.removeEventListener("pointermove", move);
       b.removeEventListener("pointerup", done);
       b.removeEventListener("pointercancel", done);
-      const r = b.getBoundingClientRect();
-      const f = frame.getBoundingClientRect();
-      b.style.translate = "";
       b.classList.remove("is-dragging");
-      if (Math.hypot(dx, dy) < 4) return; // a press, not a drag
-      const cx = r.left + r.width / 2 - f.left;
-      const cy = r.top + r.height / 2 - f.top;
-      const corner = `${cy < f.height / 2 ? "t" : "b"}${cx < f.width / 2 ? "l" : "r"}` as Corner;
-      if (corner !== at) commit({ corner, size });
+      if (Math.hypot(dx, dy) < 3) {
+        b.style.translate = "";
+        return; // a press, not a drag
+      }
+      const next = toLayout(f, gap, r.left - f.left + dx, r.top - f.top + dy, r.width, r.height);
+      show(b, next);
+      b.style.translate = "";
+      commit(next);
     };
     b.addEventListener("pointermove", move);
     b.addEventListener("pointerup", done);
     b.addEventListener("pointercancel", done);
   };
   // Keys apply at once and are sent once they settle.
-  const keys = (e: React.KeyboardEvent) => {
-    const step = ({ ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02, PageUp: 0.1, PageDown: -0.1 } as Record<string, number>)[e.key];
-    const to = e.key === "Home" ? SIZE_MIN : e.key === "End" ? SIZE_MAX : step ? clampSize(size + step) : null;
-    if (to === null) return;
-    e.preventDefault();
-    const next = { corner: at, size: to };
+  const later = (next: CameraLayout) => {
     setDraft(next);
     if (keyTimer.current) clearTimeout(keyTimer.current);
     keyTimer.current = window.setTimeout(() => commit(next), 300);
   };
+  const sizeKeys = (e: React.KeyboardEvent) => {
+    const step = ({ ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02, PageUp: 0.1, PageDown: -0.1 } as Record<string, number>)[e.key];
+    const to = e.key === "Home" ? SIZE_MIN : e.key === "End" ? SIZE_MAX : step ? clampSize(size + step) : null;
+    if (to === null) return;
+    e.preventDefault();
+    e.stopPropagation(); // not a move as well
+    later({ x, y, size: to });
+  };
+  const moveKeys = (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return;
+    const step = e.shiftKey ? 0.25 : 0.05;
+    const d = ({ ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] } as Record<string, [number, number]>)[e.key];
+    if (!d) return;
+    e.preventDefault();
+    later({ x: clamp01(x + d[0]), y: clamp01(y + d[1]), size });
+  };
   return (
-    <div ref={box} className={`cam-overlay at-${at}${controls || own ? " has-controls" : ""}${own ? " is-own" : ""}`} style={{ "--cam-size": `${size * 100}%` } as React.CSSProperties}
-      onPointerDown={own ? drag : undefined} title={own ? "Drag to move" : undefined}>
+    <div ref={box} className={`cam-overlay at-${at}${controls || own ? " has-controls" : ""}${own ? " is-own" : ""}`}
+      style={{ "--cam-x": String(x), "--cam-y": String(y), "--cam-size": String(size) } as React.CSSProperties}
+      onPointerDown={own ? drag : undefined} onKeyDown={own ? moveKeys : undefined} tabIndex={own ? 0 : undefined}
+      role={own ? "group" : undefined} aria-label={own ? "Your camera: drag or use the arrow keys to move it" : undefined} title={own ? "Drag to move" : undefined}>
       {track ? <video ref={el} className={stream.cameraLocal ? "is-mirrored" : undefined} autoPlay playsInline muted /> : <span className="cam-overlay-wait" />}
       {(controls || own) && (
         <>
           {own && (
             <div className="cam-overlay-resize" role="slider" tabIndex={0} aria-label="Size of your camera, for everyone" data-tip="Drag to resize"
               aria-valuemin={SIZE_MIN * 100} aria-valuemax={SIZE_MAX * 100} aria-valuenow={Math.round(size * 100)} aria-valuetext={`${Math.round(size * 100)}% of the stream's width`}
-              onPointerDown={resize} onKeyDown={keys} onDoubleClick={() => commit({ corner: at, size: DEFAULT_LAYOUT.size })} />
+              onPointerDown={resize} onKeyDown={sizeKeys} onDoubleClick={() => commit({ x, y, size: DEFAULT_LAYOUT.size })} />
           )}
           <div className="cam-overlay-actions">
-            {own && (
-              <button className="icon-btn" aria-label="Move your camera to the next corner, for everyone" data-tip="Move"
-                onClick={() => commit({ corner: CORNERS[(CORNERS.indexOf(at) + 1) % CORNERS.length]!, size })}><Move aria-hidden /></button>
-            )}
             <button className="icon-btn" aria-label={`Hide ${who}`} data-tip={own ? "Hide camera for you" : "Hide camera"}
               onClick={() => cast.setCameraHidden(stream.userId, true)}><VideoOff aria-hidden /></button>
           </div>
