@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { SOUND_RATE, type Session, type Sound } from "@friends/shared";
+import type { Session, Sound } from "@friends/shared";
 import { api, can } from "./api";
 import { getSocket } from "./socket";
 
@@ -21,7 +21,14 @@ const engine = (() => {
       ctx = new AudioContext({ latencyHint: "interactive" });
       gain = ctx.createGain();
       gain.gain.value = level;
-      gain.connect(ctx.destination);
+      // A limiter after the volume: one sound passes untouched, a stack of them gets loud without clipping into noise.
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.15;
+      gain.connect(limiter).connect(ctx.destination);
     }
     return ctx;
   }
@@ -65,8 +72,8 @@ const engine = (() => {
         const i = voices.indexOf(src);
         if (i >= 0) voices.splice(i, 1);
       };
-      // A pile-up of presses cuts off the oldest rather than getting louder and louder.
-      while (voices.length >= 6) voices.shift()!.stop();
+      // Sounds stack freely. Only a truly huge pile-up drops the oldest, to keep the browser responsive.
+      while (voices.length >= 64) voices.shift()!.stop();
       voices.push(src);
       src.start();
     },
@@ -114,7 +121,6 @@ export function SoundsProvider({ session, children }: { session: Session; childr
   const listRef = useRef<Sound[]>([]);
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
-  const bucket = useRef({ tokens: SOUND_RATE.burst as number, at: Date.now() });
   const nextKey = useRef(1);
 
   const reload = useCallback(async () => {
@@ -182,13 +188,6 @@ export function SoundsProvider({ session, children }: { session: Session; childr
     const s = getSocket();
     // Never queue a press while offline: it would go off whenever the connection came back.
     if (!s.connected) throw new Error("offline");
-    // Mirrors the server's limit so a press it would refuse isn't heard here alone.
-    const b = bucket.current;
-    const now = Date.now();
-    b.tokens = Math.min(SOUND_RATE.burst, b.tokens + (now - b.at) / SOUND_RATE.refillMs);
-    b.at = now;
-    if (b.tokens < 1) throw new Error("slow_down");
-    b.tokens -= 1;
     // Heard here at once; everyone else hears it when the broadcast reaches them.
     void engine.play(sound.id, true);
     show(me, sound);
@@ -211,7 +210,6 @@ export function useSounds() {
 
 export const SOUND_ERRORS: Record<string, string> = {
   offline: "Not connected. Wait a moment and try again.",
-  slow_down: "Too many sounds. Wait a moment.",
   not_found: "That sound was deleted.",
   missing_permission: "You don’t have permission to do that.",
   board_full: "The soundboard is full. Delete a sound first.",

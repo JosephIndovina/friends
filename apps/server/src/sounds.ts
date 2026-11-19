@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { fileTypeFromFile } from "file-type";
 import { parseFile } from "music-metadata";
 import type { Socket } from "socket.io";
-import { SOUND_LIMITS, SOUND_RATE, type Ack, type ClientToServer, type ServerToClient, type Session, type Sound } from "@friends/shared";
+import { SOUND_LIMITS, type Ack, type ClientToServer, type ServerToClient, type Session, type Sound } from "@friends/shared";
 import { audit } from "./audit.js";
 import { db } from "./db.js";
 import { env } from "./env.js";
@@ -148,36 +148,15 @@ export async function soundRoutes(app: FastifyInstance) {
 
 type Sock = Socket<ClientToServer, ServerToClient, Record<string, never>, { session: Session }>;
 
-/** Per person, across all their tabs. */
-const buckets = new Map<string, { tokens: number; at: number }>();
-
-function take(userId: string): boolean {
-  const now = Date.now();
-  const b = buckets.get(userId) ?? { tokens: SOUND_RATE.burst, at: now };
-  b.tokens = Math.min(SOUND_RATE.burst, b.tokens + (now - b.at) / SOUND_RATE.refillMs);
-  b.at = now;
-  buckets.set(userId, b);
-  if (b.tokens < 1) return false;
-  b.tokens -= 1;
-  return true;
-}
-
-// Full buckets carry no information; drop them so the map stays small.
-setInterval(() => {
-  const full = Date.now() - SOUND_RATE.burst * SOUND_RATE.refillMs;
-  for (const [id, b] of buckets) if (b.at < full) buckets.delete(id);
-}, 60_000).unref();
-
 const exists = db.prepare("SELECT 1 FROM sounds WHERE id = ?");
 
-/** Plays are just a broadcast: nothing is stored, so the only cost is the hop through the server. */
+/** Plays are just a broadcast: nothing is stored, so the only cost is the hop through the server. No limit on how fast: spamming is the point. */
 export function attachSounds(socket: Sock) {
   socket.on("sound:play", (input: { id: string }, ack: Ack) => {
     if (typeof ack !== "function") return;
     const s = socket.data.session;
     if (!s.permissions.includes("sounds.play")) return ack({ ok: false, error: "missing_permission" });
     if (typeof input?.id !== "string" || !exists.get(input.id)) return ack({ ok: false, error: "not_found" });
-    if (!take(s.user.id)) return ack({ ok: false, error: "slow_down" });
     socket.broadcast.emit("sound:played", { id: input.id, by: { id: s.user.id, name: s.user.name } });
     ack({ ok: true });
   });

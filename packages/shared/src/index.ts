@@ -238,9 +238,6 @@ export const SOUND_LIMITS = {
   perPerson: 20,
 } as const;
 
-/** Plays allowed in a burst, then one more every `refillMs`. The server enforces it; the client mirrors it. */
-export const SOUND_RATE = { burst: 3, refillMs: 2000 } as const;
-
 // ---------- music ----------
 
 export interface Lyrics {
