@@ -1033,6 +1033,8 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 /* Twitch stops playing when anything covers its player, so on the stage nothing does: above the tile's name, ring and
    click layer (11–12), under the stage's own notices and menus. Clicks pass through to the tile or stage underneath. */
 .dock-uncovered:not(.dock-hidden) { z-index: 13; pointer-events: none; }
+/* Twitch on a phone shown on its own (not a grid tile): taps go to Twitch's own controls, the only way its sound can be turned on. */
+.dock-native:not(.dock-passive):not(.dock-hidden), .dock-native:not(.dock-passive) .dock-video > * { pointer-events: auto; }
 /* Someone else's stream you aren't watching: their picture and a Watch button. */
 .tile-offer .tile-hit { cursor: pointer; }
 .tile-offer-body { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: var(--space-3); }

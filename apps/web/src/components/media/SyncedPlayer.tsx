@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { SEEKABLE, type MediaKind, type Playback } from "@friends/shared";
 import { expectedPosition } from "../../lib/media";
 import { getSocket } from "../../lib/socket";
+import { nativeControls } from "../../lib/touch";
 import { clipEngine, twitchEngine, youtubeEngine, type Engine } from "./engines";
 
 type Family = "youtube" | "twitch" | "clip";
@@ -86,7 +87,8 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
 
   useEffect(() => {
     const e = engine.current?.e;
-    if (!e) return;
+    // Twitch on a phone: sound is left to its own controls (it starts muted), so nothing here overrides what was tapped there.
+    if (!e || nativeControls(playback.item.kind)) return;
     e.setMuted(!audible);
     if (audible) e.setVolume(volume);
   }, [audible, volume, ready]);
@@ -103,7 +105,7 @@ export function SyncedPlayer({ playback, audible, volume, onDrift, onBlocked }: 
       return;
     }
     if (!e.playing()) e.play();
-    if (!audible) return;
+    if (!audible || nativeControls(playback.item.kind)) return;
     const t = setTimeout(() => {
       if (latest.current.playing && !e.playing()) onBlocked?.();
     }, 4000);

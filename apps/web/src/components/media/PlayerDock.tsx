@@ -5,6 +5,7 @@ import type { MediaKind, Playback, Session } from "@friends/shared";
 import { can } from "../../lib/api";
 import { mediaAction, useMediaState } from "../../lib/media";
 import { usePlayer } from "../../lib/player";
+import { nativeControls } from "../../lib/touch";
 import { SyncedPlayer } from "./SyncedPlayer";
 
 type Rect = { top: number; left: number; width: number; height: number };
@@ -44,7 +45,7 @@ const slotClass = (slot: HTMLElement | null, docked: string, kind: MediaKind) =>
   const base = c.contains("player-slot-hidden") ? "dock dock-hidden" : c.contains("player-slot-mini") ? "dock dock-inset" : "dock";
   // Twitch pauses its player whenever anything is drawn over it, even a transparent click layer or a name label:
   // its players sit above everything on the stage and let clicks through to the tile underneath.
-  return `${base}${c.contains("player-slot-passive") ? " dock-passive" : ""}${kind.startsWith("twitch") ? " dock-uncovered" : ""}`;
+  return `${base}${c.contains("player-slot-passive") ? " dock-passive" : ""}${kind.startsWith("twitch") ? " dock-uncovered" : ""}${nativeControls(kind) ? " dock-native" : ""}`;
 };
 
 /**
@@ -92,7 +93,7 @@ function MainPlayer({ session }: { session: Session }) {
   if (docked && p.dismissedFor === now.item.id) return null;
 
   return (
-    <div className={slotClass(p.slot, "dock dock-mini", now.item.kind)} aria-hidden={hidden || undefined} style={rect && !docked ? rect : undefined}>
+    <div className={`${slotClass(p.slot, "dock dock-mini", now.item.kind)}${!p.slot && nativeControls(now.item.kind) ? " dock-native" : ""}`} aria-hidden={hidden || undefined} style={rect && !docked ? rect : undefined}>
       <div className="dock-video">
         <SyncedPlayer playback={now} audible={p.audible && !p.blocked} volume={p.volume} onDrift={p.setSyncing} onBlocked={() => p.setBlocked(true)} />
       </div>

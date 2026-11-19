@@ -20,6 +20,7 @@ import { expectedPosition, KIND_LABEL, mediaAction, mediaError, useMediaState } 
 import { usePlayer, viewModeOf } from "../lib/player";
 import { useSite } from "../lib/site";
 import { useToast } from "../lib/toast";
+import { nativeControls } from "../lib/touch";
 
 type MusicView = "art" | "viz" | "lyrics";
 const GRID_PAD = 12;
@@ -143,6 +144,7 @@ export function Home({ session }: { session: Session }) {
   // and only shows when you're allowed to. Ending someone else's asks first. Closing the player keeps the queue for Play.
   const sources: StageSource[] = [
     ...(now ? [{ id: "player", label: "Player", detail: now.item.title, thumbnail: now.item.thumbnail, audible: p.audible, setAudible: p.setAudible,
+      silent: nativeControls(now.item.kind) || undefined, // Twitch on a phone: its own controls handle sound
       volume: p.volume, setVolume: (v: number) => { p.setVolume(v); p.setAudible(v > 0); },
       on: !p.hidden.has("player"), setOn: setMediaOn("player"),
       end: canClose(now) ? { label: "Close for everyone", run: () => void act(mediaAction("media:stop", { id: now.item.id })),
@@ -154,6 +156,7 @@ export function Home({ session }: { session: Session }) {
       detail: sc.item.kind === "twitch-live" ? `Live · ${sc.item.title}` : sc.item.title,
       thumbnail: sc.item.thumbnail,
       audible: p.screenSound.has(sc.item.id),
+      silent: nativeControls(sc.item.kind) || undefined,
       setAudible: (v: boolean) => p.setScreenSound(sc.item.id, v),
       volume: p.screenVolume[sc.item.id] ?? p.volume,
       setVolume: (v: number) => { p.setScreenVolume(sc.item.id, v); p.setScreenSound(sc.item.id, v > 0); },
