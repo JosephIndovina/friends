@@ -804,12 +804,14 @@ a.role-main:hover .person-name { text-decoration: underline; text-underline-offs
 .stack-btn { display: flex; align-items: center; gap: var(--space-2); height: 40px; padding: 0 var(--space-2); border-radius: var(--radius-pill); border: 1px solid transparent; background: none; cursor: pointer; color: var(--mute); }
 .stack-btn:hover, .stack-btn[aria-expanded="true"] { background: var(--surface); border-color: var(--line); }
 .stack-faces { display: flex; }
-.stack-faces .stack-face + .stack-face { margin-left: -8px; }
+.stack-slot { position: relative; display: block; flex: none; }
+.stack-slot > .stack-face { display: block; }
+.stack-faces .stack-slot + .stack-slot { margin-left: -8px; }
 .stack-face { border-radius: 50%; object-fit: cover; background: var(--upholstery); box-shadow: 0 0 0 2px var(--ground); flex: none; }
 .stack-face.ring-watching { box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--hint-media); }
 .stack-face.ring-listening { box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--hint-music); }
 .stack-face.ring-casting { box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--hint-cast); }
-.stack-faces .stack-face[class*="ring-"]:not(.ring-idle) + .stack-face { margin-left: -4px; }
+.stack-faces .stack-slot:not(.slot-idle) + .stack-slot { margin-left: -4px; }
 .stack-more, .stack-empty { font-size: var(--step--1); font-weight: 650; }
 .stack-panel {
   position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; width: min(18rem, calc(100vw - 32px));
@@ -1315,3 +1317,64 @@ main.page:has(.media-room) { max-width: 1920px; }
 .rail.is-open .camera-ctl { justify-items: stretch; }
 .rail.is-open .camera-ctl .btn { width: 100%; justify-content: center; }
 .camera-ctl .field-error { font-size: 12px; margin: 0; }
+
+/* ---------- soundboard ---------- */
+.soundboard { position: relative; }
+.sound-panel { top: auto; bottom: calc(100% + 8px); right: -8px; width: min(24rem, calc(100vw - 32px)); z-index: 70; }
+.sound-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.sound-head h2 { margin: 0; }
+.stack-panel .sound-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: var(--space-2); max-height: min(50vh, 22rem); }
+.stack-panel .sound-cell { display: block; position: relative; }
+.sound-btn {
+  width: 100%; min-height: 44px; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: inherit; font-size: var(--step--1); font-weight: 600; text-align: left; cursor: pointer;
+  transition: background-color 0.15s var(--ease-out), border-color 0.15s var(--ease-out), scale 0.1s var(--ease-out);
+}
+.sound-btn:hover { background: var(--surface-strong); border-color: color-mix(in oklab, var(--ink) 22%, transparent); }
+.sound-btn:active { scale: 0.96; }
+.sound-emoji { font-size: 1.25rem; line-height: 1; flex: none; }
+.sound-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sound-del {
+  position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; display: grid; place-items: center; padding: 0;
+  border-radius: 50%; border: 1px solid var(--line); background: var(--upholstery); color: var(--mute); cursor: pointer;
+  opacity: 0; transition: opacity 0.12s var(--ease-out);
+}
+.sound-del svg { width: 13px; height: 13px; }
+.sound-del:hover { color: var(--danger); }
+.sound-cell:hover .sound-del, .sound-del:focus-visible { opacity: 1; }
+@media (hover: none) { .sound-del { opacity: 1; } }
+.sound-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); font-size: var(--step--1); }
+.sound-add { display: grid; gap: var(--space-3); }
+.sound-add-row { display: flex; gap: var(--space-3); }
+.sound-emoji-field { flex: 0 0 5.5rem; }
+.sound-emoji-field .input { width: 100%; text-align: center; font-size: 1.25rem; }
+.sound-emoji-field .input::placeholder { font-size: var(--step--1); }
+.sound-file { padding: var(--space-2); min-width: 0; width: 100%; }
+.sound-limits { font-size: var(--step--1); margin: 0; }
+/* Phones: the button isn't at the screen's edge, so the panel spans the stage bar instead. */
+@media (max-width: 600px) {
+  .stage-bar { position: relative; }
+  .soundboard { position: static; }
+  .sound-panel { left: var(--gutter); right: var(--gutter); width: auto; bottom: calc(100% + 8px); }
+}
+/* Who just played what: pops over their avatar for a moment. */
+.stack-sound {
+  position: absolute; left: 50%; bottom: calc(100% - 6px); translate: -50% 0; z-index: 2; pointer-events: none;
+  display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 4px; border-radius: var(--radius-pill);
+  background: var(--upholstery); border: 1px solid var(--line); box-shadow: 0 6px 16px -6px rgb(0 0 0 / 0.5);
+  font-size: 14px; line-height: 1; color: var(--ink);
+  animation: sound-pop 2.5s var(--ease-out) both;
+}
+.stack-sound svg { width: 14px; height: 14px; }
+@keyframes sound-pop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.6); }
+  10% { opacity: 1; transform: translateY(0) scale(1.08); }
+  18% { transform: scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-sound { animation-name: sound-fade; }
+  @keyframes sound-fade { 0%, 100% { opacity: 0; } 8%, 85% { opacity: 1; } }
+}

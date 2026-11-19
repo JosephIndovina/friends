@@ -4,6 +4,7 @@ import type { Activity, ClientToServer, PresenceEntry, Section, ServerToClient, 
 import { gate } from "./access.js";
 import { events } from "./events.js";
 import { createMediaRoom } from "./media.js";
+import { attachSounds } from "./sounds.js";
 import { SESSION_COOKIE, sessionForToken } from "./sessions.js";
 
 const SECTIONS = new Set<Section>(["home", "cast", "settings", "admin"]);
@@ -60,6 +61,7 @@ export function createRealtime(http: HttpServer) {
     }
   });
   events.on("posts:changed", (change) => io.emit("posts:changed", change));
+  events.on("sounds:changed", () => void io.emit("sounds:changed"));
   events.on("notice", (n) => void io.emit("notice", n));
   events.on("cast:ended", ({ userId, by, app }) => void io.to(`user:${userId}`).emit("cast:ended", { by, app }));
   events.on("admin:attention", () => {
@@ -76,6 +78,7 @@ export function createRealtime(http: HttpServer) {
     const me = socket.data.session.user;
     socket.on("time:ping", (ack) => typeof ack === "function" && ack(Date.now()));
     media.attach(socket);
+    attachSounds(socket);
     void socket.join(`user:${me.id}`);
     const entry = presence.get(me.id) ?? { ...me, section: "home" as Section, activity: "idle" as Activity, since: Date.now(), sockets: new Set<string>() };
     // Activity is per tab; the person shows the "loudest" one across their tabs.

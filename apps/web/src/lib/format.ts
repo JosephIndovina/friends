@@ -76,6 +76,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "cast.removed": "Removed from the stage",
   "post.created": "Posted",
   "post.deleted": "Deleted post",
+  "sound.added": "Added sound",
+  "sound.deleted": "Deleted sound",
   "playlist.created": "Created playlist",
   "playlist.renamed": "Renamed playlist",
   "playlist.deleted": "Deleted playlist",

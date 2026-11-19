@@ -19,6 +19,7 @@ const CATEGORIES = [
   { value: "media.", label: "Player" },
   { value: "playlist.", label: "Playlists" },
   { value: "post.", label: "Posts" },
+  { value: "sound.", label: "Soundboard" },
   { value: "cast.", label: "Cast" },
 ];
 const ALERTS = new Set(["access.forbidden", "auth.denied", "access.denied", "user.banned", "user.suspended", "site.lockdown_on"]);

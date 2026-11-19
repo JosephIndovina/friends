@@ -13,6 +13,7 @@ import { authRoutes } from "./auth.js";
 import { mediaRoutes } from "./mediaRoutes.js";
 import { playlistRoutes } from "./playlists.js";
 import { postRoutes, pruneUploads, UPLOAD_DIR } from "./posts.js";
+import { soundRoutes } from "./sounds.js";
 import { castRoutes, DOWNLOADS, downloadsDir } from "./cast.js";
 import { createRealtime } from "./realtime.js";
 import { ensureOwner, pruneSessions } from "./sessions.js";
@@ -35,6 +36,7 @@ await app.register(adminRoutes);
 await app.register(mediaRoutes);
 await app.register(playlistRoutes);
 await app.register(postRoutes);
+await app.register(soundRoutes);
 await app.register(castRoutes);
 
 // In production the server also serves the built web app (single container).

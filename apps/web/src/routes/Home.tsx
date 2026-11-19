@@ -12,6 +12,8 @@ import { LyricsView } from "../components/music/LyricsView";
 import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
 import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
 import { History, Mixer, Queue, Seek, VolumeHover } from "../components/media/parts";
+import { Soundboard } from "../components/media/Soundboard";
+import { useSounds } from "../lib/sounds";
 import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
 import { expectedPosition, KIND_LABEL, mediaAction, mediaError, useMediaState } from "../lib/media";
@@ -126,6 +128,7 @@ export function Home({ session }: { session: Session }) {
 
   // Stage sources: the shared player plus everyone's live streams.
   const cast = useCast();
+  const sounds = useSounds();
   // Your own shares get one name everywhere (source row, tile, Stop), numbered when there are several.
   const mineIds = cast.streams.filter((st) => st.mine && st.kind === "screen").map((st) => st.id);
   const ownName = (id: string) => (!mineIds.includes(id) ? "Your camera" : mineIds.length > 1 ? `Your screen ${mineIds.indexOf(id) + 1}` : "Your screen");
@@ -499,9 +502,10 @@ export function Home({ session }: { session: Session }) {
                           onClick={() => cast.setCameraHidden(focusedStream.userId, shown)}>{shown ? <Video aria-hidden /> : <VideoOff aria-hidden />}</button>
                       );
                     })()}
-                    <Mixer channels={visible.filter((x) => !(x.silent ?? x.local) && x.setVolume).map((x) => ({
-                      id: x.id, label: x.label, volume: x.volume ?? 100, muted: !x.audible, setMuted: (m) => x.setAudible(!m), setVolume: x.setVolume!,
-                    }))} />
+                    <Soundboard session={session} />
+                    <Mixer channels={[...visible.filter((x) => !(x.silent ?? x.local) && x.setVolume).map((x) => ({
+                      id: x.id, label: x.label, volume: x.volume ?? 100, muted: !x.audible, setMuted: (m: boolean) => x.setAudible(!m), setVolume: x.setVolume!,
+                    })), ...(sounds.enabled ? [{ id: "sounds", label: "Soundboard", volume: sounds.volume, muted: sounds.muted, setMuted: sounds.setMuted, setVolume: sounds.setVolume }] : [])]} />
                     {streamsOnStage && (
                       <button className="icon-btn" aria-label="Stream stats" aria-pressed={showStats} data-tip={showStats ? "Hide stream stats" : "Stream stats"}
                         onClick={() => setStatsPref(showStats ? "off" : "on")}><Activity aria-hidden /></button>

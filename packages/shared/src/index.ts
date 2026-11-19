@@ -12,7 +12,9 @@ export const PERMISSIONS = {
   "cast.stream": "Go live",
   "posts.create": "Post to the stream",
   "posts.moderate": "Delete anyone's posts",
-  "playback.moderate": "Clear or lock queues, end someone's stream",
+  "sounds.play": "Play soundboard sounds",
+  "sounds.add": "Add sounds to the soundboard",
+  "playback.moderate": "Clear or lock queues, end someone's stream, delete anyone's sounds",
   "admin.people": "Approve, suspend and assign roles",
   "admin.roles": "Edit roles and permissions",
   "admin.audit": "Read the audit log",
@@ -176,6 +178,10 @@ export interface ServerToClient {
   "cast:ended": (input: { by: string; app: boolean }) => void;
   /** someone started or stopped something everyone sees (the player, a screen, a stream); shown to everyone else */
   notice: (input: { by: string; text: string }) => void;
+  /** someone played a soundboard sound (not sent back to the tab that played it) */
+  "sound:played": (input: { id: string; by: { id: string; name: string } }) => void;
+  /** a sound was added or deleted: refetch /api/sounds */
+  "sounds:changed": () => void;
 }
 
 export interface ClientToServer {
@@ -206,7 +212,34 @@ export interface ClientToServer {
   "media:ended": (input: { itemId: string }) => void;
   /** a client's player learned the duration of `itemId` */
   "media:duration": (input: { itemId: string; duration: number }) => void;
+  /** play a soundboard sound for everyone */
+  "sound:play": (input: { id: string }, ack: Ack) => void;
 }
+
+// ---------- soundboard ----------
+
+export interface Sound {
+  id: string;
+  name: string;
+  /** shown on the button and over the player's avatar; null = the name only */
+  emoji: string | null;
+  url: string;
+  /** seconds */
+  duration: number;
+  addedBy: { id: string; name: string };
+  createdAt: number;
+}
+
+export const SOUND_LIMITS = {
+  bytes: 1024 * 1024,
+  seconds: 6,
+  name: 32,
+  total: 100,
+  perPerson: 20,
+} as const;
+
+/** Plays allowed in a burst, then one more every `refillMs`. The server enforces it; the client mirrors it. */
+export const SOUND_RATE = { burst: 3, refillMs: 2000 } as const;
 
 // ---------- music ----------
 

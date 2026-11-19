@@ -134,6 +134,28 @@ const migrations: Array<string | (() => void)> = [
      emoji       TEXT NOT NULL,
      PRIMARY KEY (post_id, user_id, emoji)
    );`,
+
+  `CREATE TABLE sounds (
+     id          TEXT PRIMARY KEY,
+     name        TEXT NOT NULL,
+     emoji       TEXT,
+     owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     mime        TEXT NOT NULL,
+     ext         TEXT NOT NULL,
+     bytes       INTEGER NOT NULL,
+     duration    REAL NOT NULL,             -- seconds
+     created_at  INTEGER NOT NULL
+   );
+   CREATE INDEX sounds_owner ON sounds(owner_id);`,
+
+  // The soundboard: every role that can queue can also play and add sounds.
+  () => {
+    for (const r of db.prepare("SELECT id, permissions FROM roles WHERE id != 'owner'").all() as Array<{ id: string; permissions: string }>) {
+      const perms = JSON.parse(r.permissions) as string[];
+      if (!perms.includes("player.queue")) continue;
+      db.prepare("UPDATE roles SET permissions = ? WHERE id = ?").run(JSON.stringify([...new Set([...perms, "sounds.play", "sounds.add"])]), r.id);
+    }
+  },
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;

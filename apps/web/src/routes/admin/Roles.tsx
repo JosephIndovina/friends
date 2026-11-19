@@ -12,6 +12,7 @@ import { useLoad } from "./useLoad";
 const GROUPS: { label: string; prefix: string[] }[] = [
   { label: "Player", prefix: ["player."] },
   { label: "Cast", prefix: ["cast."] },
+  { label: "Soundboard", prefix: ["sounds."] },
   { label: "Posts and moderation", prefix: ["posts.", "playback."] },
   { label: "Admin", prefix: ["admin."] },
 ];
