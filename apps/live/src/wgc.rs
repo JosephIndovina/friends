@@ -108,12 +108,17 @@ pub fn pick() -> Result<crate::winwin::WinInfo> {
 pub struct Capture {
     control: Option<CaptureControl<Handler, anyhow::Error>>,
     ended: Arc<AtomicBool>,
+    hwnd: isize,
 }
 
 impl Capture {
-    /// The window was closed.
+    /// The window was closed, or hidden: many apps only hide their window when closed (to the tray).
     pub fn ended(&self) -> bool {
-        self.ended.load(Ordering::Relaxed) || self.control.as_ref().is_some_and(|c| c.is_finished())
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{IsWindow, IsWindowVisible};
+        let hwnd = HWND(self.hwnd as *mut std::ffi::c_void);
+        let gone = unsafe { !IsWindow(Some(hwnd)).as_bool() || !IsWindowVisible(hwnd).as_bool() };
+        gone || self.ended.load(Ordering::Relaxed) || self.control.as_ref().is_some_and(|c| c.is_finished())
     }
 }
 
@@ -164,5 +169,5 @@ pub fn start(hwnd: isize, fps: u32, max_height: u32, out: Arc<OnceLock<NativeVid
             return Err(anyhow!("the window didn't send a picture (is it minimised?)"));
         }
     };
-    Ok((Capture { control: Some(control), ended }, w, h))
+    Ok((Capture { control: Some(control), ended, hwnd }, w, h))
 }

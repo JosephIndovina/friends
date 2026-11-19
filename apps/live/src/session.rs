@@ -223,6 +223,10 @@ impl Session {
 
     /// The shared window was closed, or the OS ended the share.
     pub fn capture_ended(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        if self._picked.closed() {
+            return true;
+        }
         self.video.ended()
     }
 

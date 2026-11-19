@@ -26,9 +26,10 @@ pub struct Picked {
     /// For a window: its title as GNOME recorded it (from the portal's permission store). The portal doesn't
     /// say which app owns a window, so the title is what the sound is matched by.
     pub title: Option<String>,
-    // Keeps the portal session (and so the stream) open.
-    _session: ashpd::desktop::Session<Screencast>,
-    _proxy: Screencast,
+    /// The portal ended the share: GNOME does this when the shared window closes.
+    closed: Arc<AtomicBool>,
+    // Dropping it closes the portal session (and so the share).
+    _keep: tokio::sync::oneshot::Sender<()>,
 }
 
 /// Opens the system picker, or reuses the last choice silently when `restore` is still valid.
@@ -66,7 +67,48 @@ pub async fn pick(restore: Option<&str>) -> Result<Picked> {
         }),
         _ => None,
     };
-    Ok(Picked { node_id, fd: Some(fd), size, is_window, restore_token, title, _session: session, _proxy: proxy })
+    // Holds the portal session (and so the share) open until the Picked is dropped, and notices the portal
+    // ending it first.
+    let closed = Arc::new(AtomicBool::new(false));
+    let (keep, mut dropped) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn({
+        let closed = closed.clone();
+        async move {
+            use futures_util::StreamExt;
+            let signal = match session.receive_closed().await {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    log::warn!("couldn't watch the share for closing: {e}");
+                    None
+                }
+            };
+            let ended = async {
+                match signal {
+                    Some(mut s) => s.next().await,
+                    None => std::future::pending().await,
+                }
+            };
+            tokio::select! {
+                _ = ended => {
+                    log::info!("the portal ended the share");
+                    closed.store(true, Ordering::Relaxed);
+                    let _ = dropped.await;
+                }
+                _ = &mut dropped => {
+                    let _ = session.close().await;
+                }
+            }
+            drop(proxy);
+        }
+    });
+    Ok(Picked { node_id, fd: Some(fd), size, is_window, restore_token, title, closed, _keep: keep })
+}
+
+impl Picked {
+    /// The shared window closed, or the share was ended from the system (e.g. GNOME's top bar).
+    pub fn closed(&self) -> bool {
+        self.closed.load(Ordering::Relaxed)
+    }
 }
 
 /// The portal keeps what it needs to restore a choice in the permission store, keyed by the restore token.
