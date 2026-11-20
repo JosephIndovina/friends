@@ -17,6 +17,7 @@ import { soundRoutes } from "./sounds.js";
 import { castRoutes, DOWNLOADS, downloadsDir } from "./cast.js";
 import { createRealtime } from "./realtime.js";
 import { ensureOwner, pruneSessions } from "./sessions.js";
+import { countResponses, metricsRoutes, pruneMetrics, startMetrics } from "./metrics.js";
 import { startBot } from "./bot.js";
 
 const app = Fastify({ logger: { level: isProd ? "info" : "debug" }, trustProxy: true });
@@ -29,10 +30,12 @@ await app.register(rateLimit, {
 });
 // Not wrapped in register(): its hooks must cover every route in the app.
 await accessControl(app);
+countResponses(app);
 
 app.get("/healthz", async () => ({ ok: true }));
 await app.register(authRoutes);
 await app.register(adminRoutes);
+await app.register(metricsRoutes);
 await app.register(mediaRoutes);
 await app.register(playlistRoutes);
 await app.register(postRoutes);
@@ -59,12 +62,13 @@ if (hasWeb) {
   });
 }
 
-createRealtime(app.server);
+startMetrics(createRealtime(app.server));
 ensureOwner();
 pruneSessions();
 pruneAudit();
+pruneMetrics();
 void pruneUploads();
-setInterval(() => (pruneSessions(), pruneAudit(), void pruneUploads()), 60 * 60 * 1000).unref();
+setInterval(() => (pruneSessions(), pruneAudit(), pruneMetrics(), void pruneUploads()), 60 * 60 * 1000).unref();
 
 await app.listen({ host: "0.0.0.0", port: env.PORT });
 

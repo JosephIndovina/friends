@@ -8,6 +8,7 @@ import { Overview } from "./routes/admin/Overview";
 import { People } from "./routes/admin/People";
 import { RoleEdit, Roles } from "./routes/admin/Roles";
 import { SiteSettings } from "./routes/admin/SiteSettings";
+import { System } from "./routes/admin/System";
 import { NotAllowed, SettingsLayout } from "./routes/settings/SettingsLayout";
 import { Account, Preferences } from "./routes/settings/You";
 
@@ -51,6 +52,7 @@ const roleRoute = createRoute({
     return can(s, "admin.roles") ? <RoleEdit session={s} roleId={roleId} /> : <NotAllowed />;
   },
 });
+const systemRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/admin/system", component: guarded("admin.settings", () => <System />) });
 const siteRoute = createRoute({ getParentRoute: () => prefsRoute, path: "/admin/site", component: guarded("admin.settings", () => <SiteSettings />) });
 const auditRoute = createRoute({
   getParentRoute: () => prefsRoute, path: "/admin/audit",
@@ -60,11 +62,10 @@ const auditRoute = createRoute({
 });
 // Old admin paths.
 const oldSiteSettings = createRoute({ getParentRoute: () => rootRoute, path: "/admin/settings", beforeLoad: to("/admin/site") });
-const oldSystem = createRoute({ getParentRoute: () => rootRoute, path: "/admin/system", beforeLoad: to("/admin") });
 
 const routeTree = rootRoute.addChildren([
-  homeRoute, musicRoute, mediaRoute, castRoute, oldSiteSettings, oldSystem, appearanceRoute, playbackRoute,
-  prefsRoute.addChildren([settingsIndex, preferencesRoute, accountRoute, overviewRoute, peopleRoute, rolesRoute, roleRoute, siteRoute, auditRoute]),
+  homeRoute, musicRoute, mediaRoute, castRoute, oldSiteSettings, appearanceRoute, playbackRoute,
+  prefsRoute.addChildren([settingsIndex, preferencesRoute, accountRoute, overviewRoute, peopleRoute, rolesRoute, roleRoute, siteRoute, systemRoute, auditRoute]),
 ]);
 
 export const router = createRouter({ routeTree, context: undefined! as RouterContext });

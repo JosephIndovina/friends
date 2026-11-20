@@ -5,6 +5,8 @@ import { env } from "./env.js";
 /** The bot's client once it has logged in, for admin routes that ask Discord things directly. */
 let client: Client | null = null;
 export const setDiscordClient = (c: Client) => void (client = c);
+/** Gateway heartbeat round trip in ms, or null before the bot has connected. */
+export const discordPing = () => (client?.isReady() && client.ws.ping >= 0 ? client.ws.ping : null);
 
 export class DiscordUnavailable extends Error {}
 

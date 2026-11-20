@@ -53,6 +53,9 @@
   --hint-cast: #7fe0d0;
   --hint-music: #b9a7ff;
   --danger: #ff8f80;
+  /* chart series (validated against --upholstery): 1 = in/download, 2 = out/upload */
+  --series-1: #3987e5;
+  --series-2: #d95926;
   --glow-strength: 46%;
   --glow-idle: #2a4f8f;
   --stage-shadow: 0 30px 120px -24px color-mix(in oklab, var(--glow) 55%, transparent);
@@ -74,6 +77,8 @@
     --hint-cast: #1f7a6c;
     --hint-music: #5a48c4;
     --danger: #b3261e;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
     --glow-strength: 30%;
     --glow-idle: #8fb0e6;
     --stage-shadow: 0 24px 70px -28px color-mix(in oklab, var(--glow) 70%, #141821);
@@ -93,6 +98,8 @@
   --hint-cast: #1f7a6c;
   --hint-music: #5a48c4;
   --danger: #b3261e;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
   --glow-strength: 30%;
   --glow-idle: #8fb0e6;
   --stage-shadow: 0 24px 70px -28px color-mix(in oklab, var(--glow) 70%, #141821);

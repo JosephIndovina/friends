@@ -30,6 +30,14 @@ Every push to `main` runs CI and publishes `ghcr.io/josephindovina/friends:lates
 5. **NAS `.env`:** `/mnt/NAS/friends/.env` (mode 600) holds the Discord values, `TUNNEL_TOKEN` and `CLOUDFLARE_API_TOKEN`. Leave `PUBLIC_URL` unset: compose sets it.
 6. **GHCR pull access:** Apps → Configuration → Manage Container Image Registries → add `ghcr.io` with your GitHub username and the read:packages token. If your TrueNAS version lacks that screen, run `sudo docker login ghcr.io -u JosephIndovina` in the NAS shell.
 7. **LiveKit (Cast):** `/mnt/NAS/friends/livekit.yaml` (mode 600) holds the LiveKit key pair, which is mirrored as `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` in the NAS `.env`, plus `LIVEKIT_URL=http://host.docker.internal:7880`. The router forwards TCP 7881, UDP 3478 and UDP 50000–50200 to the NAS (192.168.2.119).
+   - **Cast metrics (admin → System):** add this to `livekit.yaml`, with a password of your own:
+     ```yaml
+     prometheus:
+       port: 6789
+       username: metrics
+       password: <random>
+     ```
+     and set `LIVEKIT_METRICS_URL=http://metrics:<random>@host.docker.internal:6789/metrics` in the NAS `.env`. Don't forward port 6789 on the router; only the app needs it.
 8. **Install the app:** Apps → Discover Apps → ⋮ → **Install via YAML**. Paste [deploy/docker-compose.yml](deploy/docker-compose.yml).
 
 ### Updating

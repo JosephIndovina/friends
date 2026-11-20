@@ -293,3 +293,41 @@ export interface Post {
   reactions: Array<{ emoji: string; count: number; mine: boolean; names: string[] }>;
   createdAt: number;
 }
+
+/* ---------- system metrics (admin) ---------- */
+
+/**
+ * One point on a metrics chart. Rates are per second (bytes, requests); gauges are as sampled.
+ * `a` is the average over the point's span and `m` the peak; a raw 10-second sample has a === m.
+ * A key is missing when it wasn't measured (e.g. LiveKit unreachable).
+ */
+export interface MetricPoint {
+  t: number;
+  a: Partial<Record<MetricKey, number>>;
+  m: Partial<Record<MetricKey, number>>;
+}
+
+export type MetricKey =
+  // app process and container
+  | "cpu" | "mem" | "lag" | "rx" | "tx"
+  // HTTP: requests/s, 5xx/s, mean response ms, bytes/s served by type
+  | "req" | "err" | "ms" | "webB" | "apiB" | "uploadsB" | "soundsB" | "downloadsB"
+  // realtime and Discord
+  | "sockets" | "online" | "ping"
+  // LiveKit (Cast): bytes/s, retransmitted bytes/s out, loss %, rtt ms, jitter ms, participants, cpu %, memory
+  | "lkRx" | "lkTx" | "lkRetx" | "lkLoss" | "lkRtt" | "lkJitter" | "lkPeople" | "lkCpu" | "lkMem";
+
+export type MetricRange = "1h" | "24h" | "7d" | "30d";
+
+export interface MetricsResponse {
+  range: MetricRange;
+  /** Seconds each point covers. */
+  step: number;
+  points: MetricPoint[];
+  /** The latest 10-second sample. */
+  now: MetricPoint | null;
+  cores: number;
+  memLimit: number | null;
+  livekit: { configured: boolean; error: string | null };
+  storage: { db: number; uploads: number; sounds: number; free: number | null; total: number | null };
+}

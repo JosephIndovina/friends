@@ -156,6 +156,14 @@ const migrations: Array<string | (() => void)> = [
       db.prepare("UPDATE roles SET permissions = ? WHERE id = ?").run(JSON.stringify([...new Set([...perms, "sounds.play", "sounds.add"])]), r.id);
     }
   },
+
+  // System metrics: res is the seconds each row covers (60 or 3600); data is JSON { a: averages, m: peaks }.
+  `CREATE TABLE metrics (
+     res   INTEGER NOT NULL,
+     at    INTEGER NOT NULL,
+     data  TEXT NOT NULL,
+     PRIMARY KEY (res, at)
+   ) WITHOUT ROWID;`,
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;

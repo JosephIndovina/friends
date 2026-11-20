@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { ChevronRight, Gauge, Globe, KeyRound, Lock, ScrollText, ShieldCheck, SlidersHorizontal, UserRound, Users } from "lucide-react";
+import { Activity, ChevronRight, Gauge, Globe, KeyRound, Lock, ScrollText, ShieldCheck, SlidersHorizontal, UserRound, Users } from "lucide-react";
 import type { Permission, Session } from "@friends/shared";
 import { Avatar } from "../../components/Avatar";
 import { can, isAdminish } from "../../lib/api";
@@ -24,6 +24,7 @@ export function SettingsLayout({ session }: { session: Session }) {
     { to: "/admin/people", label: "People", Icon: Users, perm: "admin.people", badge: pending },
     { to: "/admin/roles", label: "Roles", Icon: KeyRound, perm: "admin.roles" },
     { to: "/admin/site", label: "Site", Icon: Globe, perm: "admin.settings" },
+    { to: "/admin/system", label: "System", Icon: Activity, perm: "admin.settings" },
     { to: "/admin/audit", label: "Audit log", Icon: ScrollText, perm: "admin.audit" },
   ].filter((i) => (i.perm === "any-admin" ? isAdminish(session) : can(session, i.perm as Permission))) as Item[];
 
