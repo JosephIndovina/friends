@@ -58,7 +58,7 @@ const older = (a: string, b: string) => {
   return false;
 };
 
-export const DOWNLOADS = { linux: "friends-live_amd64.deb", windows: "friends-live_x64-setup.exe" } as const;
+export const DOWNLOADS = { linux: "friends-live_amd64.deb", arch: "friends-live-x86_64.pkg.tar.zst", windows: "friends-live_x64-setup.exe" } as const;
 export const downloadsDir = resolve(env.DOWNLOADS_DIR ?? "./downloads");
 
 /** A token for the stage. The site's own connection watches and may publish; the desktop app only publishes. */
@@ -156,6 +156,7 @@ export async function castRoutes(app: FastifyInstance) {
     return {
       minVersion: APP_MIN_VERSION,
       linux: have(DOWNLOADS.linux) ? `/download/${DOWNLOADS.linux}` : null,
+      arch: have(DOWNLOADS.arch) ? `/download/${DOWNLOADS.arch}` : null,
       windows: have(DOWNLOADS.windows) ? `/download/${DOWNLOADS.windows}` : null,
     };
   });

@@ -1,6 +1,6 @@
 # Friends Live
 
-Native streamer for Windows and Ubuntu: a screen or window plus **one app's audio**, published to the stage
+Native streamer for Windows, Ubuntu and Arch-based systems (Arch, CachyOS): a screen or window plus **one app's audio**, published to the stage
 (LiveKit) as a `ScreenShare` + `ScreenShareAudio` pair named `screen-…` / `screen-…-audio`, the same way the
 browser does it. Browsers can't capture a single app's sound; this can.
 
@@ -15,6 +15,18 @@ Needs Rust (`rustup`) and **clang** — libwebrtc is built against Chromium's li
 sudo apt install clang libclang-dev libpipewire-0.3-dev
 CC=clang CXX=clang++ cargo build --release
 ```
+
+## Build (Arch, CachyOS)
+
+`packaging/arch/PKGBUILD` builds this checkout into a pacman package (with NVENC, and generic x86-64 flags rather
+than makepkg.conf's `-march=native`, so it runs on anyone's machine):
+
+```sh
+sudo pacman -S --needed base-devel rust clang
+cd packaging/arch && makepkg -si
+```
+
+CI builds the same package and the site serves it as `friends-live-x86_64.pkg.tar.zst`.
 
 ## Try it
 

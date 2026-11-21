@@ -10,7 +10,20 @@ const APP_OS: "windows" | "linux" | null =
   : /Linux/i.test(navigator.userAgent) ? "linux"
   : null;
 
-type AppLinks = { linux: string | null; windows: string | null };
+type AppLinks = { linux: string | null; arch?: string | null; windows: string | null };
+
+/** The installers for this computer's system. Browsers can't tell Linux distributions apart, so Linux gets both
+ * packages, each named for the systems it installs on. */
+function installers(links: AppLinks): Array<{ href: string; label: string }> {
+  const all =
+    APP_OS === "windows" ? [{ href: links.windows, label: "Download Friends Live" }]
+    : APP_OS === "linux" ? [
+        { href: links.linux, label: "Download for Ubuntu (.deb)" },
+        { href: links.arch ?? null, label: "Download for Arch, CachyOS (.pkg.tar.zst)" },
+      ]
+    : [];
+  return all.filter((d): d is { href: string; label: string } => Boolean(d.href));
+}
 type Launch = "idle" | "opening" | "opened" | "missing" | "error";
 
 /** Opens friends:// without leaving the page. A hidden frame fails quietly when nothing handles the link. */
@@ -88,9 +101,9 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
     }, 750);
   };
 
-  // Only the installer for this computer's system: a button until the app is known to be installed, then a
-  // small link for reinstalling.
-  const download = APP_OS ? links[APP_OS] : null;
+  // Only the installers for this computer's system: buttons until the app is known to be installed, then
+  // small links for reinstalling.
+  const downloads = installers(links);
 
   return (
     <div className="app-launch">
@@ -100,11 +113,11 @@ function AppLaunch({ links, onDone }: { links: AppLinks; onDone: () => void }) {
       {state === "opened" && <p className="block-note" role="status">Choose a window in Friends Live.</p>}
       {state === "error" && <p className="field-error" role="alert">Couldn't start. Try again.</p>}
       {state === "missing" && <p className="field-error" role="alert">Friends Live didn't open. Install it, then try again.</p>}
-      {download && (installed ? (
-        <a className="app-redownload" href={download} download>Download Friends Live</a>
+      {downloads.map((d) => installed ? (
+        <a key={d.href} className="app-redownload" href={d.href} download>{d.label}</a>
       ) : (
-        <a className="btn btn-quiet" href={download} download>
-          <Download aria-hidden />Download Friends Live
+        <a key={d.href} className="btn btn-quiet" href={d.href} download>
+          <Download aria-hidden />{d.label}
         </a>
       ))}
     </div>
@@ -190,7 +203,7 @@ export function GoLive({ icon }: { icon?: boolean } = {}) {
   const [inBrowser, setInBrowser] = useState(APP_OS === null);
   // The app is offered only where this server has an installer for this OS; everywhere else Go live is the browser's.
   const [links, setLinks] = useState<AppLinks | null>(null);
-  const appReady = Boolean(APP_OS && links?.[APP_OS]);
+  const appReady = Boolean(links && installers(links).length);
   // Known before the click, so the button can say what it'll do.
   useEffect(() => {
     if (!APP_OS || !cast.canStream) return;

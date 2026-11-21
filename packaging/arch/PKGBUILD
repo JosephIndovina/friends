@@ -1,0 +1,55 @@
+# Friends Live for Arch-based systems (Arch, CachyOS, EndeavourOS, Manjaro).
+# Builds the app from this checkout:  cd packaging/arch && makepkg -si
+# The site serves the result as friends-live-x86_64.pkg.tar.zst (see .github/workflows/ci.yml).
+
+pkgname=friends-live
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Stream a window and its sound to Friends"
+arch=(x86_64)
+url="https://friends.indovina.dev"
+license=(LicenseRef-proprietary)
+depends=(
+  gcc-libs glibc gtk3 webkit2gtk-4.1 libpipewire libayatana-appindicator libva
+  xdg-desktop-portal xdg-desktop-portal-impl hicolor-icon-theme
+)
+makedepends=(rust clang pkgconf libxcomposite libxdamage libxrandr libxtst mesa)
+optdepends=('nvidia-utils: graphics-card encoding (NVENC)')
+options=(!lto !debug)
+# cuda.h at build time compiles in NVENC; the libraries themselves load at run time, only where there's an NVIDIA
+# driver, so the package works on every machine.
+source=("https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-cudart-dev-12-9_12.9.79-1_amd64.deb")
+sha256sums=('e3ca8561b6bec2a92928ebafd68ed9278bf66d5521a2584d6370792386b247c0')
+
+_app="$startdir/../../apps/live"
+
+pkgver() {
+  sed -n 's/^version = "\(.*\)"/\1/p' "$_app/Cargo.toml" | head -1
+}
+
+prepare() {
+  mkdir -p "$srcdir/cuda"
+  bsdtar -xf "$srcdir/data.tar.xz" -C "$srcdir/cuda"
+}
+
+build() {
+  cd "$_app"
+  # libwebrtc is built against Chromium's libc++: it needs clang, and won't link with GCC.
+  export CC=clang CXX=clang++
+  export CUDA_HOME="$srcdir/cuda/usr/local/cuda-12.9/targets/x86_64-linux"
+  # The package goes to other people's computers: no -march=native / target-cpu=native from makepkg.conf.
+  export CFLAGS="-O2 -pipe -march=x86-64 -mtune=generic" CXXFLAGS="-O2 -pipe -march=x86-64 -mtune=generic"
+  export LDFLAGS="" RUSTFLAGS=""
+  # What `tauri build` does: the UI is served from the binary, not a dev server.
+  cargo build --release --locked --features tauri/custom-protocol
+}
+
+package() {
+  cd "$_app"
+  install -Dm755 target/release/friends-live "$pkgdir/usr/bin/friends-live"
+  install -Dm644 linux/friends-live.desktop "$pkgdir/usr/share/applications/friends-live.desktop"
+  install -Dm644 icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/friends-live.png"
+  install -Dm644 icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/friends-live.png"
+  install -Dm644 icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/friends-live.png"
+  install -Dm644 icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/friends-live.png"
+}

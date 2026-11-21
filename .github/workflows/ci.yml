@@ -26,6 +26,7 @@ jobs:
           filters: |
             live:
               - "apps/live/**"
+              - "packaging/**"
               - ".github/workflows/ci.yml"
 
   check:
@@ -86,6 +87,36 @@ jobs:
           path: apps/live/out/friends-live_amd64.deb
           if-no-files-found: error
 
+  # The Friends Live desktop app for Arch-based systems (Arch, CachyOS…), from packaging/arch/PKGBUILD.
+  live-arch:
+    needs: changes
+    if: needs.changes.outputs.live == 'true'
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    env:
+      CARGO_HOME: /cargo
+    steps:
+      - name: Build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git rust clang pkgconf gtk3 webkit2gtk-4.1 libpipewire \
+            libayatana-appindicator libva xdg-desktop-portal hicolor-icon-theme libxcomposite libxdamage libxrandr libxtst mesa
+          useradd -m builder
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/live
+          key: arch
+      # makepkg won't run as root. Dependencies are installed above (the portal backend is left to the user's desktop).
+      - run: |
+          mkdir -p /cargo && chown -R builder /cargo "$GITHUB_WORKSPACE"
+          cd packaging/arch && runuser -u builder -- makepkg --nodeps --noconfirm
+          mkdir -p "$GITHUB_WORKSPACE/out" && cp friends-live-*-x86_64.pkg.tar.zst "$GITHUB_WORKSPACE/out/friends-live-x86_64.pkg.tar.zst"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-arch
+          path: out/friends-live-x86_64.pkg.tar.zst
+          if-no-files-found: error
+
   # The Friends Live desktop app for Windows: an installer that needs no admin rights.
   live-windows:
     needs: changes
@@ -114,7 +145,7 @@ jobs:
   # them from, so a site-only change still ships the latest app.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.live == 'true'
-    needs: [changes, live-linux, live-windows]
+    needs: [changes, live-linux, live-arch, live-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,11 +159,15 @@ jobs:
           path: out
       - uses: actions/download-artifact@v4
         with:
+          name: live-arch
+          path: out
+      - uses: actions/download-artifact@v4
+        with:
           name: live-windows
           path: out
       - run: |
           gh release view friends-live >/dev/null 2>&1 || gh release create friends-live --title "Friends Live" --notes "Latest desktop app installers, served by the site at /download." --target "$GITHUB_SHA"
-          gh release upload friends-live out/friends-live_amd64.deb out/friends-live_x64-setup.exe --clobber
+          gh release upload friends-live out/friends-live_amd64.deb out/friends-live-x86_64.pkg.tar.zst out/friends-live_x64-setup.exe --clobber
 
   image:
     # Runs whether or not the app was rebuilt (release skipped), but not if the app build or release failed.
@@ -150,7 +185,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Desktop app installers
-        run: gh release download friends-live --pattern "friends-live_*" --dir downloads --clobber
+        run: gh release download friends-live --pattern "friends-live*" --dir downloads --clobber
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
