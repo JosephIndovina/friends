@@ -81,6 +81,8 @@ export interface SiteSettings {
   /** people who can stream can also turn on a camera */
   cameras: boolean;
   sections: { player: boolean; cast: boolean };
+  /** which Friends Live installers the site offers; one turned off isn't listed or served */
+  downloads: { windows: boolean; linux: boolean; arch: boolean };
   notify: { channelId: string | null; accessRequests: boolean; nowPlaying: boolean; goLive: boolean; posts: boolean };
 }
 

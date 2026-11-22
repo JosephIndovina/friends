@@ -14,7 +14,7 @@ import { mediaRoutes } from "./mediaRoutes.js";
 import { playlistRoutes } from "./playlists.js";
 import { postRoutes, pruneUploads, UPLOAD_DIR } from "./posts.js";
 import { soundRoutes } from "./sounds.js";
-import { castRoutes, DOWNLOADS, downloadsDir } from "./cast.js";
+import { castRoutes, DOWNLOADS, downloadOffered, downloadsDir } from "./cast.js";
 import { createRealtime } from "./realtime.js";
 import { ensureOwner, pruneSessions } from "./sessions.js";
 import { countResponses, metricsRoutes, pruneMetrics, startMetrics } from "./metrics.js";
@@ -49,8 +49,8 @@ const hasWeb = existsSync(webDist);
 await app.register(fastifyStatic, { root: hasWeb ? webDist : resolve(UPLOAD_DIR), serve: hasWeb, wildcard: false });
 // Desktop app installers. Named files only; anyone may download them (the app itself still needs a launch code).
 app.get<{ Params: { file: string } }>("/download/:file", { config: { public: true } }, async (req, reply) => {
-  if (!(Object.values(DOWNLOADS) as string[]).includes(req.params.file)) return reply.code(404).send({ error: "not_found" });
-  if (!existsSync(join(downloadsDir, req.params.file))) return reply.code(404).send({ error: "not_found" });
+  const os = (Object.keys(DOWNLOADS) as Array<keyof typeof DOWNLOADS>).find((k) => DOWNLOADS[k] === req.params.file);
+  if (!os || !downloadOffered(os)) return reply.code(404).send({ error: "not_found" });
   return reply.header("Content-Disposition", `attachment; filename="${req.params.file}"`).sendFile(req.params.file, downloadsDir);
 });
 if (hasWeb) {

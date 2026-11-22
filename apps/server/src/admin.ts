@@ -79,6 +79,7 @@ const settingsSchema = z.object({
   hideVideoInMusic: z.boolean(),
   cameras: z.boolean(),
   sections: z.object({ player: z.boolean(), cast: z.boolean() }),
+  downloads: z.object({ windows: z.boolean(), linux: z.boolean(), arch: z.boolean() }),
   notify: z.object({
     channelId: z.string().regex(/^\d{15,22}$/).nullable(),
     accessRequests: z.boolean(),

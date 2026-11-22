@@ -60,6 +60,8 @@ const older = (a: string, b: string) => {
 
 export const DOWNLOADS = { linux: "friends-live_amd64.deb", arch: "friends-live-x86_64.pkg.tar.zst", windows: "friends-live_x64-setup.exe" } as const;
 export const downloadsDir = resolve(env.DOWNLOADS_DIR ?? "./downloads");
+/** An installer is offered when the server has its file and the site settings haven't turned it off. */
+export const downloadOffered = (os: keyof typeof DOWNLOADS) => getSettings().downloads[os] && existsSync(join(downloadsDir, DOWNLOADS[os]));
 
 /** A token for the stage. The site's own connection watches and may publish; the desktop app only publishes. */
 async function stageToken(user: { id: string; name: string; avatarUrl: string | null }, canStream: boolean, canSubscribe: boolean) {
@@ -150,15 +152,10 @@ export async function castRoutes(app: FastifyInstance) {
     },
   );
 
-  // Installers for the desktop app, if this server has them (see DOWNLOADS_DIR).
+  // Installers for the desktop app that this server has (see DOWNLOADS_DIR) and the site settings offer.
   app.get("/api/cast/app", { config: { permission: "cast.stream" } }, async () => {
-    const have = (f: string) => existsSync(join(downloadsDir, f));
-    return {
-      minVersion: APP_MIN_VERSION,
-      linux: have(DOWNLOADS.linux) ? `/download/${DOWNLOADS.linux}` : null,
-      arch: have(DOWNLOADS.arch) ? `/download/${DOWNLOADS.arch}` : null,
-      windows: have(DOWNLOADS.windows) ? `/download/${DOWNLOADS.windows}` : null,
-    };
+    const link = (os: keyof typeof DOWNLOADS) => (downloadOffered(os) ? `/download/${DOWNLOADS[os]}` : null);
+    return { minVersion: APP_MIN_VERSION, linux: link("linux"), arch: link("arch"), windows: link("windows") };
   });
 
   // Where your camera sits over your stream, for everyone watching: only you can move or resize it. The server sets it

@@ -101,6 +101,17 @@ export function SiteSettings() {
           checked={s.cameras} disabled={busy || !s.sections.cast} onChange={(v) => void setCameras(v)} />
       </section>
 
+      <section className="panel" aria-labelledby="downloads-title">
+        <h2 id="downloads-title">Friends Live downloads</h2>
+        <p className="quiet">The installers offered in Go live. One that's off isn't shown or downloadable.</p>
+        <Toggle label="Windows" checked={s.downloads.windows} disabled={busy}
+          onChange={(v) => void update({ ...s, downloads: { ...s.downloads, windows: v } }, `Windows download is ${v ? "on" : "off"}.`)} />
+        <Toggle label="Ubuntu (.deb)" checked={s.downloads.linux} disabled={busy}
+          onChange={(v) => void update({ ...s, downloads: { ...s.downloads, linux: v } }, `Ubuntu download is ${v ? "on" : "off"}.`)} />
+        <Toggle label="Arch, CachyOS (.pkg.tar.zst)" checked={s.downloads.arch} disabled={busy}
+          onChange={(v) => void update({ ...s, downloads: { ...s.downloads, arch: v } }, `Arch download is ${v ? "on" : "off"}.`)} />
+      </section>
+
       <section className="panel" aria-labelledby="notify-title">
         <h2 id="notify-title">Discord notifications</h2>
         <div className="field">
