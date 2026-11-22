@@ -89,7 +89,7 @@ function AddSound({ onDone }: { onDone: () => void }) {
           {emoji && <button type="button" className="btn btn-quiet btn-s" onClick={() => { setEmoji(""); setPicking(false); }}>No emoji</button>}
         </div>
       )}
-      <p className="quiet sound-limits">Up to {SOUND_LIMITS.seconds} seconds and 1 MB.</p>
+      <p className="quiet sound-limits">Up to 1 minute and 50 MB.</p>
       {error && <p className="field-error" role="alert">{error}</p>}
       <div className="add-actions">
         <button className="btn btn-primary btn-s" disabled={!file || !name.trim() || busy}>{busy ? "Adding…" : "Add"}</button>

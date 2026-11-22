@@ -233,8 +233,8 @@ export interface Sound {
 }
 
 export const SOUND_LIMITS = {
-  bytes: 1024 * 1024,
-  seconds: 6,
+  bytes: 50 * 1024 * 1024,
+  seconds: 60,
   name: 32,
   total: 100,
   perPerson: 20,
