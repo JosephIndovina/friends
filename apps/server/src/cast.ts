@@ -183,6 +183,23 @@ export async function castRoutes(app: FastifyInstance) {
     },
   );
 
+  // Your camera flipped side to side, for everyone watching (set the same way as its layout).
+  app.post<{ Body: { identity?: unknown; flip?: unknown } }>(
+    "/api/cast/camera/flip",
+    { config: { permission: "cast.stream", rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (req, reply) => {
+      const { identity, flip } = req.body ?? {};
+      if (typeof identity !== "string" || typeof flip !== "boolean") return reply.code(400).send({ error: "invalid_body" });
+      if (userOf(identity) !== req.session!.user.id) return reply.code(403).send({ error: "not_yours" });
+      try {
+        await rooms().updateParticipant(ROOM, identity, { attributes: { cameraFlip: flip ? "1" : "0" } });
+      } catch {
+        return reply.code(404).send({ error: "not_found" });
+      }
+      return { ok: true };
+    },
+  );
+
   // Moderators can end someone's stream: that connection leaves the room and can rejoin without it.
   // Anyone can also end their own stream from another of their tabs or devices.
   app.post<{ Params: { id: string } }>("/api/cast/:id/stop", { config: { permission: "cast.watch" } }, async (req, reply) => {

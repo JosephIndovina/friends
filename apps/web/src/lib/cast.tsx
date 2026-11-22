@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { VideoOff } from "lucide-react";
+import { FlipHorizontal2, VideoOff } from "lucide-react";
 import {
   ConnectionState, createLocalScreenTracks, createLocalVideoTrack, LocalTrack, Room, RoomEvent, Track, VideoPresets,
   type LocalTrackPublication, type LocalVideoTrack, type Participant, type RemoteTrackPublication, type TrackPublication,
@@ -61,6 +61,8 @@ export interface Stream {
   cameraIdentity: string | null;
   /** where the camera sits and how big, as its owner set it (everyone sees the same) */
   cameraLayout: CameraLayout;
+  /** its owner flipped it side to side, for everyone */
+  cameraFlipped: boolean;
 }
 
 /** Where a camera sits over its owner's stream: x and y place it within the room it has to move in (0 = left/top
@@ -102,6 +104,29 @@ function parseLayout(raw: unknown): CameraLayout | null {
 /** The layout the server set on the camera's connection. */
 function layoutOf(p: Participant): CameraLayout {
   return parseLayout(p.attributes?.camera) ?? DEFAULT_LAYOUT;
+}
+
+/** The camera's owner flipped it (the server sets this too). */
+const flippedOf = (p: Participant) => p.attributes?.cameraFlip === "1";
+
+/** Your flip choice, sent with your camera each time you turn it on. */
+const FLIP_KEY = "cameraFlip";
+function savedFlip(): boolean {
+  try {
+    return localStorage.getItem(FLIP_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Flip your camera side to side, for everyone. */
+async function sendCameraFlip(identity: string, flip: boolean): Promise<boolean> {
+  try {
+    await api("POST", "/api/cast/camera/flip", { identity, flip });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Your last layout, sent with your camera each time you turn it on. */
@@ -156,6 +181,9 @@ export interface CameraCtl {
   devices: MediaDeviceInfo[];
   deviceId: string | null;
   setDevice: (id: string) => void;
+  /** flipped side to side, for everyone */
+  flipped: boolean;
+  setFlipped: (flipped: boolean) => void;
 }
 
 interface CastCtx {
@@ -228,6 +256,7 @@ function streamsOf(p: Participant, local: boolean, selfId: string): Stream[] {
       cameraLocal: false,
       cameraIdentity: null,
       cameraLayout: DEFAULT_LAYOUT,
+      cameraFlipped: false,
     };
   });
 }
@@ -244,7 +273,7 @@ function allStreams(room: Room, selfId: string): Stream[] {
     const userId = userOf(p.identity);
     const host = screens.find((s) => s.userId === userId);
     if (host) {
-      if (!host.camera) Object.assign(host, { camera: cam, cameraLocal: local, cameraIdentity: p.identity, cameraLayout: layoutOf(p) });
+      if (!host.camera) Object.assign(host, { camera: cam, cameraLocal: local, cameraIdentity: p.identity, cameraLayout: layoutOf(p), cameraFlipped: flippedOf(p) });
       continue;
     }
     out.push({
@@ -265,6 +294,7 @@ function allStreams(room: Room, selfId: string): Stream[] {
       cameraLocal: false,
       cameraIdentity: null,
       cameraLayout: DEFAULT_LAYOUT,
+      cameraFlipped: flippedOf(p),
     });
   }
   return out;
@@ -287,6 +317,7 @@ export function CastProvider({ session, children }: { session: Session; children
   const [camOn, setCamOn] = useState(false);
   const [camBusy, setCamBusy] = useState(false);
   const [camError, setCamError] = useState<string | null>(null);
+  const [camFlipped, setCamFlipped] = useState(savedFlip);
   const [camDevices, setCamDevices] = useState<MediaDeviceInfo[]>([]);
   const [camDevice, setCamDevice] = useState<string | null>(() => {
     try {
@@ -461,6 +492,7 @@ export function CastProvider({ session, children }: { session: Session; children
     setCamOn(true);
     setCamBusy(false);
     void setCameraLayout(room.localParticipant.identity, savedLayout()); // where you left it last time
+    void sendCameraFlip(room.localParticipant.identity, savedFlip());
     // Unplugged, or taken by another app.
     t.mediaStreamTrack.addEventListener("ended", () => {
       if (camTrack.current === t) void stopCamera();
@@ -477,6 +509,16 @@ export function CastProvider({ session, children }: { session: Session; children
     }
     void camTrack.current?.setDeviceId(id);
   }, []);
+
+  const setFlipped = useCallback((flip: boolean) => {
+    setCamFlipped(flip);
+    try {
+      localStorage.setItem(FLIP_KEY, flip ? "1" : "0");
+    } catch {
+      /* this visit only */
+    }
+    if (room && camTrack.current) void sendCameraFlip(room.localParticipant.identity, flip);
+  }, [room]);
 
   // The admin turned cameras off, or you can no longer stream: turn this tab's off.
   useEffect(() => {
@@ -577,8 +619,8 @@ export function CastProvider({ session, children }: { session: Session; children
     [streams, camerasAllowed],
   );
   const camera = useMemo<CameraCtl>(
-    () => ({ allowed: canStream && camerasAllowed && CAN_CAMERA, on: camOn, busy: camBusy, error: camError, set: setCamera, devices: camDevices, deviceId: camDevice, setDevice }),
-    [canStream, camerasAllowed, camOn, camBusy, camError, setCamera, camDevices, camDevice, setDevice],
+    () => ({ allowed: canStream && camerasAllowed && CAN_CAMERA, on: camOn, busy: camBusy, error: camError, set: setCamera, devices: camDevices, deviceId: camDevice, setDevice, flipped: camFlipped, setFlipped }),
+    [canStream, camerasAllowed, camOn, camBusy, camError, setCamera, camDevices, camDevice, setDevice, camFlipped, setFlipped],
   );
   const value = useMemo<CastCtx>(
     () => ({ available: room?.state === ConnectionState.Connected, streams: shown, canStream, supported: SUPPORTED, goLive, stop, watching, setWatching, muted, setMuted, volume, setVolume, camera, hiddenCameras, setCameraHidden }),
@@ -611,8 +653,9 @@ export function StreamVideo({ stream, className, stats, camera = "none" }: {
   }, [track]);
   const picture = usePicture(el, Boolean(track) && camera !== "none" && Boolean(stream.camera));
   if (!track) return <div className={`${className ?? ""} stream-waiting`}>Connecting…</div>;
-  // Your own camera reads like a mirror, as in every video call; everyone else sees it the right way round.
-  const mirrored = stream.kind === "camera" && stream.local;
+  // Your own camera reads like a mirror, as in every video call; everyone else sees it the right way round, or
+  // flipped if you flipped it (and then your own view flips too).
+  const mirrored = stream.kind === "camera" && stream.local !== stream.cameraFlipped;
   return (
     <>
       <video ref={el} className={`${className ?? ""}${mirrored ? " is-mirrored" : ""}`} autoPlay playsInline muted />
@@ -825,7 +868,7 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
       style={{ "--cam-x": String(x), "--cam-y": String(y), "--cam-size": String(size) } as React.CSSProperties}
       onPointerDown={own ? drag : undefined} onKeyDown={own ? moveKeys : undefined} tabIndex={own ? 0 : undefined}
       role={own ? "group" : undefined} aria-label={own ? "Your camera: drag or use the arrow keys to move it" : undefined} title={own ? "Drag to move" : undefined}>
-      {track ? <video ref={el} className={stream.cameraLocal ? "is-mirrored" : undefined} autoPlay playsInline muted /> : <span className="cam-overlay-wait" />}
+      {track ? <video ref={el} className={stream.cameraLocal !== stream.cameraFlipped ? "is-mirrored" : undefined} autoPlay playsInline muted /> : <span className="cam-overlay-wait" />}
       {(controls || own) && (
         <>
           {own && (
@@ -834,6 +877,10 @@ function CameraOverlay({ stream, controls }: { stream: Stream; controls: boolean
               onPointerDown={resize} onKeyDown={sizeKeys} onDoubleClick={() => commit({ x, y, size: DEFAULT_LAYOUT.size })} />
           )}
           <div className="cam-overlay-actions">
+            {stream.cameraLocal && (
+              <button className="icon-btn" aria-label="Flip camera" aria-pressed={cast.camera.flipped} data-tip="Flip camera for everyone"
+                onClick={() => cast.camera.setFlipped(!cast.camera.flipped)}><FlipHorizontal2 aria-hidden /></button>
+            )}
             <button className="icon-btn" aria-label={`Hide ${who}`} data-tip={own ? "Hide camera for you" : "Hide camera"}
               onClick={() => cast.setCameraHidden(stream.userId, true)}><VideoOff aria-hidden /></button>
           </div>

@@ -1,4 +1,4 @@
-import { Eye, EyeOff, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Video, VideoOff, Volume2, VolumeX, X } from "lucide-react";
+import { Eye, EyeOff, FlipHorizontal2, LayoutGrid, PanelLeftClose, PanelLeftOpen, Play, SlidersHorizontal, Square, Video, VideoOff, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useCast } from "../../lib/cast";
@@ -171,6 +171,11 @@ function CameraButton({ icon }: { icon: boolean }) {
       ) : (
         <button className="btn btn-s btn-quiet" aria-pressed={camera.on} disabled={!available || camera.busy} onClick={toggle}>
           {camera.on ? <VideoOff aria-hidden /> : <Video aria-hidden />}{camera.busy ? "Starting camera…" : label}
+        </button>
+      )}
+      {!icon && camera.on && (
+        <button className="btn btn-s btn-quiet" aria-pressed={camera.flipped} onClick={() => camera.setFlipped(!camera.flipped)}>
+          <FlipHorizontal2 aria-hidden />Flip camera
         </button>
       )}
       {!icon && camera.on && camera.devices.length > 1 && (
