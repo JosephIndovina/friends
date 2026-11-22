@@ -74,6 +74,12 @@ importers:
       '@tanstack/react-router':
         specifier: 1.170.46
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      emoji-picker-element:
+        specifier: 1.26.3
+        version: 1.26.3
+      emoji-picker-element-data:
+        specifier: 1.8.0
+        version: 1.8.0
       livekit-client:
         specifier: 2.24.1
         version: 2.24.1(@types/dom-mediacapture-record@1.0.22)
@@ -498,6 +504,7 @@ packages:
   '@sapphire/shapeshift@4.0.0':
     resolution: {integrity: sha512-d9dUmWVA7MMiKobL3VpLF8P2aeanRTu6ypG2OIaEv/ZHH/SUQ2iHOVyi5wAPjQ+HmnMuL0whK9ez8I/raWbtIg==}
     engines: {node: '>=v16'}
+    deprecated: Shapeshift was created when other validation libraries had significant limitations in performance and error reporting. Those advantages have diminished as libraries such as Zod have become faster and improved their error messages, while also gaining broader environment support, a larger community, and custom error printers.
 
   '@sapphire/snowflake@3.5.5':
     resolution: {integrity: sha512-xzvBr1Q1c4lCe7i6sRnrofxeO1QTP/LKQ6A6qy0iB4x5yfiSfARMEQEghojzTNALDTcv8En04qYNIco9/K9eZQ==}
@@ -676,6 +683,12 @@ packages:
   discord.js@14.28.1:
     resolution: {integrity: sha512-Je5OcqgurnIUQK4vR+gQnmzOf/lNQsD6d/UkV8ZOj+bFa5zJXPyiGXlbywp2EagwshVT18y7YNQNSRd3FjYkDw==}
     engines: {node: '>=18'}
+
+  emoji-picker-element-data@1.8.0:
+    resolution: {integrity: sha512-VfRuRJNEDLS1JKlNS4olaqhjX5S1nnZ+ZHG73b/dV8QeZyi0yPruTPEE72EmF6XO3k/9hj3lybMIYMOYXb/57A==}
+
+  emoji-picker-element@1.26.3:
+    resolution: {integrity: sha512-fOMG44d/3OqTe1pPqlu5H4ZtWg7gK4Le6Bt24JTKtDyce5+EO3Mo8WA95cKHbPSsSsg7ehM12M1x3Y6U6fgvTQ==}
 
   end-of-stream@1.4.5:
     resolution: {integrity: sha512-ooEGc6HP26xXq/N+GCGOT0JKCLDGrq2bQUZrQ7gyrJiZANJ/8YDTxTpQBXGMn+WbIQXNVpyWymm7KYVICQnyOg==}
@@ -1736,6 +1749,10 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  emoji-picker-element-data@1.8.0: {}
+
+  emoji-picker-element@1.26.3: {}
 
   end-of-stream@1.4.5:
     dependencies:

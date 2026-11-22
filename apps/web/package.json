@@ -10,6 +10,8 @@
   "dependencies": {
     "@fontsource-variable/hanken-grotesk": "5.3.0",
     "@tanstack/react-router": "1.170.46",
+    "emoji-picker-element": "1.26.3",
+    "emoji-picker-element-data": "1.8.0",
     "livekit-client": "2.24.1",
     "lucide-react": "1.73.0",
     "react": "19.3.1",

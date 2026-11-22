@@ -4,6 +4,7 @@ import { SOUND_LIMITS, type Session, type Sound } from "@friends/shared";
 import { ApiError, can } from "../../lib/api";
 import { soundError, useSounds } from "../../lib/sounds";
 import { useToast } from "../../lib/toast";
+import { EmojiPicker } from "../EmojiPicker";
 
 async function upload(file: File, name: string, emoji: string): Promise<Sound> {
   const form = new FormData();
@@ -34,6 +35,7 @@ function AddSound({ onDone }: { onDone: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("");
+  const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +57,7 @@ function AddSound({ onDone }: { onDone: () => void }) {
       setBusy(true);
       setError(null);
       try {
-        await upload(file, name.trim(), emoji.trim());
+        await upload(file, name.trim(), emoji);
         await reload();
         onDone();
       } catch (err) {
@@ -69,15 +71,24 @@ function AddSound({ onDone }: { onDone: () => void }) {
         <input className="input sound-file" type="file" accept="audio/*,.mp3,.ogg,.opus,.wav,.m4a,.flac,.webm" onChange={(e) => void pick(e.target.files?.[0])} />
       </label>
       <div className="sound-add-row">
-        <label className="field sound-emoji-field">
-          <span>Emoji</span>
-          <input className="input" value={emoji} maxLength={16} placeholder="None" onChange={(e) => setEmoji(e.target.value)} />
-        </label>
+        <div className="field sound-emoji-field">
+          <span id="sound-emoji-label">Emoji</span>
+          <button type="button" className={`input sound-emoji-btn${emoji ? "" : " is-empty"}`} aria-labelledby="sound-emoji-label sound-emoji-value"
+            aria-expanded={picking} onClick={() => setPicking(!picking)}>
+            <span id="sound-emoji-value">{emoji || "None"}</span>
+          </button>
+        </div>
         <label className="field grow">
           <span>Name</span>
           <input className="input" value={name} maxLength={SOUND_LIMITS.name} onChange={(e) => setName(e.target.value)} />
         </label>
       </div>
+      {picking && (
+        <div className="sound-emoji-pick">
+          <EmojiPicker onPick={(e) => { setEmoji(e); setPicking(false); }} onClose={() => setPicking(false)} />
+          {emoji && <button type="button" className="btn btn-quiet btn-s" onClick={() => { setEmoji(""); setPicking(false); }}>No emoji</button>}
+        </div>
+      )}
       <p className="quiet sound-limits">Up to {SOUND_LIMITS.seconds} seconds and 1 MB.</p>
       {error && <p className="field-error" role="alert">{error}</p>}
       <div className="add-actions">
