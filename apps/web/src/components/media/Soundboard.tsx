@@ -36,6 +36,7 @@ function AddSound({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("");
   const [picking, setPicking] = useState(false);
+  const emojiBtn = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +74,7 @@ function AddSound({ onDone }: { onDone: () => void }) {
       <div className="sound-add-row">
         <div className="field sound-emoji-field">
           <span id="sound-emoji-label">Emoji</span>
-          <button type="button" className={`input sound-emoji-btn${emoji ? "" : " is-empty"}`} aria-labelledby="sound-emoji-label sound-emoji-value"
+          <button ref={emojiBtn} type="button" className={`input sound-emoji-btn${emoji ? "" : " is-empty"}`} aria-labelledby="sound-emoji-label sound-emoji-value"
             aria-expanded={picking} onClick={() => setPicking(!picking)}>
             <span id="sound-emoji-value">{emoji || "None"}</span>
           </button>
@@ -84,10 +85,8 @@ function AddSound({ onDone }: { onDone: () => void }) {
         </label>
       </div>
       {picking && (
-        <div className="sound-emoji-pick">
-          <EmojiPicker onPick={(e) => { setEmoji(e); setPicking(false); }} onClose={() => setPicking(false)} />
-          {emoji && <button type="button" className="btn btn-quiet btn-s" onClick={() => { setEmoji(""); setPicking(false); }}>No emoji</button>}
-        </div>
+        <EmojiPicker anchor={emojiBtn} onPick={(e) => { setEmoji(e); setPicking(false); }} onClose={() => setPicking(false)}
+          onClear={emoji ? () => { setEmoji(""); setPicking(false); } : undefined} />
       )}
       <p className="quiet sound-limits">Up to 1 minute and 50 MB.</p>
       {error && <p className="field-error" role="alert">{error}</p>}

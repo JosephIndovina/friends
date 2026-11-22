@@ -1352,10 +1352,16 @@ main.page:has(.media-room) { max-width: 1920px; }
 .sound-emoji-field { flex: 0 0 5.5rem; }
 .sound-emoji-btn { width: 100%; display: grid; place-items: center; font-size: 1.25rem; line-height: 1; cursor: pointer; }
 .sound-emoji-btn.is-empty { font-size: var(--step--1); color: color-mix(in oklab, var(--mute) 80%, transparent); }
-.sound-emoji-pick { display: grid; gap: var(--space-2); justify-items: start; }
-.emoji-picker { width: 100%; }
-.emoji-picker emoji-picker {
-  width: 100%; height: min(18rem, 40vh);
+.emoji-pop {
+  position: fixed; inset: auto; margin: 0; width: min(22rem, calc(100vw - 16px));
+  display: grid; gap: var(--space-2); justify-items: start; padding: var(--space-2);
+  border-radius: var(--radius-m); background: var(--upholstery); border: 1px solid var(--line); color: var(--ink);
+  box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.55);
+}
+/* Sized before the picker loads, so it's placed right from the first frame. */
+.emoji-pop-picker { width: 100%; height: min(20rem, 50vh); }
+.emoji-pop emoji-picker {
+  width: 100%; height: 100%; --border-size: 0;
   --background: var(--upholstery);
   --border-color: var(--line);
   --border-radius: var(--radius-s);
