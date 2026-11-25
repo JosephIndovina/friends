@@ -510,7 +510,10 @@ export function Home({ session }: { session: Session }) {
                     <Speak />
                     <Mixer channels={[...visible.filter((x) => !(x.silent ?? x.local) && x.setVolume).map((x) => ({
                       id: x.id, label: x.label, volume: x.volume ?? 100, muted: !x.audible, setMuted: (m: boolean) => x.setAudible(!m), setVolume: x.setVolume!,
-                    })), ...(sounds.enabled ? [{ id: "sounds", label: "Soundboard", volume: sounds.volume, muted: sounds.muted, setMuted: sounds.setMuted, setVolume: sounds.setVolume }] : [])]} />
+                    })), ...(sounds.enabled ? [
+                      { id: "sounds", label: "Soundboard", volume: sounds.volume, muted: sounds.muted, setMuted: sounds.setMuted, setVolume: sounds.setVolume },
+                      { id: "tts", label: "Text to speech", volume: sounds.ttsVolume, muted: sounds.ttsMuted, setMuted: sounds.setTtsMuted, setVolume: sounds.setTtsVolume },
+                    ] : [])]} />
                     {streamsOnStage && (
                       <button className="icon-btn" aria-label="Stream stats" aria-pressed={showStats} data-tip={showStats ? "Hide stream stats" : "Stream stats"}
                         onClick={() => setStatsPref(showStats ? "off" : "on")}><Activity aria-hidden /></button>

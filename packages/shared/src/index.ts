@@ -266,7 +266,7 @@ export interface TtsSpoken {
   /** what was said, after links and emoji were taken out */
   text: string;
   voice: string;
-  by: { id: string; name: string };
+  by: { id: string; name: string; avatarUrl: string };
 }
 
 // ---------- music ----------

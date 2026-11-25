@@ -7,6 +7,7 @@ import { useMediaState } from "../lib/media";
 import { PlayerProvider, usePlayer, viewModeOf } from "../lib/player";
 import { CastProvider, StreamAudio, useCast } from "../lib/cast";
 import { SoundsProvider } from "../lib/sounds";
+import { TtsCaptions } from "./TtsCaptions";
 import { ToastProvider, useToast } from "../lib/toast";
 import { getSocket } from "../lib/socket";
 import { reportActivity, reportSection } from "../lib/presence";
@@ -69,6 +70,7 @@ export function Shell({ session }: { session: Session }) {
      <CastProvider session={session}>
       <ToastProvider>
       <SoundsProvider session={session}>
+      <TtsCaptions />
       <StreamEndedNotice />
       <OthersNotice me={me.id} />
       <div className={`shell${showNav ? "" : " no-tabbar"}`}>

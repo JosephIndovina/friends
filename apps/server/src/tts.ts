@@ -139,7 +139,7 @@ export async function ttsRoutes(app: FastifyInstance) {
     }
     audit({ actorId: s.user.id, action: "tts.spoken", details: { text, voice }, req });
     const url = `/api/tts/${id}/file`;
-    events.emit("tts:spoken", { url, text, voice, by: { id: s.user.id, name: s.user.name } });
+    events.emit("tts:spoken", { url, text, voice, by: { id: s.user.id, name: s.user.name, avatarUrl: s.user.avatarUrl } });
     return { url };
   });
 

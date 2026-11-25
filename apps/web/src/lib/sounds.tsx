@@ -4,33 +4,68 @@ import { api, ApiError, can } from "./api";
 import { getSocket } from "./socket";
 
 /**
- * The soundboard's audio. Every sound is fetched and decoded ahead of time, so a press (yours or anyone's)
- * starts within a few milliseconds of the event arriving: the network hop is the only real delay.
+ * The soundboard's audio, and text to speech's. Every sound is fetched and decoded ahead of time, so a press
+ * (yours or anyone's) starts within a few milliseconds of the event arriving: the network hop is the only real delay.
+ * Each has its own volume; both go through one limiter.
  */
+type Bus = "sounds" | "tts";
+
 const engine = (() => {
   let ctx: AudioContext | null = null;
-  let gain: GainNode | null = null;
+  const gains: Partial<Record<Bus, GainNode>> = {};
+  const levels: Record<Bus, number> = { sounds: 1, tts: 1 };
   // Decoding needs a context, but a live one created before any click only logs autoplay warnings.
   let decoder: OfflineAudioContext | null = null;
   const buffers = new Map<string, Promise<AudioBuffer | null>>();
   const voices: AudioBufferSourceNode[] = [];
-  let level = 1;
 
   function live() {
     if (!ctx) {
       ctx = new AudioContext({ latencyHint: "interactive" });
-      gain = ctx.createGain();
-      gain.gain.value = level;
-      // A limiter after the volume: one sound passes untouched, a stack of them gets loud without clipping into noise.
+      // A limiter after the volumes: one sound passes untouched, a stack of them gets loud without clipping into noise.
       const limiter = ctx.createDynamicsCompressor();
       limiter.threshold.value = -3;
       limiter.knee.value = 0;
       limiter.ratio.value = 20;
       limiter.attack.value = 0.002;
       limiter.release.value = 0.15;
-      gain.connect(limiter).connect(ctx.destination);
+      limiter.connect(ctx.destination);
+      for (const bus of ["sounds", "tts"] as const) {
+        const g = ctx.createGain();
+        g.gain.value = levels[bus];
+        g.connect(limiter);
+        gains[bus] = g;
+      }
     }
     return ctx;
+  }
+
+  const fetchDecode = (url: string) => {
+    decoder ??= new OfflineAudioContext(2, 1, 48000);
+    const d = decoder;
+    return fetch(url, { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+      .then((b) => d.decodeAudioData(b));
+  };
+
+  /** Resolves with the clip's length once it starts, or null if it didn't play. */
+  async function start(pending: Promise<AudioBuffer | null> | undefined, fromClick: boolean, bus: Bus): Promise<number | null> {
+    const c = ctx;
+    if (!c || (!fromClick && c.state !== "running")) return null;
+    const buf = await pending;
+    if (!buf) return null;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.connect(gains[bus]!);
+    src.onended = () => {
+      const i = voices.indexOf(src);
+      if (i >= 0) voices.splice(i, 1);
+    };
+    // Sounds stack freely. Only a truly huge pile-up drops the oldest, to keep the browser responsive.
+    while (voices.length >= 64) voices.shift()!.stop();
+    voices.push(src);
+    src.start();
+    return buf.duration;
   }
 
   return {
@@ -41,57 +76,37 @@ const engine = (() => {
     },
     load(sound: Sound) {
       if (buffers.has(sound.id)) return;
-      decoder ??= new OfflineAudioContext(2, 1, 48000);
-      const d = decoder;
-      buffers.set(sound.id, fetch(sound.url, { credentials: "same-origin" })
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
-        .then((b) => d.decodeAudioData(b))
-        .catch(() => {
-          buffers.delete(sound.id); // try again next time it's played
-          return null;
-        }));
+      buffers.set(sound.id, fetchDecode(sound.url).catch(() => {
+        buffers.delete(sound.id); // try again next time it's played
+        return null;
+      }));
     },
     forget(keep: Set<string>) {
       for (const id of buffers.keys()) if (!keep.has(id)) buffers.delete(id);
     },
-    setLevel(v: number) {
-      level = v;
-      if (gain && ctx) gain.gain.setTargetAtTime(v, ctx.currentTime, 0.02);
+    setLevel(bus: Bus, v: number) {
+      levels[bus] = v;
+      const g = gains[bus];
+      if (g && ctx) g.gain.setTargetAtTime(v, ctx.currentTime, 0.02);
     },
     /** `fromClick`: our own press, which also unlocks audio. Someone else's sound is skipped while audio is locked: it would only play late. */
     play(id: string, fromClick: boolean) {
       if (fromClick) this.unlock();
-      return this.start(buffers.get(id), fromClick);
+      return start(buffers.get(id), fromClick, "sounds");
     },
     /** A text-to-speech clip: fetched when it's said, not ahead of time. Not kept: each line is usually said once. */
-    playUrl(url: string) {
-      if (ctx?.state !== "running") return;
-      decoder ??= new OfflineAudioContext(2, 1, 48000);
-      const d = decoder;
-      return this.start(fetch(url, { credentials: "same-origin" })
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
-        .then((b) => d.decodeAudioData(b))
-        .catch(() => null), false);
-    },
-    async start(pending: Promise<AudioBuffer | null> | undefined, fromClick: boolean) {
-      const c = ctx;
-      if (!c || (!fromClick && c.state !== "running")) return;
-      const buf = await pending;
-      if (!buf) return;
-      const src = c.createBufferSource();
-      src.buffer = buf;
-      src.connect(gain!);
-      src.onended = () => {
-        const i = voices.indexOf(src);
-        if (i >= 0) voices.splice(i, 1);
-      };
-      // Sounds stack freely. Only a truly huge pile-up drops the oldest, to keep the browser responsive.
-      while (voices.length >= 64) voices.shift()!.stop();
-      voices.push(src);
-      src.start();
+    async speak(url: string): Promise<number | null> {
+      if (ctx?.state !== "running") return null;
+      return start(fetchDecode(url).catch(() => null), false, "tts");
     },
   };
 })();
+
+/** How long to show a line when its audio didn't play here (muted, or audio still locked): about reading speed. */
+const readTime = (text: string) => Math.min(12, Math.max(3, text.length / 15));
+
+/** A line said with text to speech, shown while it plays. */
+export interface Caption { key: number; text: string; by: TtsSpoken["by"] }
 
 /** What someone just did on the soundboard, shown over their avatar for a moment. */
 export interface Played { emoji: string | null; title: string; key: number }
@@ -114,6 +129,13 @@ interface SoundsCtx {
   speak: (text: string) => Promise<void>;
   voice: string;
   setVoice: (v: string) => void;
+  /** text to speech's own volume, separate from the soundboard's */
+  ttsVolume: number;
+  setTtsVolume: (v: number) => void;
+  ttsMuted: boolean;
+  setTtsMuted: (m: boolean) => void;
+  /** lines being said right now, oldest first */
+  captions: Caption[];
 }
 
 const Ctx = createContext<SoundsCtx | null>(null);
@@ -137,6 +159,14 @@ export function SoundsProvider({ session, children }: { session: Session; childr
     return Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 70;
   });
   const [muted, setMuted] = useState(() => read("sounds.muted", 0) === 1);
+  const [ttsVolume, setTtsVolume] = useState(() => {
+    const v = read("tts.volume", 80);
+    return Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 80;
+  });
+  const [ttsMuted, setTtsMuted] = useState(() => read("tts.muted", 0) === 1);
+  const ttsMutedRef = useRef(ttsMuted);
+  ttsMutedRef.current = ttsMuted;
+  const [captions, setCaptions] = useState<Caption[]>([]);
   const [recent, setRecent] = useState<ReadonlyMap<string, Played>>(new Map());
   const canSpeak = enabled && can(session, "tts.speak");
   const [voice, setVoice] = useState(() => {
@@ -188,10 +218,13 @@ export function SoundsProvider({ session, children }: { session: Session; childr
       show(by.id, { emoji: sound.emoji, title: `played ${sound.name}` });
       if (!mutedRef.current) void engine.play(id, false);
     };
-    // Sent to everyone, the speaker included, once the clip is ready.
-    const spoken = ({ url, text, by }: TtsSpoken) => {
+    // Sent to everyone, the speaker included, once the clip is ready. The line shows while it plays.
+    const spoken = async ({ url, text, by }: TtsSpoken) => {
+      const secs = ttsMutedRef.current ? null : await engine.speak(url);
       show(by.id, { emoji: "💬", title: `said “${text}”` });
-      if (!mutedRef.current) void engine.playUrl(url);
+      const key = nextKey.current++;
+      setCaptions((c) => [...c.slice(-2), { key, text, by }]);
+      setTimeout(() => setCaptions((c) => c.filter((x) => x.key !== key)), ((secs ?? readTime(text)) + 1.5) * 1000);
     };
     s.on("sounds:changed", changed);
     s.on("connect", changed);
@@ -211,7 +244,7 @@ export function SoundsProvider({ session, children }: { session: Session; childr
   }, [enabled, reload, show]);
 
   useEffect(() => {
-    engine.setLevel(muted ? 0 : volume / 100);
+    engine.setLevel("sounds", muted ? 0 : volume / 100);
     try {
       localStorage.setItem("sounds.volume", String(volume));
       localStorage.setItem("sounds.muted", muted ? "1" : "0");
@@ -219,6 +252,16 @@ export function SoundsProvider({ session, children }: { session: Session; childr
       /* this visit only */
     }
   }, [volume, muted]);
+
+  useEffect(() => {
+    engine.setLevel("tts", ttsMuted ? 0 : ttsVolume / 100);
+    try {
+      localStorage.setItem("tts.volume", String(ttsVolume));
+      localStorage.setItem("tts.muted", ttsMuted ? "1" : "0");
+    } catch {
+      /* this visit only */
+    }
+  }, [ttsVolume, ttsMuted]);
 
   useEffect(() => {
     try {
@@ -248,8 +291,8 @@ export function SoundsProvider({ session, children }: { session: Session; childr
   }, [me, show]);
 
   const value = useMemo(
-    () => ({ enabled, list, reload, play, volume, setVolume, muted, setMuted, recent, canSpeak, speak, voice, setVoice }),
-    [enabled, list, reload, play, volume, muted, recent, canSpeak, speak, voice],
+    () => ({ enabled, list, reload, play, volume, setVolume, muted, setMuted, recent, canSpeak, speak, voice, setVoice, ttsVolume, setTtsVolume, ttsMuted, setTtsMuted, captions }),
+    [enabled, list, reload, play, volume, muted, recent, canSpeak, speak, voice, ttsVolume, ttsMuted, captions],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

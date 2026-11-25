@@ -1388,6 +1388,22 @@ main.page:has(.media-room) { max-width: 1920px; }
   .soundboard, .tts-pop { position: static; }
   .sound-panel { left: var(--gutter); right: var(--gutter); width: auto; bottom: calc(100% + 8px); }
 }
+/* Text to speech: the line being said, under the top bar, for as long as it plays. */
+.tts-captions {
+  position: fixed; top: calc(var(--topbar-h) + var(--space-3)); left: 50%; translate: -50% 0; z-index: 75;
+  display: grid; gap: var(--space-2); width: min(30rem, calc(100vw - 32px)); pointer-events: none;
+}
+.tts-caption {
+  display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-2) var(--space-4) var(--space-2) var(--space-2);
+  border-radius: var(--radius-m); background: var(--upholstery); border: 1px solid var(--line);
+  box-shadow: 0 18px 50px -18px rgb(0 0 0 / 0.55); color: var(--ink);
+  animation: caption-in 0.32s var(--ease-out);
+}
+.tts-caption .avatar { flex: none; border-radius: 50%; }
+.tts-caption p { margin: 0; padding-top: 3px; min-width: 0; overflow-wrap: anywhere; line-height: 1.4; }
+.tts-caption strong { font-weight: 700; margin-right: var(--space-1); }
+@keyframes caption-in { from { translate: 0 -8px; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tts-caption { animation: none; } }
 /* Who just played what: pops over their avatar for a moment. */
 .stack-sound {
   position: absolute; left: 50%; bottom: calc(100% - 6px); translate: -50% 0; z-index: 2; pointer-events: none;
