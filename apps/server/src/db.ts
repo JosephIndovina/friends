@@ -164,6 +164,15 @@ const migrations: Array<string | (() => void)> = [
      data  TEXT NOT NULL,
      PRIMARY KEY (res, at)
    ) WITHOUT ROWID;`,
+
+  // Text to speech: every role that can play sounds can also speak.
+  () => {
+    for (const r of db.prepare("SELECT id, permissions FROM roles WHERE id != 'owner'").all() as Array<{ id: string; permissions: string }>) {
+      const perms = JSON.parse(r.permissions) as string[];
+      if (!perms.includes("sounds.play")) continue;
+      db.prepare("UPDATE roles SET permissions = ? WHERE id = ?").run(JSON.stringify([...new Set([...perms, "tts.speak"])]), r.id);
+    }
+  },
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;

@@ -43,7 +43,7 @@ export function PresenceStack({ me }: { me: Me }) {
                   <span key={p.id} className={`stack-slot slot-${p.activity}`}>
                     <img src={p.avatarUrl} alt="" className={`stack-face ring-${p.activity}`} width={30} height={30} />
                     {/* What they just played on the soundboard; keyed so a repeat press pops again. */}
-                    {played && <span key={played.key} className="stack-sound" title={`${p.name} played ${played.sound.name}`}>{played.sound.emoji ?? <AudioLines aria-hidden />}</span>}
+                    {played && <span key={played.key} className="stack-sound" title={`${p.name} ${played.title}`}>{played.emoji ?? <AudioLines aria-hidden />}</span>}
                   </span>
                 );
               })}

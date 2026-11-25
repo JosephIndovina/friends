@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { Session, Sound } from "@friends/shared";
-import { api, can } from "./api";
+import { TTS_DEFAULT_VOICE, TTS_VOICES, type Session, type Sound, type TtsSpoken } from "@friends/shared";
+import { api, ApiError, can } from "./api";
 import { getSocket } from "./socket";
 
 /**
@@ -59,11 +59,24 @@ const engine = (() => {
       if (gain && ctx) gain.gain.setTargetAtTime(v, ctx.currentTime, 0.02);
     },
     /** `fromClick`: our own press, which also unlocks audio. Someone else's sound is skipped while audio is locked: it would only play late. */
-    async play(id: string, fromClick: boolean) {
+    play(id: string, fromClick: boolean) {
       if (fromClick) this.unlock();
+      return this.start(buffers.get(id), fromClick);
+    },
+    /** A text-to-speech clip: fetched when it's said, not ahead of time. Not kept: each line is usually said once. */
+    playUrl(url: string) {
+      if (ctx?.state !== "running") return;
+      decoder ??= new OfflineAudioContext(2, 1, 48000);
+      const d = decoder;
+      return this.start(fetch(url, { credentials: "same-origin" })
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+        .then((b) => d.decodeAudioData(b))
+        .catch(() => null), false);
+    },
+    async start(pending: Promise<AudioBuffer | null> | undefined, fromClick: boolean) {
       const c = ctx;
       if (!c || (!fromClick && c.state !== "running")) return;
-      const buf = await buffers.get(id);
+      const buf = await pending;
       if (!buf) return;
       const src = c.createBufferSource();
       src.buffer = buf;
@@ -80,7 +93,8 @@ const engine = (() => {
   };
 })();
 
-interface Played { sound: Sound; key: number }
+/** What someone just did on the soundboard, shown over their avatar for a moment. */
+export interface Played { emoji: string | null; title: string; key: number }
 
 interface SoundsCtx {
   enabled: boolean;
@@ -94,6 +108,12 @@ interface SoundsCtx {
   setMuted: (m: boolean) => void;
   /** the sound each person last played, for a moment, by user id */
   recent: ReadonlyMap<string, Played>;
+  /** may use text to speech */
+  canSpeak: boolean;
+  /** say `text` for everyone in your voice; rejects with an error code */
+  speak: (text: string) => Promise<void>;
+  voice: string;
+  setVoice: (v: string) => void;
 }
 
 const Ctx = createContext<SoundsCtx | null>(null);
@@ -118,6 +138,16 @@ export function SoundsProvider({ session, children }: { session: Session; childr
   });
   const [muted, setMuted] = useState(() => read("sounds.muted", 0) === 1);
   const [recent, setRecent] = useState<ReadonlyMap<string, Played>>(new Map());
+  const canSpeak = enabled && can(session, "tts.speak");
+  const [voice, setVoice] = useState(() => {
+    try {
+      const v = localStorage.getItem("tts.voice");
+      if (v && TTS_VOICES.some((x) => x.id === v)) return v;
+    } catch {
+      /* default */
+    }
+    return TTS_DEFAULT_VOICE;
+  });
   const listRef = useRef<Sound[]>([]);
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
@@ -136,9 +166,9 @@ export function SoundsProvider({ session, children }: { session: Session; childr
     }
   }, [enabled]);
 
-  const show = useCallback((userId: string, sound: Sound) => {
+  const show = useCallback((userId: string, what: Omit<Played, "key">) => {
     const key = nextKey.current++;
-    setRecent((m) => new Map(m).set(userId, { sound, key }));
+    setRecent((m) => new Map(m).set(userId, { ...what, key }));
     setTimeout(() => setRecent((m) => {
       if (m.get(userId)?.key !== key) return m;
       const next = new Map(m);
@@ -155,12 +185,18 @@ export function SoundsProvider({ session, children }: { session: Session; childr
     const played = ({ id, by }: { id: string; by: { id: string } }) => {
       const sound = listRef.current.find((x) => x.id === id);
       if (!sound) return void reload();
-      show(by.id, sound);
+      show(by.id, { emoji: sound.emoji, title: `played ${sound.name}` });
       if (!mutedRef.current) void engine.play(id, false);
+    };
+    // Sent to everyone, the speaker included, once the clip is ready.
+    const spoken = ({ url, text, by }: TtsSpoken) => {
+      show(by.id, { emoji: "💬", title: `said “${text}”` });
+      if (!mutedRef.current) void engine.playUrl(url);
     };
     s.on("sounds:changed", changed);
     s.on("connect", changed);
     s.on("sound:played", played);
+    s.on("tts:spoken", spoken);
     const unlock = () => engine.unlock();
     document.addEventListener("pointerdown", unlock, { capture: true });
     document.addEventListener("keydown", unlock, { capture: true });
@@ -168,6 +204,7 @@ export function SoundsProvider({ session, children }: { session: Session; childr
       s.off("sounds:changed", changed);
       s.off("connect", changed);
       s.off("sound:played", played);
+      s.off("tts:spoken", spoken);
       document.removeEventListener("pointerdown", unlock, { capture: true });
       document.removeEventListener("keydown", unlock, { capture: true });
     };
@@ -183,6 +220,21 @@ export function SoundsProvider({ session, children }: { session: Session; childr
     }
   }, [volume, muted]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("tts.voice", voice);
+    } catch {
+      /* this visit only */
+    }
+  }, [voice]);
+
+  const speak = useCallback(async (text: string) => {
+    // The press unlocks audio, so the clip can play when it comes back.
+    engine.unlock();
+    if (!getSocket().connected) throw new Error("offline");
+    await api("POST", "/api/tts", { text, voice });
+  }, [voice]);
+
   const me = session.user.id;
   const play = useCallback(async (sound: Sound) => {
     const s = getSocket();
@@ -190,14 +242,14 @@ export function SoundsProvider({ session, children }: { session: Session; childr
     if (!s.connected) throw new Error("offline");
     // Heard here at once; everyone else hears it when the broadcast reaches them.
     void engine.play(sound.id, true);
-    show(me, sound);
+    show(me, { emoji: sound.emoji, title: `played ${sound.name}` });
     await new Promise<void>((resolve, reject) =>
       s.emit("sound:play", { id: sound.id }, (res) => (res.ok ? resolve() : reject(new Error(res.error)))));
   }, [me, show]);
 
   const value = useMemo(
-    () => ({ enabled, list, reload, play, volume, setVolume, muted, setMuted, recent }),
-    [enabled, list, reload, play, volume, muted, recent],
+    () => ({ enabled, list, reload, play, volume, setVolume, muted, setMuted, recent, canSpeak, speak, voice, setVoice }),
+    [enabled, list, reload, play, volume, muted, recent, canSpeak, speak, voice],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -221,6 +273,12 @@ export const SOUND_ERRORS: Record<string, string> = {
   invalid_name: "Give the sound a name, up to 32 characters.",
   invalid_emoji: "Use a single emoji, or leave it empty.",
   not_yours: "You can only delete your own sounds.",
+  invalid_text: "Type something to say. Links and emoji aren’t read out.",
+  invalid_voice: "That voice isn’t available. Pick another.",
+  busy: "Text to speech is busy. Try again in a moment.",
+  tts_failed: "Text to speech didn’t work. Try again.",
+  rate_limited: "You’re sending messages too fast. Wait a moment.",
 };
 
-export const soundError = (e: unknown) => SOUND_ERRORS[(e as Error)?.message] ?? "Something went wrong. Try again.";
+export const soundError = (e: unknown) =>
+  (e instanceof ApiError && e.status === 429 ? SOUND_ERRORS.rate_limited : SOUND_ERRORS[(e as Error)?.message]) ?? "Something went wrong. Try again.";

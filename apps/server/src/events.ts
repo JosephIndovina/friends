@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { Me } from "@friends/shared";
+import type { Me, TtsSpoken } from "@friends/shared";
 
 /** In-process bus so routes don't import the bot or socket layer directly. */
 interface Events {
@@ -18,6 +18,7 @@ interface Events {
   "posts:changed": [{ id: string; deleted?: boolean }];
   "post:created": [string];
   "sounds:changed": [];
+  "tts:spoken": [TtsSpoken];
   /** post to the Discord notification channel; `url` is a site path */
   /** post a test message to a channel; `done` gets the error, if any */
   "notify:test": [string, (err: Error | null) => void];

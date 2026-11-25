@@ -10,6 +10,8 @@ COPY packages/shared/package.json packages/shared/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build && pnpm --filter @friends/server deploy --prod /out
+# Text to speech's ONNX runtime ships binaries for every OS; the image only ever runs on Linux.
+RUN find /out/node_modules -type d -path '*onnxruntime-node/bin/napi-v*/*' \( -name darwin -o -name win32 \) -prune -exec rm -rf {} +
 
 FROM node:22-bookworm-slim
 ARG APP_VERSION=dev

@@ -1379,6 +1379,9 @@ main.page:has(.media-room) { max-width: 1920px; }
 }
 .sound-file { padding: var(--space-2); min-width: 0; width: 100%; }
 .sound-limits { font-size: var(--step--1); margin: 0; }
+.tts-form { display: grid; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.tts-row { display: flex; align-items: center; gap: var(--space-2); }
+.tts-row select { flex: 1; min-width: 0; }
 /* Phones: the button isn't at the screen's edge, so the panel spans the stage bar instead. */
 @media (max-width: 600px) {
   .stage-bar { position: relative; }

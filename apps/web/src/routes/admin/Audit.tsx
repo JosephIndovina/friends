@@ -20,6 +20,7 @@ const CATEGORIES = [
   { value: "playlist.", label: "Playlists" },
   { value: "post.", label: "Posts" },
   { value: "sound.", label: "Soundboard" },
+  { value: "tts.", label: "Text to speech" },
   { value: "cast.", label: "Cast" },
 ];
 const ALERTS = new Set(["access.forbidden", "auth.denied", "access.denied", "user.banned", "user.suspended", "site.lockdown_on"]);
@@ -30,6 +31,7 @@ function details(e: AuditEntry): string {
   if (!e.details) return "";
   const d = e.details as Record<string, unknown>;
   if (e.action === "user.role_changed") return `${d.from ?? "No role"} → ${d.to}`;
+  if (e.action === "tts.spoken") return `“${d.text}”`;
   if (e.action === "access.forbidden") return `${d.reason} · ${d.method} ${d.url}`;
   if (e.action === "role.reordered" && Array.isArray(d.order)) return d.order.join(" › ");
   if (e.action === "role.updated") {

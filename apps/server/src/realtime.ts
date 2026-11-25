@@ -62,6 +62,10 @@ export function createRealtime(http: HttpServer) {
   });
   events.on("posts:changed", (change) => io.emit("posts:changed", change));
   events.on("sounds:changed", () => void io.emit("sounds:changed"));
+  // Only to people who can hear the soundboard: TTS plays through it.
+  events.on("tts:spoken", (t) => {
+    for (const socket of io.sockets.sockets.values()) if (socket.data.session.permissions.includes("sounds.play")) socket.emit("tts:spoken", t);
+  });
   events.on("notice", (n) => void io.emit("notice", n));
   events.on("cast:ended", ({ userId, by, app }) => void io.to(`user:${userId}`).emit("cast:ended", { by, app }));
   events.on("admin:attention", () => {

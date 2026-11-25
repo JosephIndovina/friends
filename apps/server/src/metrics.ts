@@ -10,6 +10,7 @@ import { db } from "./db.js";
 import { discordPing } from "./discord.js";
 import { env } from "./env.js";
 import { SOUND_DIR } from "./sounds.js";
+import { TTS_DIR } from "./tts.js";
 import { UPLOAD_DIR } from "./posts.js";
 
 /**
@@ -33,7 +34,7 @@ const http = { req: 0, err: 0, ms: 0, bytes: { webB: 0, apiB: 0, uploadsB: 0, so
 function kindOf(url: string): Kind | null {
   if (url.startsWith("/livekit/")) return null; // the signalling WebSocket; counted only in network totals
   if (url.startsWith("/api/uploads/")) return "uploadsB";
-  if (url.startsWith("/api/sounds/") && url.split("?")[0]!.endsWith("/file")) return "soundsB";
+  if ((url.startsWith("/api/sounds/") || url.startsWith("/api/tts/")) && url.split("?")[0]!.endsWith("/file")) return "soundsB";
   if (url.startsWith("/download/")) return "downloadsB";
   if (url.startsWith("/api/") || url.startsWith("/auth/")) return "apiB";
   return "webB";
@@ -267,7 +268,7 @@ async function storage(): Promise<MetricsResponse["storage"]> {
   const v = {
     db: (await size(dbPath)) + (await size(`${dbPath}-wal`)),
     uploads: await dirBytes(UPLOAD_DIR),
-    sounds: await dirBytes(SOUND_DIR),
+    sounds: (await dirBytes(SOUND_DIR)) + (await dirBytes(TTS_DIR)),
     free: fs ? fs.bavail * fs.bsize : null,
     total: fs ? fs.blocks * fs.bsize : null,
   };

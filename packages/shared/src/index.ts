@@ -14,6 +14,7 @@ export const PERMISSIONS = {
   "posts.moderate": "Delete anyone's posts",
   "sounds.play": "Play soundboard sounds",
   "sounds.add": "Add sounds to the soundboard",
+  "tts.speak": "Say things out loud with text to speech",
   "playback.moderate": "Clear or lock queues, end someone's stream, delete anyone's sounds",
   "admin.people": "Approve, suspend and assign roles",
   "admin.roles": "Edit roles and permissions",
@@ -184,6 +185,8 @@ export interface ServerToClient {
   "sound:played": (input: { id: string; by: { id: string; name: string } }) => void;
   /** a sound was added or deleted: refetch /api/sounds */
   "sounds:changed": () => void;
+  /** someone said something with text to speech (sent to everyone, them included) */
+  "tts:spoken": (input: TtsSpoken) => void;
 }
 
 export interface ClientToServer {
@@ -239,6 +242,32 @@ export const SOUND_LIMITS = {
   total: 100,
   perPerson: 20,
 } as const;
+
+// ---------- text to speech ----------
+
+export const TTS_LIMITS = { chars: 200 } as const;
+
+/** Kokoro's voices. The id prefix is accent (a = US, b = UK) then f/m. */
+export const TTS_VOICES = [
+  ["af_heart", "Heart"], ["af_bella", "Bella"], ["af_nicole", "Nicole"], ["af_aoede", "Aoede"], ["af_kore", "Kore"],
+  ["af_sarah", "Sarah"], ["af_nova", "Nova"], ["af_sky", "Sky"], ["af_alloy", "Alloy"], ["af_jessica", "Jessica"], ["af_river", "River"],
+  ["am_michael", "Michael"], ["am_fenrir", "Fenrir"], ["am_puck", "Puck"], ["am_echo", "Echo"], ["am_eric", "Eric"],
+  ["am_liam", "Liam"], ["am_onyx", "Onyx"], ["am_santa", "Santa"], ["am_adam", "Adam"],
+  ["bf_emma", "Emma"], ["bf_isabella", "Isabella"], ["bf_alice", "Alice"], ["bf_lily", "Lily"],
+  ["bm_george", "George"], ["bm_fable", "Fable"], ["bm_lewis", "Lewis"], ["bm_daniel", "Daniel"],
+].map(([id, name]) => ({
+  id: id!,
+  label: `${name} (${id![0] === "a" ? "US" : "UK"}, ${id![1] === "f" ? "female" : "male"})`,
+}));
+export const TTS_DEFAULT_VOICE = "af_heart";
+
+export interface TtsSpoken {
+  url: string;
+  /** what was said, after links and emoji were taken out */
+  text: string;
+  voice: string;
+  by: { id: string; name: string };
+}
 
 // ---------- music ----------
 
