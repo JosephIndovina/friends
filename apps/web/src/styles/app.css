@@ -1321,7 +1321,7 @@ main.page:has(.media-room) { max-width: 1920px; }
 .camera-ctl .field-error { font-size: 12px; margin: 0; }
 
 /* ---------- soundboard ---------- */
-.soundboard { position: relative; }
+.soundboard, .tts-pop { position: relative; }
 .sound-panel { top: auto; bottom: calc(100% + 8px); right: -8px; width: min(24rem, calc(100vw - 32px)); z-index: 70; }
 .sound-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
 .sound-head h2 { margin: 0; }
@@ -1379,13 +1379,13 @@ main.page:has(.media-room) { max-width: 1920px; }
 }
 .sound-file { padding: var(--space-2); min-width: 0; width: 100%; }
 .sound-limits { font-size: var(--step--1); margin: 0; }
-.tts-form { display: grid; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.tts-form { display: grid; gap: var(--space-2); }
 .tts-row { display: flex; align-items: center; gap: var(--space-2); }
 .tts-row select { flex: 1; min-width: 0; }
 /* Phones: the button isn't at the screen's edge, so the panel spans the stage bar instead. */
 @media (max-width: 600px) {
   .stage-bar { position: relative; }
-  .soundboard { position: static; }
+  .soundboard, .tts-pop { position: static; }
   .sound-panel { left: var(--gutter); right: var(--gutter); width: auto; bottom: calc(100% + 8px); }
 }
 /* Who just played what: pops over their avatar for a moment. */

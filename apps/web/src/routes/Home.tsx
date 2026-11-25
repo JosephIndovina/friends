@@ -13,6 +13,7 @@ import { PlaylistsPanel, SaveToPlaylist } from "../components/music/Playlists";
 import { PRESETS, Visualizer, type Preset } from "../components/music/Visualizer";
 import { History, Mixer, Queue, Seek, VolumeHover } from "../components/media/parts";
 import { Soundboard } from "../components/media/Soundboard";
+import { Speak } from "../components/media/Speak";
 import { useSounds } from "../lib/sounds";
 import { can } from "../lib/api";
 import { useArtworkGlow } from "../lib/glow";
@@ -506,6 +507,7 @@ export function Home({ session }: { session: Session }) {
                       );
                     })()}
                     <Soundboard session={session} />
+                    <Speak />
                     <Mixer channels={[...visible.filter((x) => !(x.silent ?? x.local) && x.setVolume).map((x) => ({
                       id: x.id, label: x.label, volume: x.volume ?? 100, muted: !x.audible, setMuted: (m: boolean) => x.setAudible(!m), setVolume: x.setVolume!,
                     })), ...(sounds.enabled ? [{ id: "sounds", label: "Soundboard", volume: sounds.volume, muted: sounds.muted, setMuted: sounds.setMuted, setVolume: sounds.setVolume }] : [])]} />

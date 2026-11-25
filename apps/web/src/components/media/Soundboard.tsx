@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AudioLines, Plus, X } from "lucide-react";
-import { SOUND_LIMITS, TTS_LIMITS, TTS_VOICES, type Session, type Sound } from "@friends/shared";
+import { SOUND_LIMITS, type Session, type Sound } from "@friends/shared";
 import { ApiError, can } from "../../lib/api";
 import { soundError, useSounds } from "../../lib/sounds";
 import { useToast } from "../../lib/toast";
@@ -98,45 +98,6 @@ function AddSound({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Type a line and everyone on the site hears it in your chosen voice. */
-function Speak() {
-  const { speak, voice, setVoice } = useSounds();
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const left = TTS_LIMITS.chars - [...text].length;
-
-  return (
-    <form className="tts-form" onSubmit={async (e) => {
-      e.preventDefault();
-      if (!text.trim() || busy) return;
-      setBusy(true);
-      setError(null);
-      try {
-        await speak(text.trim());
-        setText("");
-      } catch (err) {
-        setError(soundError(err));
-      } finally {
-        setBusy(false);
-      }
-    }}>
-      <label className="field">
-        <span>Text to speech</span>
-        <input className="input" value={text} maxLength={TTS_LIMITS.chars} onChange={(e) => setText(e.target.value)} aria-describedby="tts-left" />
-      </label>
-      <div className="tts-row">
-        <select className="input" value={voice} onChange={(e) => setVoice(e.target.value)} aria-label="Voice">
-          {TTS_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-        </select>
-        <button className="btn btn-primary btn-s" disabled={!text.trim() || busy}>{busy ? "Saying…" : "Say"}</button>
-      </div>
-      <p id="tts-left" className="quiet sound-limits" aria-live="polite">{left <= 40 ? `${left} characters left. ` : ""}Everyone on the site hears it.</p>
-      {error && <p className="field-error" role="alert">{error}</p>}
-    </form>
-  );
-}
-
 /** The soundboard: a button in the stage bar. Pressing a sound plays it for everyone on the site. */
 export function Soundboard({ session }: { session: Session }) {
   const sounds = useSounds();
@@ -221,7 +182,6 @@ export function Soundboard({ session }: { session: Session }) {
                   </span>
                 </div>
               )}
-              {sounds.canSpeak && <Speak />}
             </>
           )}
         </div>
