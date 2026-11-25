@@ -247,18 +247,30 @@ export const SOUND_LIMITS = {
 
 export const TTS_LIMITS = { chars: 200 } as const;
 
-/** Kokoro's voices. The id prefix is accent (a = US, b = UK) then f/m. */
+/**
+ * Kokoro's voices. The id's first letter is the accent, the second f/m. Everything is read as English:
+ * the non-English voices speak it with their accent.
+ */
+const ACCENTS: Record<string, string> = {
+  a: "US", b: "UK", e: "Spanish", f: "French", i: "Italian", h: "Hindi", p: "Brazilian Portuguese", j: "Japanese", z: "Chinese",
+};
 export const TTS_VOICES = [
-  ["af_heart", "Heart"], ["af_bella", "Bella"], ["af_nicole", "Nicole"], ["af_aoede", "Aoede"], ["af_kore", "Kore"],
-  ["af_sarah", "Sarah"], ["af_nova", "Nova"], ["af_sky", "Sky"], ["af_alloy", "Alloy"], ["af_jessica", "Jessica"], ["af_river", "River"],
+  ["af_heart", "Heart"], ["af_bella", "Bella"], ["af_nicole", "Nicole"], ["af_sarah", "Sarah"],
   ["am_michael", "Michael"], ["am_fenrir", "Fenrir"], ["am_puck", "Puck"], ["am_echo", "Echo"], ["am_eric", "Eric"],
   ["am_liam", "Liam"], ["am_onyx", "Onyx"], ["am_santa", "Santa"], ["am_adam", "Adam"],
   ["bf_emma", "Emma"], ["bf_isabella", "Isabella"], ["bf_alice", "Alice"], ["bf_lily", "Lily"],
   ["bm_george", "George"], ["bm_fable", "Fable"], ["bm_lewis", "Lewis"], ["bm_daniel", "Daniel"],
-].map(([id, name]) => ({
-  id: id!,
-  label: `${name} (${id![0] === "a" ? "US" : "UK"}, ${id![1] === "f" ? "female" : "male"})`,
-}));
+  ["ef_dora", "Dora"], ["em_alex", "Alex"],
+  ["ff_siwis", "Siwis"],
+  ["if_sara", "Sara"], ["im_nicola", "Nicola"],
+  ["hf_alpha", "Alpha"], ["hm_omega", "Omega"],
+  ["pf_dora", "Dora"], ["pm_alex", "Alex"],
+  ["jf_alpha", "Alpha"], ["jm_kumo", "Kumo"],
+  ["zf_xiaoxiao", "Xiaoxiao"], ["zm_yunxi", "Yunxi"],
+].map(([id, name]) => {
+  const accent = ACCENTS[id![0]!]!;
+  return { id: id!, accent, label: `${name} (${accent}, ${id![1] === "f" ? "female" : "male"})` };
+});
 export const TTS_DEFAULT_VOICE = "af_heart";
 
 export interface TtsSpoken {

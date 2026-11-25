@@ -30,7 +30,15 @@ type Voice = NonNullable<NonNullable<Parameters<KokoroTTS["generate"]>[1]>["voic
 let loading: Promise<KokoroTTS> | null = null;
 function model() {
   loading ??= import("kokoro-js")
-    .then(({ KokoroTTS }) => KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", { dtype: "q8", device: "cpu" }))
+    .then(async ({ KokoroTTS }) => {
+      const tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", { dtype: "q8", device: "cpu" });
+      // kokoro-js ships the other languages' voices but only accepts its English ones. Its check returns which
+      // English to read the text as; for the rest, US English, so they say it in their own accent.
+      const t = tts as unknown as { _validate_voice: (v: string) => string };
+      const english = t._validate_voice.bind(tts);
+      t._validate_voice = (v) => (v in tts.voices ? english(v) : VOICES.has(v) ? "a" : english(v));
+      return tts;
+    })
     .catch((e) => {
       loading = null; // try again on the next request
       throw e;

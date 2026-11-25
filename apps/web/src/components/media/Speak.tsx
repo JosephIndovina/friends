@@ -66,7 +66,11 @@ export function Speak() {
             </label>
             <div className="tts-row">
               <select className="input" value={voice} onChange={(e) => setVoice(e.target.value)} aria-label="Voice">
-                {TTS_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+                {[...new Set(TTS_VOICES.map((v) => v.accent))].map((accent) => (
+                  <optgroup key={accent} label={accent}>
+                    {TTS_VOICES.filter((v) => v.accent === accent).map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+                  </optgroup>
+                ))}
               </select>
               <button className="btn btn-primary btn-s" disabled={!text.trim() || busy}>{busy ? "Saying…" : "Say"}</button>
             </div>
